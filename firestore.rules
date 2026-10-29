@@ -1,0 +1,79 @@
+rules_version = '2';
+// SMG 재고관리 — Firestore 보안 규칙
+// 화면에서 숨기는 것과 별개로, 여기서 서버가 직접 막습니다.
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signed() { return request.auth != null; }
+    function isOwner() {
+      return signed() && request.auth.token.email == 'killon2000@gmail.com' && request.auth.token.email_verified == true;
+    }
+    function meDoc() { return get(/databases/$(database)/documents/users/$(request.auth.uid)); }
+    function me() { return meDoc().data; }
+    // 승인되고 퇴사·정지되지 않은 사람만
+    function active() { return isOwner() || (signed() && exists(/databases/$(database)/documents/users/$(request.auth.uid)) && me().status == 'active'); }
+    function limitedUser() { return !isOwner() && me().get('limited', false) == true; }
+    function perm(k) { return isOwner() || (active() && !limitedUser() && me().perms.get(k, false) == true); }
+    function store(s) { return isOwner() || (active() && s in me().perms.stores); }
+
+    // 앱 설정 (매장 목록 등)
+    match /config/app { allow read: if signed(); allow write: if perm('approve'); }
+    // 토스포스 zip 비밀번호: 매출·승인 권한자만
+    match /config/zip { allow read: if perm('sales') || perm('approve'); allow write: if perm('approve') || perm('sales'); }
+
+    // 사용자
+    match /users/{uid} {
+      allow get: if signed() && (request.auth.uid == uid || perm('approve'));
+      allow list: if perm('approve');
+      // 본인 신청: 대기 상태로만, 권한 없이
+      allow create: if signed() && request.auth.uid == uid && (
+        isOwner() ||
+        (request.resource.data.status == 'pending' && request.resource.data.perms == null
+         && request.resource.data.get('owner', false) == false && request.resource.data.get('limited', false) == false
+         && request.resource.data.email == request.auth.token.email));
+      // 승인·권한·퇴사: 승인 권한자만, 대표 계정은 못 바꿈, 기타 소속은 수량 보기만
+      allow update: if perm('approve') && resource.data.get('owner', false) == false
+        && request.resource.data.get('owner', false) == false
+        && (resource.data.company != '기타(직접 입력)' || request.resource.data.get('limited', false) == true);
+      allow update: if isOwner() && request.auth.uid == uid;
+      allow delete: if perm('approve') && resource.data.status == 'pending';
+    }
+
+    // 상품 목록
+    match /products/{pid} {
+      allow read: if active();
+      allow write: if perm('move') || perm('approve');
+    }
+
+    // 매장 재고 (q = 상품별 수량)
+    match /stores/{st} {
+      allow read: if store(st);
+      allow write: if store(st) && (perm('move') || perm('count') || perm('sales'));
+
+      // 입출고 기록: 수량만 보는 사람은 못 봄, 지우거나 고칠 수 없음
+      match /moves/{id} {
+        allow read: if store(st) && !limitedUser();
+        allow create: if store(st) && (perm('move') || perm('count') || perm('sales')) && request.resource.data.store == st;
+        allow update, delete: if isOwner();
+      }
+      // 매출: 매출 권한자만
+      match /sales/{ym} {
+        allow read: if store(st) && perm('sales');
+        allow write: if store(st) && perm('sales');
+      }
+    }
+
+    // 매장 이동
+    match /transfers/{id} {
+      allow read: if active() && !limitedUser() && (store(resource.data.from) || store(resource.data.to));
+      allow create: if perm('move') && store(request.resource.data.from);
+      allow update: if perm('move') && store(resource.data.to);
+    }
+
+    // 창고 보관 수량
+    match /warehouse/{doc} { allow read: if active() && !limitedUser(); allow write: if perm('move'); }
+
+    // 정산: 대표만
+    match /settle/{m} { allow read, write: if isOwner(); }
+  }
+}
