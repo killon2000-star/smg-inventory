@@ -376,7 +376,8 @@ function entryView() {
     <div class="formgrid">
       <div class="field"><label for="eDate">날짜</label><input class="inp" type="date" id="eDate" value="${e.date}"></div>
       <div class="field"><label for="eStore">${T.to ? '보내는 매장' : '매장'}</label><select class="inp" id="eStore">${okStores.map(s => `<option value="${s}" ${e.store === s ? 'selected' : ''}>${esc(storeName(s))}</option>`).join('')}</select></div>
-      ${T.to ? `<div class="field"><label for="eTo">받는 매장</label><select class="inp" id="eTo"><option value="">선택</option>${STORES.filter(s => s.id !== e.store).map(s => `<option value="${s.id}" ${e.to === s.id ? 'selected' : ''}>${esc(s.name)}</option>`).join('')}</select></div>` : ''}
+      ${T.to ? `<div class="field"><label for="eTo">받는 곳</label><select class="inp" id="eTo"><option value="">선택</option>${STORES.filter(s => s.id !== e.store).map(s => `<option value="${s.id}" ${e.to === s.id ? 'selected' : ''}>${esc(s.name)}</option>`).join('')}<option value="__custom" ${e.to === '__custom' ? 'selected' : ''}>직접 입력</option></select></div>
+      ${e.to === '__custom' ? `<div class="field"><label for="eToText">받는 곳 직접 입력</label><input class="inp" id="eToText" value="${esc(e.toText || '')}" placeholder="예: 코믹월드 행사장, 본사 창고, 팝업 매장"><span class="muted" style="font-size:12px">목록에 없는 곳은 받기 확인 없이 보낸 매장 재고에서만 빠집니다</span></div>` : ''}` : ''}
       ${T.partner ? `<div class="field"><label for="ePartner">${e.type === '반품' ? '반품처' : '받는 업체'}</label><input class="inp" id="ePartner" value="${esc(e.partner)}" placeholder="업체 이름"></div>` : ''}
       <div class="field" style="grid-column:span 2;min-width:0"><label for="eMemo">메모</label><input class="inp" id="eMemo" value="${esc(e.memo)}" placeholder="예: 10/21 출고리스트, 파손 사유"></div>
     </div>
@@ -398,7 +399,8 @@ function entryLines(e) {
 }
 function lineIssues(e) {
   const out = []; const T = TYPES.find(t => t.id === e.type);
-  if (T.to && !e.to) out.push({ lv: 'bad', block: true, t: '받는 매장을 골라 주세요.' });
+  if (T.to && !e.to) out.push({ lv: 'bad', block: true, t: '받는 곳을 골라 주세요.' });
+  if (T.to && e.to === '__custom' && !(e.toText || '').trim()) out.push({ lv: 'bad', block: true, t: '받는 곳 이름을 적어 주세요.' });
   if (T.partner && !e.partner.trim()) out.push({ lv: 'bad', block: true, t: `${e.type === '반품' ? '반품처' : '받는 업체'}를 적어 주세요.` });
   const neg = e.lines.filter(l => stockOf(e.store, l.pid) + T.sign * (+l.qty || 0) < 0);
   if (neg.length) out.push({ lv: 'warn', t: `반영하면 재고가 마이너스가 되는 상품 ${neg.length}종이 있습니다. 수량을 확인해 주세요.` });
@@ -419,7 +421,7 @@ async function saveEntry() {
   const list = [];
   for (const l of e.lines) {
     const q = T.sign * (+l.qty);
-    const m = { id: 'n' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), date: e.date, store: e.store, type: e.type, pid: l.pid, qty: q, memo: [e.to ? `→ ${storeName(e.to)}` : '', e.partner, e.memo].filter(Boolean).join(' · '), by, at };
+    const m = { id: 'n' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), date: e.date, store: e.store, type: e.type, pid: l.pid, qty: q, memo: [e.to ? `→ ${e.to === '__custom' ? (e.toText || '').trim() : storeName(e.to)}` : '', e.partner, e.memo].filter(Boolean).join(' · '), by, at };
     list.push(m);
   }
   await DB.saveMoves(list);
@@ -427,7 +429,7 @@ async function saveEntry() {
     S.moves.push(m); (S.stock[m.store] ||= {})[m.pid] = stockOf(m.store, m.pid) + m.qty;
     if (m.type === '창고 보관') S.warehouse[m.pid] = (S.warehouse[m.pid] || 0) - m.qty;
     if (m.type === '창고에서 가져옴') S.warehouse[m.pid] = (S.warehouse[m.pid] || 0) - m.qty;
-    if (m.type === '매장 이동') S.transfers.push({ id: m.id, pid: m.pid, qty: -m.qty, from: m.store, to: e.to, date: m.date, by, status: 'sent' });
+    if (m.type === '매장 이동' && e.to !== '__custom') S.transfers.push({ id: m.id, pid: m.pid, qty: -m.qty, from: m.store, to: e.to, date: m.date, by, status: 'sent' });
   }
   const n = list.length; S.ui.entry = newEntry(e.type); S.ui.imp = null;
   toast(`${e.type} ${n}종 저장했습니다`);
@@ -1096,7 +1098,8 @@ function bind() {
     if (t.id === 'cip') { S.ui.countIp = t.value; render(); return; }
     if (t.id === 'eDate') S.ui.entry.date = t.value;
     if (t.id === 'eStore') { S.ui.entry.store = t.value; render(); return; }
-    if (t.id === 'eTo') { S.ui.entry.to = t.value; render(); return; }
+    if (t.id === 'eTo') { S.ui.entry.to = t.value; render(); if (t.value === '__custom') setTimeout(() => $('#eToText') && $('#eToText').focus(), 0); return; }
+    if (t.id === 'eToText') { S.ui.entry.toText = t.value; render(); return; }
     if (t.id === 'ePartner') { S.ui.entry.partner = t.value; render(); return; }
     if (t.id === 'eMemo') S.ui.entry.memo = t.value;
     if (d.lq != null) { S.ui.entry.lines[+d.lq].qty = Math.max(0, parseInt(t.value || '0', 10)); render(); return; }
