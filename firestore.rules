@@ -76,6 +76,13 @@ service cloud.firestore {
     // 외부 장소 (행사장·팝업 등)
     match /places/{id} { allow read: if active() && !limitedUser(); allow write: if perm('move'); }
 
+    // 입고 예정·실제 입고 확인 (보내는 상품 리스트 → 실제 수량 → 차이)
+    match /inbounds/{id} {
+      allow read: if active() && !limitedUser() && store(resource.data.store);
+      allow create, update: if perm('move') && store(request.resource.data.store);
+      allow delete: if perm('approve') || isOwner();
+    }
+
     // 창고 보관 수량
     match /warehouse/{doc} { allow read: if active() && !limitedUser(); allow write: if perm('move'); }
 
