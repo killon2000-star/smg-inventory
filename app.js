@@ -37,6 +37,7 @@ const PERM_DEF = [
 ];
 
 const DEFAULT_ORDER = STORES.map(s => s.id);
+const APP_VERSION = '2026-10-30 02:21';   // 앱 화면을 마지막으로 고친 시각 (한국 시간)
 /* ───────── 작은 도구 ───────── */
 const $ = (s, el = document) => el.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -48,6 +49,8 @@ const today = () => new Date(Date.now() + 9 * 3600e3).toISOString().slice(0, 10)
 const WD = ['일', '월', '화', '수', '목', '금', '토'];
 const wd = d => WD[new Date(d + 'T00:00:00Z').getUTCDay()];
 const md = d => d.slice(5).replace('-', '/');
+// 'YYYY-MM-DDTHH:mm…' (UTC ISO 또는 날짜만) → '10/30 02:25' 한국 시간
+const kst = iso => { if (!iso) return ''; if (/^\d{4}-\d{2}-\d{2}(T00:00)?$/.test(iso)) return md(iso.slice(0, 10)); const t = new Date(Date.parse(iso) + 9 * 3600e3).toISOString(); return `${md(t.slice(0, 10))} ${t.slice(11, 16)}`; };
 const addDays = (d, n) => new Date(Date.parse(d + 'T00:00:00Z') + n * 864e5).toISOString().slice(0, 10);
 const daysBetween = (a, b) => Math.round((Date.parse(b) - Date.parse(a)) / 864e5);
 const norm = s => String(s || '').toLowerCase().replace(/^에바30주년팝업_/, '').replace(/[\s\[\]()!_\-.,~·&]/g, '');
@@ -206,6 +209,7 @@ function render() {
   <div class="shell">
     <nav class="side" aria-label="메뉴">
       ${nav.map(n => `${n.grp ? `<div class="grp">${n.grp}</div>` : ''}<button data-nav="${n.id}" class="${S.view === n.id ? 'on' : ''}">${esc(n.t)}${n.id === 'admin' && pendingN && can('approve') ? `<span class="cnt">${pendingN}</span>` : ''}</button>`).join('')}
+      <div class="grp" style="margin-top:24px">앱 업데이트 ${APP_VERSION.slice(5).replace('-', '/')}</div>
     </nav>
     <main><div class="page" id="page">${pageView()}</div></main>
   </div>
@@ -279,6 +283,20 @@ function pageView() {
 function head(t, sub, right = '') { return `<div class="ph"><div><h1>${esc(t)}</h1>${sub ? `<div class="sub">${sub}</div>` : ''}</div><span class="sp"></span>${right}</div>`; }
 function toast(t) { S.ui.toast = t; render(); clearTimeout(toast._t); toast._t = setTimeout(() => { S.ui.toast = null; render(); }, 2600); }
 
+/* ───────── 언제 반영됐는지 ───────── */
+function lastMove(stores) { let b = null; for (const m of S.moves) if (stores.includes(m.store) && (!b || (m.at || '') > (b.at || ''))) b = m; return b; }
+function salesUpdated(stores) {
+  let last = '', up = null;
+  for (const st of stores) for (const [ym, m] of Object.entries(S.sales[st] || {})) for (const [dd, r] of Object.entries(m.days)) { const d = ym + '-' + dd; if (d > last) last = d; if (r.up && (!up || r.up.at > up.at)) up = r.up; }
+  return { last, up };
+}
+function freshLine(stores) {
+  const lm = lastMove(stores); const parts = [];
+  if (lm) parts.push(`재고 마지막 반영 <b>${kst(lm.at)}</b> (${esc(lm.type)}${lm.by && !/claude/i.test(lm.by) ? ' · ' + esc(lm.by) : ''})`);
+  if (can('sales')) { const su = salesUpdated(stores); if (su.last) parts.push(`매출 <b>${md(su.last)} 마감</b>까지${su.up ? ` (${kst(su.up.at)} ${esc(su.up.by)} 올림)` : ''}`); }
+  return parts.join(' · ');
+}
+
 /* ───────── 홈 ───────── */
 function storeStats(st) {
   const m = S.stock[st] || {};
@@ -303,7 +321,8 @@ function homeView() {
       salesBlock = `<div class="tile"><span class="lb">매출 · ${md(last)}(${wd(last)})</span><span class="v big${String(fmt(s)).length>9?' long':''}">${fmt(s)}<small>원</small></span><span class="d ${ch == null ? 'muted' : ch >= 0 ? '' : ''}">${ch == null ? '지난주 같은 요일 자료 없음' : `${ch >= 0 ? '✔' : '🔺'} 지난주 같은 요일 대비 ${ch >= 0 ? '+' : ''}${ch.toFixed(1)}%`} · ${fmt(p)}건</span></div>`;
     }
   }
-  return `${head(multi ? `${st.length}개 매장 요약` : storeName(st[0]), `${S.asof} 마감 기준 · ${limited() ? '재고 수량만 볼 수 있는 계정입니다' : '재고는 입출고 기록으로 계산합니다'}`, installBtn('sm'))}
+  return `${head(multi ? `${st.length}개 매장 요약` : storeName(st[0]), `${freshLine(st) || '아직 반영된 자료가 없습니다'}${limited() ? ' · 재고 수량만 볼 수 있는 계정입니다' : ''}`, installBtn('sm'))}
+  <div class="note" style="font-size:12.5px">ℹ︎ 실시간 자료가 아닙니다. 판매는 <b>토스포스 매출 파일</b>을 올려야, 입고·이동은 <b>등록</b>해야 재고에 반영됩니다. 위 시각을 확인해 주세요.</div>
   <div class="tiles">
     <div class="tile"><span class="lb">현재 재고</span><span class="v big${String(fmt(tot.qty)).length>9?' long':''}">${fmt(tot.qty)}<small>개</small></span><span class="d muted">재고 있는 상품 ${fmt(tot.kinds)}종</span></div>
     <div class="tile"><span class="lb">품절 (재고 0)</span><span class="v big${String(fmt(tot.out)).length>9?' long':''}">${fmt(tot.out)}<small>종</small></span><span class="d muted">진열·품절 안내 확인</span></div>
@@ -342,7 +361,7 @@ function productsView() {
   const rows = productRows(); const st = S.stores; const multi = st.length > 1;
   const ips = [...new Set(S.products.filter(p => st.some(s => (S.stock[s] || {})[p.id] != null)).map(p => p.ip))].sort((a, b) => a.localeCompare(b, 'ko'));
   const shown = rows.slice(0, 300);
-  return `${head('상품·재고', `${fmt(rows.length)}종 · 이름·바코드·품번·IP로 찾기`, `<button class="btn" id="scanBtn">${ic('scan')} 바코드 스캔</button>`)}
+  return `${head('상품·재고', `${fmt(rows.length)}종 · ${freshLine(st) || '이름·바코드·품번·IP로 찾기'}`, `<button class="btn" id="scanBtn">${ic('scan')} 바코드 스캔</button>`)}
   <div class="card" style="display:flex;flex-direction:column;gap:10px">
     <div class="row"><div class="search">${ic('search')}<input class="inp" id="pq" type="search" placeholder="상품명, 바코드, 품번, IP" value="${esc(S.ui.q)}" autocomplete="off"></div>
       <select class="inp" id="pip" style="width:auto;min-width:160px" aria-label="IP"><option value="">IP 전체</option>${ips.map(i => `<option ${S.ui.ip === i ? 'selected' : ''}>${esc(i)}</option>`).join('')}</select></div>
@@ -855,7 +874,8 @@ function salesView() {
   const quick = [['이번 주', () => { const k = periodKey(last, 'week'); return [k, last]; }], ['지난주', () => { const k = addDays(periodKey(last, 'week'), -7); return [k, addDays(k, 6)]; }], ['이번 달', () => [last.slice(0, 7) + '-01', last]], ['지난달', () => { const f = addDays(last.slice(0, 7) + '-01', -1); return [f.slice(0, 7) + '-01', f]; }], ['올해', () => [last.slice(0, 4) + '-01-01', last]], ['전체', () => [firstSalesDate(stores), last]]];
   S._quick = quick;
   const noData = stores.filter(s => !per[s].days);
-  return `${head('매출', `토스포스 매출리포트 기준 · ${last ? `${last} 마감까지` : '아직 자료 없음'}`, `<button class="btn" id="posBtn">토스포스 파일 올리기</button>`)}
+  const su = salesUpdated(stores);
+  return `${head('매출', `토스포스 매출리포트 기준 · ${last ? `<b>${last} 마감</b>까지` : '아직 자료 없음'}${su.up ? ` · 마지막 올림 ${kst(su.up.at)} ${esc(su.up.by)}` : ''}`, `<button class="btn" id="posBtn">토스포스 파일 올리기</button>`)}
   <div class="card" style="display:flex;flex-direction:column;gap:12px">
     <div class="seg">${units.map(([k, t]) => `<button class="${unit === k ? 'on' : ''}" data-su="${k}">${t}</button>`).join('')}</div>
     <div class="row"><div class="field"><label for="ra">시작일</label><input class="inp" type="date" id="ra" value="${a}"></div><div class="field"><label for="rb">종료일</label><input class="inp" type="date" id="rb" value="${b}"></div>
@@ -969,7 +989,7 @@ async function readPos(f, store) {
       for (const x of L) { const c = S.byName[norm(x.name)]; if (c && c.length === 1 && (S.stock[store] || {})[c[0].id] != null) match.push({ date: d.date, pid: c[0].id, q: x.q }); else unmatched.add(x.name); }
     }
     if (!days.length) throw new Error('결제 합계에 날짜 줄이 없습니다.');
-    S.ui.posPreview = { store, days, match, unmatched: [...unmatched] };
+    S.ui.posPreview = { store, days, match, unmatched: [...unmatched], file: f.name };
   } catch (err) {
     S.ui.posPreview = { store, err: /password|encrypted|Wrong/i.test(String(err && err.message)) ? `zip 비밀번호가 맞지 않습니다. 관리 › 파일 비밀번호에서 ${storeName(store)} 비밀번호를 확인해 주세요.` : String(err.message || err) };
   }
@@ -979,7 +999,7 @@ async function savePos() {
   const pv = S.ui.posPreview; const st = pv.store;
   for (const d of pv.days) {
     const ip = {}, pr = {}; for (const x of d.L) { const a = ip[x.ip] ||= [0, 0]; a[0] += x.q; a[1] += x.s; const b = pr[x.name] ||= [0, 0, x.ip]; b[0] += x.q; b[1] += x.s; }
-    const rec = { s: d.s, p: d.p, q: d.q, ip, pr };
+    const rec = { s: d.s, p: d.p, q: d.q, ip, pr, up: { at: new Date().toISOString(), by: S.user.name, file: pv.file || '' } };
     await DB.saveSalesDay(st, d.date, rec);
     ((S.sales[st] ||= {})[d.date.slice(0, 7)] ||= { days: {} }).days[d.date.slice(8)] = rec;
   }
@@ -1107,7 +1127,7 @@ function seedView() {
 }
 function moreView() {
   const nav = NAV.filter(n => n.show() && !['home', 'products', 'entry', 'count'].includes(n.id));
-  return `${head('더보기')}<div class="card" style="padding:6px">${nav.map(n => `<button class="btn" style="width:100%;justify-content:flex-start;border:0;min-height:48px" data-nav="${n.id}">${esc(n.t)}</button>`).join('')}</div>`;
+  return `${head('더보기', `앱 업데이트 ${APP_VERSION}`)}<div class="card" style="padding:6px">${nav.map(n => `<button class="btn" style="width:100%;justify-content:flex-start;border:0;min-height:48px" data-nav="${n.id}">${esc(n.t)}</button>`).join('')}</div>`;
 }
 
 /* ───────── 로그인·신청 ───────── */
