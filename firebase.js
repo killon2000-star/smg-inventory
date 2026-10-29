@@ -67,6 +67,7 @@ window.SMG_FIREBASE = function (S, X) {
         unsub.push(db.collection('stores').doc(st).collection('sales').onSnapshot(q => { S.sales[st] = {}; q.docs.forEach(d => S.sales[st][d.id] = d.data()); X.render(); }, () => { }));
       }
     }
+    if (!S.user.limited) for (const st of mine) unsub.push(db.collection('inbounds').where('store', '==', st).onSnapshot(q => { S.inbounds = S.inbounds.filter(x => x.store !== st).concat(q.docs.map(d => d.data())); X.render(); }, () => { }));
     if (!S.user.limited) unsub.push(db.collection('places').onSnapshot(q => { S.places = q.docs.map(d => d.data()); X.render(); }, () => { }));
     if (!S.user.limited) unsub.push(db.collection('warehouse').doc('main').onSnapshot(d => { S.warehouse = (d.exists && d.data().q) || {}; }, () => { }));
     if (S.user.perms.sales || S.user.perms.approve || S.user.owner) {
@@ -111,6 +112,7 @@ window.SMG_FIREBASE = function (S, X) {
       await db.collection('users').doc(uid).set({ ...d, updatedAt: ts(), updatedBy: S.user.name }, { merge: true });
       return true;
     },
+    async saveInbound(ib) { await db.collection('inbounds').doc(ib.id).set(JSON.parse(JSON.stringify(ib))); },
     async savePlace(p) { await db.collection('places').doc(p.id).set(p); },
     async saveStoreOrder(order) { await db.collection('users').doc(S.user.uid).update({ storeOrder: order }); },
     async deleteUser(uid) { await db.collection('users').doc(uid).delete(); },

@@ -77,7 +77,8 @@ const S = {
   moves: [], transfers: [],
   sales: {},               // sales[store][YYYY-MM].days[DD]
   settle: [], users: [], asof: '',
-  places: [],              // 외부 장소 (행사장·팝업 등): {id, name, kind, start, end, addr, person, memo, q:{pid:qty}}
+  places: [],
+  inbounds: [],            // 입고 예정: {id, store, date, title, ip, from, items:[{key,pid,name,code,plan,price,actual}], extra:[], status, ...}              // 외부 장소 (행사장·팝업 등): {id, name, kind, start, end, addr, person, memo, q:{pid:qty}}
   zipPw: { suwon: '0000' },
   ui: { q: '', f: 'all', ip: '', salesUnit: 'day', range: null, recType: '', recQ: '', counts: {}, countQ: '', countIp: '', entry: null, imp: null, adminTab: 'pending', showApply: false, posPreview: null, storeMenu: false },
 };
@@ -90,7 +91,9 @@ const DemoBackend = {
     S.products = d.products;
     S.stock = { suwon: d.stock.suwon, boxcafe: {}, museum: {}, omake: {}, limission: {} };
     S.moves = d.moves;
-    S.incoming = d.incoming;
+    S.incoming = [];
+    if (d.incoming && d.incoming.length) S.inbounds.push({ id: 'IB-261112-AOT', store: 'suwon', date: d.incoming[0].date, title: '진격의 거인 팝업 입고 예정 (SMG 상품리스트)', ip: '진격의 거인', from: 'SMG 홀딩스', status: 'planned', by: 'Claude', at: '2026-10-29',
+      items: d.incoming.map(x => { const p = d.products.find(q => q.id === x.pid) || {}; return { key: 'p:' + x.pid, pid: x.pid, name: p.name || x.pid, code: p.barcode || p.sku || x.pid, plan: x.qty, price: p.price || null, actual: null }; }), extra: [] });
     S.sales = { suwon: d.sales.suwon, boxcafe: {}, museum: {}, omake: {}, limission: {} };
     S.settle = d.settle;
     S.users = demoUsers();
@@ -159,8 +162,9 @@ function alerts(stores) {
   if (dupName.length) out.push({ lv: 'warn', t: `<b>같은 이름, 다른 품번 ${dupName.length}건</b> — 예: ${esc(dupName[0][0].name)}`, go: () => { S.view = 'admin'; S.ui.adminTab = 'products'; } });
   const pend = S.transfers.filter(t => t.status === 'sent' && stores.includes(t.to));
   if (pend.length) out.push({ lv: 'warn', t: `<b>받기 확인 안 한 이동 ${pend.length}건</b> — 다른 매장에서 보낸 상품을 확인해 주세요.`, go: () => { S.view = 'transfer'; } });
-  const inc = (S.incoming || []).filter(x => stores.includes('suwon'));
-  if (inc.length) out.push({ lv: 'info', t: `<b>입고 예정 ${inc.length}종 ${fmt(inc.reduce((a, b) => a + b.qty, 0))}개</b> · 진격의 거인 ${md(inc[0].date)} — 아직 재고에 넣지 않았습니다.`, go: null });
+  for (const ib of S.inbounds.filter(x => x.status === 'planned' && stores.includes(x.store))) {
+    out.push({ lv: 'info', t: `<b>입고 예정 ${ib.items.length}종 ${fmt(ib.items.reduce((a, b) => a + (b.plan || 0), 0))}개</b> · ${esc(ib.title)} ${ib.date ? md(ib.date) : ''} — 실제 입고 후 수량을 확인해 주세요.`, go: () => { S.view = 'inbound'; S.ui.ib = ib.id; } });
+  }
   if (can('approve')) {
     const p = S.users.filter(u => u.status === 'pending').length;
     if (p) out.push({ lv: 'warn', t: `<b>승인 대기 ${p}명</b>`, go: () => { S.view = 'admin'; S.ui.adminTab = 'pending'; } });
@@ -174,6 +178,7 @@ const NAV = [
   { id: 'products', t: '상품·재고', i: 'box', show: () => true },
   { id: 'entry', t: '입출고 등록', i: 'plus', show: () => can('move') },
   { id: 'count', t: '실사', i: 'check', show: () => can('count') },
+  { id: 'inbound', t: '입고 확인', show: () => can('move') },
   { id: 'transfer', t: '매장 이동', show: () => can('move') },
   { id: 'records', t: '기록', show: () => !limited() },
   { id: 'sales', t: '매출', grp: '관리자', show: () => can('sales') },
@@ -262,6 +267,7 @@ function pageView() {
     case 'count': return countView();
     case 'transfer': return transferView();
     case 'records': return recordsView();
+    case 'inbound': return inboundView();
     case 'sales': return salesView();
     case 'settle': return settleView();
     case 'admin': return adminView();
@@ -404,6 +410,146 @@ function placeSelect(id, val, label) {
   ${val && placeById(val) ? `<div class="note" style="margin-top:4px"><b>[${esc(placeById(val).kind)}] ${esc(placeLabel(placeById(val)))}</b><br><span class="muted" style="font-size:12px">장소 번호 ${esc(val)}${placeById(val).person ? ' · 담당 ' + esc(placeById(val).person) : ''}${placeQty(placeById(val)) ? ' · 지금 그곳에 ' + fmt(placeQty(placeById(val))) + '개' : ''}</span></div>` : ''}</div>`;
 }
 
+/* ───────── 입고 예정 → 실제 입고 → 차이 ───────── */
+function readTable(rows, qtyPref) {
+  const det = detectCols(rows, qtyPref);
+  if (!det || det.map.qty == null || (det.map.name == null && det.map.barcode == null && det.map.sku == null)) return { err: '수량 칸과 상품 칸(상품명·바코드·품번 중 하나)을 찾지 못했습니다. 첫 줄에 "상품명", "수량" 같은 제목이 있는지 확인해 주세요.' };
+  const m = det.map; const out = [];
+  for (let i = det.r + 1; i < rows.length; i++) {
+    const r = rows[i]; const g = k => m[k] != null ? String(r[m[k]] ?? '').trim().replace(/^'/, '') : '';
+    const name = g('name'), bc = g('barcode'), sku = g('sku');
+    if (!name && !bc && !sku) continue;
+    if (/^(합계|총계|소계|total)/i.test(name) && !bc && !sku) continue;
+    const num = v => { const n = Number(String(v).replace(/[,원\s]/g, '')); return isNaN(n) ? null : n; };
+    let cand = bc ? findProduct(bc) : []; if (!cand.length && sku) cand = findProduct(sku); if (!cand.length && name) cand = S.byName[norm(name)] || [];
+    out.push({ line: i + 1, name, bc, sku, qty: num(g('qty')), price: num(g('price')), ip: g('ip'), pid: cand.length === 1 ? cand[0].id : '', multi: cand.length > 1 });
+  }
+  return { rows: out, header: det.r + 1 };
+}
+async function fileRows(f) {
+  if (/\.(pdf|png|jpe?g|heic|gif|webp)$/i.test(f.name)) throw new Error('PDF·사진은 입력할 수 없습니다. 엑셀이나 구글시트로 받아 주세요.');
+  const wb = await readBook(f);
+  let best = null;
+  for (const n of wb.SheetNames) { const rows = XLSX.utils.sheet_to_json(wb.Sheets[n], { header: 1, defval: '' }); const d = detectCols(rows); if (d && (!best || d.score > best.d.score)) best = { n, rows, d }; }
+  return { rows: best ? best.rows : [], src: f.name + (best && wb.SheetNames.length > 1 ? ' › ' + best.n : '') };
+}
+async function linkRows(url) {
+  const m = url.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/); const g = url.match(/[#&?]gid=(\d+)/);
+  if (!m) throw new Error('구글시트 링크가 아닙니다.');
+  if (S.mode === 'demo') throw new Error('미리보기 화면에서는 외부 링크를 열 수 없습니다. 실제 앱에서는 "링크가 있는 모든 사용자" 공유 시트를 바로 읽습니다.');
+  const r = await fetch(`https://docs.google.com/spreadsheets/d/${m[1]}/gviz/tq?tqx=out:csv${g ? '&gid=' + g[1] : ''}`); if (!r.ok) throw new Error('시트를 열지 못했습니다. 공유를 "링크가 있는 모든 사용자 · 뷰어"로 바꿔 주세요.');
+  const wb = XLSX.read(await r.text(), { type: 'string' }); return { rows: XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, defval: '' }), src: '구글시트' };
+}
+const itemKey = r => r.pid ? 'p:' + r.pid : 'n:' + (r.bc || r.sku || norm(r.name));
+function ibStats(ib) {
+  const it = ib.items; const plan = it.reduce((a, b) => a + (b.plan || 0), 0);
+  const done = it.filter(x => x.actual != null); const act = done.reduce((a, b) => a + b.actual, 0) + (ib.extra || []).reduce((a, b) => a + (b.actual || 0), 0);
+  const diff = it.filter(x => x.actual != null && x.actual !== x.plan).length + (ib.extra || []).length;
+  const money = k => it.reduce((a, b) => a + (b.price || 0) * ((k === 'plan' ? b.plan : b.actual) || 0), 0) + (k === 'act' ? (ib.extra || []).reduce((a, b) => a + (b.price || 0) * (b.actual || 0), 0) : 0);
+  return { plan, act, done: done.length, left: it.length - done.length, diff, planMoney: money('plan'), actMoney: money('act') };
+}
+function inboundView() {
+  const list = S.inbounds.filter(x => S.stores.includes(x.store)).sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+  if (S.ui.ib === 'new') return ibNewView();
+  const ib = S.inbounds.find(x => x.id === S.ui.ib);
+  if (ib) return ibDetailView(ib);
+  const pill = ib => ib.status === 'received' ? (ibStats(ib).diff ? '<span class="pill p-warn">🔸 입고 완료 · 차이 있음</span>' : '<span class="pill p-ok">✔ 입고 완료</span>') : ibStats(ib).done ? '<span class="pill p-info">확인 중</span>' : '<span class="pill p-mute">입고 예정</span>';
+  return `${head('입고 확인', '보내는 상품 리스트를 예정으로 등록 → 실제 입고 파일·수량 입력 → 차이를 자동 계산', `<button class="btn pri" id="ibNew">입고 예정 등록</button>`)}
+  ${list.length ? `<div class="card" style="padding:8px 12px"><div class="tw"><table><thead><tr><th>예정일</th><th>내용</th><th class="hide-s">매장</th><th class="n">예정</th><th class="n">실제</th><th class="n">차이</th><th>상태</th></tr></thead><tbody>
+  ${list.map(ib => { const st = ibStats(ib); return `<tr class="click" data-ib="${ib.id}"><td class="num nowrap" style="text-align:left">${ib.date ? md(ib.date) : '-'}</td><td class="nm"><b>${esc(ib.title)}</b><div class="muted" style="font-size:12px">${esc([ib.ip, ib.from].filter(Boolean).join(' · '))} · ${ib.items.length}종</div></td><td class="hide-s nowrap">${esc(storeName(ib.store))}</td><td class="n">${fmt(st.plan)}</td><td class="n">${st.done ? fmt(st.act) : '-'}</td><td class="n" style="font-weight:700">${st.done ? fmt(st.act - st.plan) : '-'}</td><td>${pill(ib)}</td></tr>`; }).join('')}
+  </tbody></table></div></div>` : '<div class="card"><div class="empty">입고 예정이 없습니다. 보내는 쪽에서 받은 상품 리스트 파일로 [입고 예정 등록]을 해 주세요.</div></div>'}`;
+}
+function ibNewView() {
+  const f = S.ui.ibForm ||= { store: S.stores[0], date: today(), title: '', ip: '', from: '', parsed: null, src: '', err: '' };
+  const P = f.parsed;
+  return `${head('입고 예정 등록', '보내는 쪽에서 받은 상품 리스트(엑셀·CSV·구글시트)를 올리면 예정 수량으로 등록합니다. 재고에는 아직 더하지 않습니다.', '<button class="btn" id="ibBack">목록으로</button>')}
+  <div class="card" style="display:flex;flex-direction:column;gap:12px">
+    <div class="formgrid">
+      <div class="field"><label for="ibStore">받는 매장</label><select class="inp" id="ibStore">${myStores().map(s => `<option value="${s}" ${f.store === s ? 'selected' : ''}>${esc(storeName(s))}</option>`).join('')}</select></div>
+      <div class="field"><label for="ibDate">입고 예정일</label><input class="inp" type="date" id="ibDate" value="${f.date}"></div>
+      <div class="field"><label for="ibFrom">보내는 곳</label><input class="inp" id="ibFrom" value="${esc(f.from)}" placeholder="예: SMG 홀딩스 물류"></div>
+      <div class="field"><label for="ibIp">IP (선택)</label><input class="inp" id="ibIp" value="${esc(f.ip)}" placeholder="예: 진격의 거인"></div>
+      <div class="field" style="grid-column:1/-1"><label for="ibTitle">제목</label><input class="inp" id="ibTitle" value="${esc(f.title)}" placeholder="비워 두면 파일 이름으로 들어갑니다"></div>
+    </div>
+    <div class="row"><button class="btn" id="ibPlanFile">상품 리스트 파일 고르기</button><input class="inp" id="ibPlanLink" placeholder="또는 구글시트 링크" style="flex:1;min-width:200px"><button class="btn" id="ibPlanLinkGo">링크 열기</button></div>
+    ${f.err ? `<div class="note bad">🔺 ${esc(f.err)}</div>` : ''}
+  </div>
+  ${P ? (() => { const known = P.filter(r => r.pid).length, nw = P.filter(r => !r.pid).length, noq = P.filter(r => !(r.qty > 0)).length; const dupK = {}; P.forEach(r => { const k = itemKey(r); dupK[k] = (dupK[k] || 0) + 1; });
+    const dups = Object.values(dupK).filter(v => v > 1).length;
+    return `<div class="card"><h2>미리보기 · ${esc(f.src)} <span class="r">${P.length}줄 · ${fmt(P.reduce((a, b) => a + (b.qty || 0), 0))}개${P.some(r => r.price) ? ` · ${won(P.reduce((a, b) => a + (b.price || 0) * (b.qty || 0), 0))}` : ''}</span></h2>
+    <div class="alerts" style="margin-bottom:10px"><div class="al"><span class="ic">✔</span><span class="tx">등록된 상품 <b>${known}</b>종</span></div>
+    ${nw ? `<div class="al"><span class="ic">🔸</span><span class="tx">처음 보는 상품 <b>${nw}</b>종 — 입고를 확정할 때 상품 목록에 새로 등록됩니다.</span></div>` : ''}
+    ${noq ? `<div class="al"><span class="ic">🔺</span><span class="tx">수량이 비었거나 0인 줄 <b>${noq}</b>개</span></div>` : ''}
+    ${dups ? `<div class="al"><span class="ic">🔸</span><span class="tx">같은 상품이 두 번 나온 경우 <b>${dups}</b>건 — 수량을 합쳐서 등록합니다.</span></div>` : ''}</div>
+    <div class="tw"><table><thead><tr><th class="n">줄</th><th>상품명</th><th class="hide-s">바코드·품번</th><th class="n">예정 수량</th><th class="n hide-s">가격</th><th>상태</th></tr></thead><tbody>
+    ${P.map(r => `<tr class="${!r.pid || !(r.qty > 0) || dupK[itemKey(r)] > 1 ? 'flag' : ''}"><td class="n muted">${r.line}</td><td class="nm">${esc(r.pid ? S.P[r.pid].name : r.name)}</td><td class="code hide-s">${esc(r.bc || r.sku)}</td><td class="n" style="font-weight:700">${fmt(r.qty)}</td><td class="n hide-s">${r.price ? fmt(r.price) : '-'}</td><td>${!(r.qty > 0) ? '<span class="pill p-bad">🔺 수량</span>' : r.pid ? '<span class="pill p-ok">✔</span>' : '<span class="pill p-warn">🔸 새 상품</span>'}</td></tr>`).join('')}
+    </tbody></table></div>
+    <div class="row" style="justify-content:flex-end;margin-top:12px"><button class="btn pri" id="ibCreate">입고 예정으로 등록</button></div></div>`; })() : ''}`;
+}
+function ibDetailView(ib) {
+  const st = ibStats(ib); const done = ib.status === 'received';
+  const rows = ib.items.map((x, i) => ({ ...x, i, d: x.actual == null ? null : x.actual - x.plan }));
+  return `${head(ib.title, `${esc(storeName(ib.store))} · 예정일 ${ib.date || '-'}${ib.from ? ' · ' + esc(ib.from) : ''}${ib.ip ? ' · ' + esc(ib.ip) : ''}`, '<button class="btn" id="ibBack">목록으로</button>')}
+  <div class="tiles">
+    <div class="tile"><span class="lb">예정</span><span class="v big">${fmt(st.plan)}<small>개</small></span><span class="d muted">${ib.items.length}종${st.planMoney ? ' · ' + man(st.planMoney) + '원' : ''}</span></div>
+    <div class="tile"><span class="lb">실제 입고</span><span class="v big">${st.done ? fmt(st.act) : '-'}<small>개</small></span><span class="d muted">확인 ${st.done}종 · 남은 ${st.left}종</span></div>
+    <div class="tile ${st.diff ? 'alert' : ''}"><span class="lb">차이</span><span class="v big">${st.done ? (st.act - st.plan > 0 ? '+' : '') + fmt(st.act - st.plan) : '-'}<small>개</small></span><span class="d">${st.diff ? `🔸 다른 상품 ${st.diff}종` : st.done ? '✔ 차이 없음' : ''}</span></div>
+  </div>
+  ${done ? `<div class="note">✔ ${esc(ib.receivedAt || '')} ${esc(ib.receivedBy || '')} 입고 확정 — 실제 수량으로 재고에 더했습니다.</div>` : `<div class="card" style="display:flex;flex-direction:column;gap:10px"><h2>실제 입고 수량 넣기</h2>
+    <div class="row"><button class="btn" id="ibActFile">실제 입고 파일 고르기</button><input class="inp" id="ibActLink" placeholder="또는 구글시트 링크 (직원 입력 시트 등)" style="flex:1;min-width:200px"><button class="btn" id="ibActLinkGo">링크 열기</button><button class="btn" id="scanBtn">${ic('scan')} 스캔</button></div>
+    <span class="muted" style="font-size:12px">파일의 "실제 수량" 칸을 먼저 찾고, 없으면 "수량" 칸을 씁니다. 아래 표에서 직접 고쳐도 됩니다. 스캔하면 그 상품 실제 수량이 1씩 올라갑니다.</span>
+    ${S.ui.ibMsg ? `<div class="note ${S.ui.ibMsg.bad ? 'bad' : ''}">${esc(S.ui.ibMsg.t)}</div>` : ''}</div>`}
+  <div class="card"><h2>상품별 예정 · 실제 · 차이 <span class="r">차이 있는 줄은 주황색</span></h2>
+    <div class="chips" style="margin-bottom:8px">${[['all', '전체'], ['diff', '차이 있음'], ['left', '아직 안 넣음']].map(([k, t]) => `<button class="chip ${(S.ui.ibF || 'all') === k ? 'on' : ''}" data-ibf="${k}">${t}</button>`).join('')}</div>
+    <div class="tw"><table><thead><tr><th>상품명</th><th class="hide-s">바코드·품번</th><th class="n">예정</th><th class="n">실제</th><th class="n">차이</th><th class="n hide-s">차이 금액</th></tr></thead><tbody>
+    ${rows.filter(r => S.ui.ibF === 'diff' ? r.d : S.ui.ibF === 'left' ? r.actual == null : true).map(r => `<tr class="${r.d ? 'flag' : ''}"><td class="nm">${esc(r.name)}${r.pid ? '' : '<div style="font-size:12px;color:var(--warn)">🔸 새 상품 — 확정 때 등록</div>'}</td><td class="code hide-s">${esc(r.code)}</td><td class="n">${fmt(r.plan)}</td>
+      <td class="n">${done ? fmt(r.actual) : `<input class="inp qty" type="number" inputmode="numeric" min="0" value="${r.actual ?? ''}" data-iba="${r.i}" aria-label="실제 수량">`}</td>
+      <td class="n" style="font-weight:700">${r.d == null ? '' : r.d === 0 ? '<span class="muted">0</span>' : `<span style="color:${r.d < 0 ? 'var(--bad)' : 'var(--ok)'}">${r.d > 0 ? '+' : ''}${fmt(r.d)}</span>`}</td><td class="n hide-s">${r.d && r.price ? fmt(r.d * r.price) : ''}</td></tr>`).join('')}
+    ${(ib.extra || []).map(r => `<tr class="flag"><td class="nm">${esc(r.name)}<div style="font-size:12px;color:var(--warn)">🔸 예정에 없던 상품</div></td><td class="code hide-s">${esc(r.code)}</td><td class="n">0</td><td class="n">${fmt(r.actual)}</td><td class="n" style="font-weight:700;color:var(--ok)">+${fmt(r.actual)}</td><td class="n hide-s">${r.price ? fmt(r.actual * r.price) : ''}</td></tr>`).join('')}
+    <tr class="tot"><td>합계</td><td class="hide-s"></td><td class="n">${fmt(st.plan)}</td><td class="n">${st.done ? fmt(st.act) : '-'}</td><td class="n">${st.done ? fmt(st.act - st.plan) : '-'}</td><td class="n hide-s">${st.done && (st.actMoney || st.planMoney) ? fmt(st.actMoney - st.planMoney) : ''}</td></tr>
+    </tbody></table></div>
+    ${done ? '' : `<div class="row" style="justify-content:flex-end;margin-top:12px">${st.left ? `<span class="muted" style="font-size:13px">🔸 아직 안 넣은 ${st.left}종은 확정하면 0개로 처리됩니다</span>` : ''}<button class="btn pri" id="ibConfirm" ${st.done || (ib.extra || []).length ? '' : 'disabled'}>실제 수량으로 입고 확정</button></div>`}
+  </div>`;
+}
+function ibApplyActual(ib, rows, src) {
+  const byKey = {}; ib.items.forEach((x, i) => { byKey[x.key] = i; });
+  let matched = 0, extra = 0;
+  const add = {}; for (const r of rows) { if (!(r.qty >= 0) || r.qty === null) continue; const k = itemKey(r); add[k] = (add[k] || { r, q: 0 }); add[k].q += r.qty; }
+  for (const [k, { r, q }] of Object.entries(add)) {
+    let i = byKey[k];
+    if (i == null && r.name) i = ib.items.findIndex(x => norm(x.name) === norm(r.name));
+    if (i != null && i >= 0) { ib.items[i].actual = q; matched++; }
+    else { ib.extra = (ib.extra || []).filter(x => x.key !== k); ib.extra.push({ key: k, pid: r.pid, name: r.pid ? S.P[r.pid].name : r.name, code: r.bc || r.sku, bc: r.bc, sku: r.sku, ip: r.ip, actual: q, price: r.price }); extra++; }
+  }
+  S.ui.ibMsg = { t: `${src}: 예정 상품 ${matched}종 수량을 넣었습니다${extra ? ` · 예정에 없던 상품 ${extra}종` : ''}.` };
+}
+function ibPlanLoaded(x) { const f = S.ui.ibForm; const t = readTable(x.rows, QTY_PLAN); f.err = t.err || ''; f.parsed = t.rows || null; f.src = x.src; if (!f.title) f.title = x.src.replace(/\.(xlsx|xls|csv)( › .*)?$/i, ''); render(); }
+function ibActLoaded(ib, x) { const t = readTable(x.rows, QTY_ACTUAL); if (t.err) { S.ui.ibMsg = { t: '🔺 ' + t.err, bad: true }; render(); return; } ibApplyActual(ib, t.rows, x.src); if (DB.saveInbound) DB.saveInbound(ib); render(); }
+async function ibCreate() {
+  const f = S.ui.ibForm; const items = {};
+  for (const r of f.parsed) { if (!(r.qty > 0)) continue; const k = itemKey(r); const x = items[k] ||= { key: k, pid: r.pid, name: r.pid ? S.P[r.pid].name : r.name, code: r.bc || r.sku || (r.pid ? (S.P[r.pid].barcode || S.P[r.pid].sku) : ''), bc: r.bc, sku: r.sku, plan: 0, price: r.price || (r.pid ? S.P[r.pid].price : null) || null, ip: r.ip || f.ip || '', actual: null }; x.plan += r.qty; }
+  const ib = { id: 'IB-' + f.date.replace(/-/g, '').slice(2) + '-' + Math.random().toString(36).slice(2, 6).toUpperCase(), store: f.store, date: f.date, title: f.title.trim() || f.src, ip: f.ip.trim(), from: f.from.trim(), status: 'planned', items: Object.values(items), extra: [], by: S.user.name, at: new Date().toISOString() };
+  if (DB.saveInbound) await DB.saveInbound(ib);
+  S.inbounds.push(ib); S.ui.ibForm = null; S.ui.ib = ib.id; toast(`입고 예정 ${ib.items.length}종을 등록했습니다`);
+}
+async function ibConfirm(ib) {
+  const lines = [...ib.items.map(x => ({ ...x, q: x.actual || 0 })), ...(ib.extra || []).map(x => ({ ...x, q: x.actual || 0, plan: 0 }))];
+  for (const l of lines) if (!l.pid && l.q > 0) {   // 처음 보는 상품은 목록에 등록
+    const id = l.bc || l.sku || ('N' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5));
+    if (!S.P[id]) { const p = { id, sku: /^\d{8,14}$/.test(id) ? '' : (l.sku || id), barcode: /^\d{8,14}$/.test(id) ? id : (l.bc || ''), name: l.name, ip: l.ip || ib.ip || '미분류', cat: '', price: l.price || null, kind: ib.ip ? '팝업' : '상설' }; S.products.push(p); if (DB.saveProduct) await DB.saveProduct(p); }
+    l.pid = id;
+  }
+  indexProducts();
+  const at = new Date().toISOString();
+  const moves = lines.filter(l => l.q > 0).map((l, i) => ({ id: 'ib' + Date.now().toString(36) + i, date: today(), store: ib.store, type: '입고', pid: l.pid, qty: l.q, memo: `${ib.title} · 예정 ${fmt(l.plan)}${l.q !== l.plan ? ` · 차이 ${l.q - l.plan > 0 ? '+' : ''}${fmt(l.q - l.plan)}` : ''}`, by: S.user.name, at }));
+  await DB.saveMoves(moves);
+  for (const m of moves) { S.moves.push(m); (S.stock[m.store] ||= {})[m.pid] = stockOf(m.store, m.pid) + m.qty; }
+  ib.items.forEach(x => { if (x.actual == null) x.actual = 0; if (!x.pid) { const l = lines.find(y => y.key === x.key); if (l) x.pid = l.pid; } });
+  ib.status = 'received'; ib.receivedAt = today(); ib.receivedBy = S.user.name;
+  if (DB.saveInbound) await DB.saveInbound(ib);
+  toast(`입고 확정: ${moves.length}종 ${fmt(moves.reduce((a, b) => a + b.qty, 0))}개를 재고에 더했습니다`);
+}
+
 /* ───────── 입출고 등록 ───────── */
 function newEntry(type = '입고') { return { type, date: today(), store: S.stores[0], to: '', partner: '', memo: '', lines: [], mode: 'hand' }; }
 function entryView() {
@@ -492,8 +638,12 @@ const HDR = {
   name: ['상품명', '품명', '제품명', '상품', 'name', '품목명'],
   qty: ['수량', '입고수량', '출고수량', '실제수량', '실제 수량', '예정수량', '예정 수량', 'qty', '입고', '수 량', '개수'],
   memo: ['메모', '비고', 'memo', '사유'],
+  price: ['판매가', '소비자가', '단가', '가격', '상품가격', '정가', 'price'],
+  ip: ['ip', '카테고리', '작품', '브랜드'],
 };
-function detectCols(rows) {
+const QTY_PLAN = ['예정수량', '출고수량', '발주수량', '수량', '입고수량', 'qty', '개수'];
+const QTY_ACTUAL = ['실제수량', '실수량', '검수수량', '확인수량', '입고수량', '수량', 'qty', '개수'];
+function detectCols(rows, qtyPref) {
   let best = null;
   for (let r = 0; r < Math.min(rows.length, 15); r++) {
     const row = rows[r].map(c => String(c ?? '').trim().toLowerCase().replace(/\s+/g, ''));
@@ -504,6 +654,7 @@ function detectCols(rows) {
       if (idx < 0) idx = row.findIndex(c => c && ks.some(x => c.includes(x)) && !Object.values(map).includes(row.indexOf(c)));
       if (idx >= 0 && !Object.values(map).includes(idx)) map[k] = idx;
     }
+    if (qtyPref) { for (const k of qtyPref) { const i = row.indexOf(k); if (i >= 0) { map.qty = i; break; } } }
     const score = Object.keys(map).length + (map.qty != null ? 2 : 0) + (map.name != null || map.barcode != null || map.sku != null ? 2 : 0);
     if (!best || score > best.score) best = { r, map, score };
   }
@@ -558,8 +709,7 @@ function importPreview() {
 }
 async function readFile(f) {
   if (/\.(pdf|png|jpe?g|heic|gif|webp)$/i.test(f.name)) { S.ui.imp = { src: f.name, err: 'PDF·사진은 입력할 수 없습니다. 엑셀이나 구글시트로 받아 주세요.' }; render(); return; }
-  const buf = await f.arrayBuffer();
-  const wb = XLSX.read(buf, { type: 'array' });
+  const wb = await readBook(f);
   let best = null;
   for (const n of wb.SheetNames) { const rows = XLSX.utils.sheet_to_json(wb.Sheets[n], { header: 1, defval: '' }); const d = detectCols(rows); if (d && (!best || d.score > best.d.score)) best = { n, rows, d }; }
   importRows(best ? best.rows : [], `${f.name}${best && wb.SheetNames.length > 1 ? ' › ' + best.n : ''}`);
@@ -838,6 +988,11 @@ async function savePos() {
   }
   S.ui.posPreview = null; S.ui.drawer = null; toast(`매출 ${pv.days.length}일치를 저장했습니다`);
 }
+async function readBook(f) {
+  // CSV는 글자(UTF-8)로 읽어야 한글이 깨지지 않음
+  if (/\.csv$/i.test(f.name)) { let t = await f.text(); if (t.includes('\uFFFD')) t = new TextDecoder('euc-kr').decode(await f.arrayBuffer()); return XLSX.read(t.replace(/^\uFEFF/, ''), { type: 'string' }); }
+  return XLSX.read(await f.arrayBuffer(), { type: 'array' });
+}
 function pickFile(accept, cb) {
   // 화면이 다시 그려져도 사라지지 않도록 문서 맨 끝에 따로 만든 파일 선택 칸
   let inp = document.getElementById('smgFilePick');
@@ -1059,6 +1214,7 @@ function onScanned(code) {
   const c = findProduct(code);
   if (!c.length) { alertBox(`🔺 ${code} — 등록된 상품이 아닙니다`); return; }
   if (c.length > 1) alertBox(`🔸 같은 바코드 상품이 ${c.length}개입니다. 첫 번째를 열었습니다.`);
+  if (S.view === 'inbound' && S.ui.ib && S.ui.ib !== 'new') { const ib = S.inbounds.find(x => x.id === S.ui.ib); const it = ib && ib.items.find(x => x.pid === c[0].id); if (it) { it.actual = (it.actual || 0) + 1; if (DB.saveInbound) DB.saveInbound(ib); toast(`${it.name} 실제 ${it.actual}개`); } else alertBox('🔸 이 입고 예정에 없는 상품입니다'); return; }
   if (S.view === 'entry') { addLine(c[0].id, 1); render(); }
   else if (S.view === 'count') { S.ui.countQ = code; render(); }
   else openProduct(c[0].id);
@@ -1110,6 +1266,16 @@ function bind() {
           .finally(() => { S.ui.seeding = false; render(); });
       }); return;
     }
+    if (d.ib) { S.ui.ib = d.ib; S.ui.ibMsg = null; S.ui.ibF = 'all'; render(); return; }
+    if (t.id === 'ibNew') { S.ui.ib = 'new'; S.ui.ibForm = null; render(); return; }
+    if (t.id === 'ibBack') { S.ui.ib = null; render(); return; }
+    if (d.ibf) { S.ui.ibF = d.ibf; render(); return; }
+    if (t.id === 'ibPlanFile') { pickFile('.xlsx,.xls,.csv', f => fileRows(f).then(x => ibPlanLoaded(x)).catch(e => { S.ui.ibForm.err = e.message; render(); })); return; }
+    if (t.id === 'ibPlanLinkGo') { linkRows($('#ibPlanLink').value.trim()).then(x => ibPlanLoaded(x)).catch(e => { S.ui.ibForm.err = e.message; render(); }); return; }
+    if (t.id === 'ibCreate') { await ibCreate(); return; }
+    if (t.id === 'ibActFile') { const ib = S.inbounds.find(x => x.id === S.ui.ib); pickFile('.xlsx,.xls,.csv', f => fileRows(f).then(x => ibActLoaded(ib, x)).catch(e => { S.ui.ibMsg = { t: '🔺 ' + e.message, bad: true }; render(); })); return; }
+    if (t.id === 'ibActLinkGo') { const ib = S.inbounds.find(x => x.id === S.ui.ib); linkRows($('#ibActLink').value.trim()).then(x => ibActLoaded(ib, x)).catch(e => { S.ui.ibMsg = { t: '🔺 ' + e.message, bad: true }; render(); }); return; }
+    if (t.id === 'ibConfirm') { const ib = S.inbounds.find(x => x.id === S.ui.ib); confirmDrawer('실제 수량으로 입고 확정', `<p style="margin:0">${esc(ib.title)} — 실제 수량으로 재고에 더합니다. 확정한 뒤에는 수량을 고칠 수 없고, 차이는 기록으로 남습니다.</p>`, '입고 확정', () => ibConfirm(ib)); return; }
     if (t.id === 'plNew') { S.ui.placeForm = null; S.ui.drawer = placeDrawer; render(); return; }
     if (d.plk) { S.ui.placeForm.kind = d.plk; render(); return; }
     if (t.id === 'plSave') { await savePlace(); return; }
@@ -1146,6 +1312,8 @@ function bind() {
     if (t.id === 'eDate') S.ui.entry.date = t.value;
     if (t.id === 'eStore') { S.ui.entry.store = t.value; render(); return; }
     if (t.id === 'eTo') { S.ui.entry.to = t.value; render(); if (t.value === '__custom') setTimeout(() => $('#eToText') && $('#eToText').focus(), 0); return; }
+    if (['ibStore', 'ibDate', 'ibFrom', 'ibIp', 'ibTitle'].includes(t.id)) { S.ui.ibForm[{ ibStore: 'store', ibDate: 'date', ibFrom: 'from', ibIp: 'ip', ibTitle: 'title' }[t.id]] = t.value; return; }
+    if (d.iba != null) { const ib = S.inbounds.find(x => x.id === S.ui.ib); ib.items[+d.iba].actual = t.value === '' ? null : Math.max(0, parseInt(t.value, 10)); if (DB.saveInbound) DB.saveInbound(ib); render(); return; }
     if (t.id === 'ePlace') { S.ui.entry.place = t.value; render(); return; }
     if (t.id === 'eFrom') { S.ui.entry.from = t.value; render(); return; }
     if (['plName', 'plStart', 'plEnd', 'plAddr', 'plPerson', 'plMemo'].includes(t.id)) { const k = { plName: 'name', plStart: 'start', plEnd: 'end', plAddr: 'addr', plPerson: 'person', plMemo: 'memo' }[t.id]; S.ui.placeForm[k] = t.value; if (k === 'start' && (!S.ui.placeForm.end || S.ui.placeForm.end < t.value)) S.ui.placeForm.end = t.value; render(); return; }
