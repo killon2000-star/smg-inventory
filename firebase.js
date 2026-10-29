@@ -109,6 +109,7 @@ window.SMG_FIREBASE = function (S, X) {
       await db.collection('users').doc(uid).set({ ...d, updatedAt: ts(), updatedBy: S.user.name }, { merge: true });
       return true;
     },
+    async saveStoreOrder(order) { await db.collection('users').doc(S.user.uid).update({ storeOrder: order }); },
     async deleteUser(uid) { await db.collection('users').doc(uid).delete(); },
     async saveZip(pw) { await db.collection('config').doc('zip').set({ pw }, { merge: true }); },
     async saveProduct(p) { await db.collection('products').doc(key(p.id)).set(p, { merge: true }); },

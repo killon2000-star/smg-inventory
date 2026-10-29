@@ -36,6 +36,9 @@ service cloud.firestore {
         && request.resource.data.get('owner', false) == false
         && (resource.data.company != '기타(직접 입력)' || request.resource.data.get('limited', false) == true);
       allow update: if isOwner() && request.auth.uid == uid;
+      // 본인: 매장 표시 순서만 바꿀 수 있음
+      allow update: if active() && request.auth.uid == uid
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['storeOrder']);
       allow delete: if perm('approve') && resource.data.status == 'pending';
     }
 

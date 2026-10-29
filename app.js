@@ -34,6 +34,7 @@ const PERM_DEF = [
   { k: 'approve', t: '사용자 승인', s: '가입 승인, 권한 변경, 퇴사 처리' },
 ];
 
+const DEFAULT_ORDER = STORES.map(s => s.id);
 /* ───────── 작은 도구 ───────── */
 const $ = (s, el = document) => el.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -214,8 +215,31 @@ function tabbar(nav) {
   while (out.length < 5) out.push(null);
   return out.map(n => n ? `<button data-nav="${n.id}" class="${S.view === n.id || (n.id === 'more' && rest.find(r => r.id === S.view)) ? 'on' : ''}">${ic(n.i, 22)}<span>${n.t}</span></button>` : '<span></span>').join('');
 }
+function applyStoreOrder(order) {
+  if (!Array.isArray(order) || !order.length) return;
+  const pos = id => { const i = order.indexOf(id); return i < 0 ? 999 : i; };
+  STORES.sort((a, b) => pos(a.id) - pos(b.id));
+  S.stores = STORES.map(x => x.id).filter(x => S.stores.includes(x));
+}
+function moveStore(id, dir) {
+  const i = STORES.findIndex(s => s.id === id), j = i + dir;
+  if (j < 0 || j >= STORES.length) return;
+  [STORES[i], STORES[j]] = [STORES[j], STORES[i]];
+  S.stores = STORES.map(x => x.id).filter(x => S.stores.includes(x));
+}
+async function saveStoreOrder() {
+  const order = STORES.map(s => s.id);
+  try { localStorage.setItem('smg-store-order:' + (S.user ? S.user.uid : ''), JSON.stringify(order)); } catch (e) { }
+  if (S.user) S.user.storeOrder = order;
+  if (DB.saveStoreOrder) await DB.saveStoreOrder(order).catch(() => { });
+}
 function storeMenu() {
   const mine = myStores();
+  if (S.ui.storeEdit) return `<div class="scrim" id="scrim"></div><div class="pop" role="dialog" aria-label="매장 순서 바꾸기">
+    <h4>▲ ▼ 로 내 화면의 매장 순서를 바꿉니다 · 다른 사람에게는 영향 없음</h4>
+    ${STORES.map((s, i) => `<div class="srow"><span class="num muted" style="width:18px;text-align:right">${i + 1}</span><span class="go" style="cursor:default"><span class="dot" style="background:${storeColor(s.id)}"></span>${esc(s.name)}</span>
+      <button class="btn sm" data-mv="${s.id}:-1" ${i === 0 ? 'disabled' : ''} aria-label="${esc(s.name)} 위로">▲</button><button class="btn sm" data-mv="${s.id}:1" ${i === STORES.length - 1 ? 'disabled' : ''} aria-label="${esc(s.name)} 아래로">▼</button></div>`).join('')}
+    <div class="foot"><button class="btn sm pri" id="smOrderDone">순서 저장</button></div></div>`;
   return `<div class="scrim" id="scrim"></div><div class="pop" role="dialog" aria-label="매장 선택">
     <h4>매장 이름을 누르면 그 매장으로 이동 · 체크하면 여러 매장 함께 보기</h4>
     ${STORES.map(s => {
@@ -225,7 +249,7 @@ function storeMenu() {
         <button class="go" data-sg="${s.id}" ${ok ? '' : 'disabled'}><span class="dot" style="background:${storeColor(s.id)}"></span>${esc(s.name)}</button>
         ${ok ? '' : '<span class="pill p-mute">권한 없음</span>'}</div>`;
     }).join('')}
-    <div class="foot"><button class="btn sm" id="smAll">권한 있는 매장 모두</button><button class="btn sm pri" id="smClose">닫기</button></div></div>`;
+    <div class="foot"><button class="btn sm" id="smOrder">순서 바꾸기</button><span style="flex:1"></span><button class="btn sm" id="smAll">권한 있는 매장 모두</button><button class="btn sm pri" id="smClose">닫기</button></div></div>`;
 }
 function pageView() {
   switch (S.view) {
@@ -269,7 +293,7 @@ function homeView() {
       salesBlock = `<div class="tile"><span class="lb">매출 · ${md(last)}(${wd(last)})</span><span class="v big${String(fmt(s)).length>9?' long':''}">${fmt(s)}<small>원</small></span><span class="d ${ch == null ? 'muted' : ch >= 0 ? '' : ''}">${ch == null ? '지난주 같은 요일 자료 없음' : `${ch >= 0 ? '✔' : '🔺'} 지난주 같은 요일 대비 ${ch >= 0 ? '+' : ''}${ch.toFixed(1)}%`} · ${fmt(p)}건</span></div>`;
     }
   }
-  return `${head(multi ? `${st.length}개 매장 요약` : storeName(st[0]), `${S.asof} 마감 기준 · ${limited() ? '재고 수량만 볼 수 있는 계정입니다' : '재고는 입출고 기록으로 계산합니다'}`)}
+  return `${head(multi ? `${st.length}개 매장 요약` : storeName(st[0]), `${S.asof} 마감 기준 · ${limited() ? '재고 수량만 볼 수 있는 계정입니다' : '재고는 입출고 기록으로 계산합니다'}`, installBtn('sm'))}
   <div class="tiles">
     <div class="tile"><span class="lb">현재 재고</span><span class="v big${String(fmt(tot.qty)).length>9?' long':''}">${fmt(tot.qty)}<small>개</small></span><span class="d muted">재고 있는 상품 ${fmt(tot.kinds)}종</span></div>
     <div class="tile"><span class="lb">품절 (재고 0)</span><span class="v big${String(fmt(tot.out)).length>9?' long':''}">${fmt(tot.out)}<small>종</small></span><span class="d muted">진열·품절 안내 확인</span></div>
@@ -891,6 +915,7 @@ function loginView() {
   return `<div style="padding:16px"><div class="login">
     <div class="brand"><img src="logo-w.png" alt="SMG STORE"><b style="font-size:18px">SMG 재고관리</b><span style="font-size:13px;color:#cfcfd4">SMG 홀딩스 · 각 매장 직원용</span></div>
     ${S.mode === 'demo' ? '<div class="note">미리보기: 직원이 처음 들어오면 보는 화면입니다. 실제로는 구글 로그인 후 이 신청서를 냅니다.</div>' : ''}
+    ${inAppNotice()}
     ${sent ? `<div class="card"><h2>🔸 승인 대기 중</h2><p style="margin:0">신청을 보냈습니다. 유명훈 본부장님이 승인하면 바로 쓸 수 있습니다.</p></div>${S.mode === 'live' ? '<button class="btn" id="logout2">다른 계정으로 로그인</button>' : ''}` : S.mode === 'live' && !S.ui.authUser ? `
     <p class="muted" style="margin:0;text-align:center">회사에서 쓰는 구글 계정으로 로그인한 뒤 사용 신청을 보내 주세요.</p>
     <button class="gbtn" id="gLogin">${GICON}Google 계정으로 로그인</button>` : `
@@ -904,8 +929,10 @@ function loginView() {
       <div class="field"><label for="aPos">직급</label><select class="inp" id="aPos"><option value="">선택</option>${POSITIONS.map(p => `<option ${f.position === p ? 'selected' : ''}>${esc(p)}</option>`).join('')}</select></div>
       <div class="formgrid"><div class="field"><label for="aPhone">휴대폰 (선택)</label><input class="inp" id="aPhone" inputmode="tel" value="${esc(f.phone)}"></div><div class="field"><label for="aMemo">메모 (선택)</label><input class="inp" id="aMemo" value="${esc(f.memo)}" placeholder="예: 수원 재고 담당"></div></div>
       <button class="btn pri" id="aSend">승인 신청 보내기</button></div>`}
+    ${installBtn()}
     ${S.mode === 'demo' ? '<button class="btn" id="backDemo">미리보기로 돌아가기</button>' : ''}
-  </div></div>`;
+  </div></div>
+  ${S.ui.drawer ? `<div class="ov" id="ov"><div class="dr" role="dialog" aria-modal="true">${S.ui.drawer()}</div></div>` : ''}`;
 }
 function bindLogin() {
   const f = S.ui.apply; const on = (id, ev, fn) => { const el = $(id); if (el) el.addEventListener(ev, fn); };
@@ -922,8 +949,54 @@ function bindLogin() {
   });
   on('#logout2', 'click', () => FB.signOut());
   on('#gLogin', 'click', () => { if (S.mode === 'demo') alertBox('미리보기에서는 구글 로그인을 하지 않습니다. 아래 신청서만 둘러보세요.'); else FB.signIn(); });
+  document.querySelectorAll('[data-install]').forEach(b => b.onclick = doInstall);
+  document.querySelectorAll('[data-openext]').forEach(b => b.onclick = openExternal);
+  document.querySelectorAll('[data-copylink]').forEach(b => b.onclick = copyLink);
+  document.querySelectorAll('[data-close]').forEach(b => b.onclick = () => { S.ui.drawer = null; render(); });
+  on('#ov', 'click', e => { if (e.target.id === 'ov') { S.ui.drawer = null; render(); } });
   on('#backDemo', 'click', () => { S.ui.showApply = false; S.ui.applied = false; S.ui.apply = null; render(); });
 }
+/* ───────── 홈 화면 설치 ───────── */
+const UA = navigator.userAgent || '';
+const ENV = {
+  ios: /iPhone|iPad|iPod/i.test(UA) || (/Macintosh/.test(UA) && navigator.maxTouchPoints > 1),
+  android: /Android/i.test(UA),
+  inApp: /KAKAOTALK|NAVER\(inapp|Instagram|FBAN|FBAV|Line\/|DaumApps|everytimeApp/i.test(UA),
+  kakao: /KAKAOTALK/i.test(UA),
+  standalone: () => (window.matchMedia && matchMedia('(display-mode: standalone)').matches) || navigator.standalone === true,
+};
+let installEvt = null;
+window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); installEvt = e; if (S.ready) render(); });
+window.addEventListener('appinstalled', () => { installEvt = null; S.ui.installed = true; if (S.ready) render(); });
+function installBtn(cls = '') {
+  if (ENV.standalone() || S.ui.installed) return '';
+  return `<button class="btn ${cls}" data-install>📲 홈 화면에 앱 설치</button>`;
+}
+function inAppNotice() {
+  if (!ENV.inApp) return '';
+  return `<div class="note warn"><b>🔸 카카오톡 같은 앱 안에서 열렸습니다.</b><br>여기서는 구글 로그인과 앱 설치가 되지 않습니다. ${ENV.ios ? '사파리' : '크롬'}로 다시 열어 주세요.
+    <div class="row" style="margin-top:8px"><button class="btn sm pri" data-openext>${ENV.ios ? '사파리로 열기' : '크롬으로 열기'}</button><button class="btn sm" data-copylink>주소 복사</button></div></div>`;
+}
+function installGuide() {
+  const ios = `<ol style="margin:0;padding-left:20px;display:flex;flex-direction:column;gap:6px"><li><b>사파리</b>로 이 주소를 엽니다 (크롬·카카오톡 안에서는 안 됩니다).</li><li>화면 아래 <b>공유 버튼(□↑)</b>을 누릅니다. 안 보이면 오른쪽 아래 <b>⋯</b>을 먼저 누르세요.</li><li>목록을 아래로 내려 <b>홈 화면에 추가</b> → 오른쪽 위 <b>추가</b></li><li>홈 화면에 생긴 <b>SMG 재고</b> 아이콘으로 엽니다.</li></ol>`;
+  const and = `<ol style="margin:0;padding-left:20px;display:flex;flex-direction:column;gap:6px"><li><b>크롬</b>으로 이 주소를 엽니다.</li><li>오른쪽 위 <b>⋮</b> 메뉴를 누릅니다.</li><li><b>앱 설치</b> 또는 <b>홈 화면에 추가</b> → <b>설치</b></li><li>홈 화면에 생긴 <b>SMG 재고</b> 아이콘으로 엽니다.</li></ol>`;
+  return `<div class="hd"><h3>홈 화면에 앱 설치</h3><button class="x" data-close aria-label="닫기">×</button></div>
+  ${inAppNotice()}
+  ${ENV.ios ? `<div class="card"><h2>아이폰·아이패드</h2>${ios}</div><div class="card"><h2>안드로이드·갤럭시</h2>${and}</div>` : `<div class="card"><h2>안드로이드·갤럭시</h2>${and}</div><div class="card"><h2>아이폰·아이패드</h2>${ios}</div>`}
+  <div class="card"><h2>PC (크롬·엣지)</h2><p style="margin:0">주소창 오른쪽 끝의 <b>설치 아이콘(⊕ 또는 모니터 모양)</b>을 누르고 <b>설치</b>합니다.</p></div>
+  <p class="muted" style="font-size:13px;margin:0">설치한 앱은 주소창 없이 열리고, 로그인은 처음 한 번만 하면 됩니다. 앱을 고치면 다음에 열 때 자동으로 새 버전이 뜹니다.</p>`;
+}
+async function doInstall() {
+  if (installEvt) { installEvt.prompt(); const r = await installEvt.userChoice.catch(() => null); installEvt = null; if (r && r.outcome === 'accepted') toast('설치했습니다. 홈 화면의 SMG 재고 아이콘으로 여세요'); else render(); return; }
+  S.ui.drawer = installGuide; render();
+}
+const APP_URL = 'https://killon2000-star.github.io/smg-inventory/';
+function openExternal() {
+  if (ENV.android) location.href = 'intent://' + APP_URL.replace('https://', '') + '#Intent;scheme=https;package=com.android.chrome;end';
+  else if (ENV.kakao) location.href = 'kakaotalk://web/openExternal?url=' + encodeURIComponent(APP_URL);
+  else copyLink();
+}
+function copyLink() { (navigator.clipboard ? navigator.clipboard.writeText(APP_URL) : Promise.reject()).then(() => alertBox('주소를 복사했습니다. ' + (ENV.ios ? '사파리' : '크롬') + ' 주소창에 붙여넣어 주세요.')).catch(() => alertBox(APP_URL)); }
 function alertBox(t) { const d = document.createElement('div'); d.className = 'toast'; d.textContent = t; document.body.appendChild(d); setTimeout(() => d.remove(), 2800); }
 
 /* ───────── 바코드 스캔 ───────── */
@@ -952,8 +1025,14 @@ function bind() {
   app.onclick = async ev => {
     const t = ev.target.closest('button,[data-pid],label,input'); if (!t) return;
     const d = t.dataset;
+    if (d.install != null) { doInstall(); return; }
+    if (d.openext != null) { openExternal(); return; }
+    if (d.copylink != null) { copyLink(); return; }
     if (t.id === 'storeBtn') { S.ui.storeMenu = !S.ui.storeMenu; render(); return; }
-    if (t.id === 'scrim' || t.id === 'smClose') { S.ui.storeMenu = false; render(); return; }
+    if (t.id === 'scrim' || t.id === 'smClose') { if (S.ui.storeEdit) await saveStoreOrder(); S.ui.storeEdit = false; S.ui.storeMenu = false; render(); return; }
+    if (t.id === 'smOrder') { S.ui.storeEdit = true; render(); return; }
+    if (d.mv) { const [id, dir] = d.mv.split(':'); moveStore(id, +dir); render(); return; }
+    if (t.id === 'smOrderDone') { await saveStoreOrder(); S.ui.storeEdit = false; toast('매장 순서를 저장했습니다'); return; }
     if (t.id === 'smAll') { S.stores = [...myStores()]; S.sumStores = null; S.ui.range = null; S.ui.storeMenu = false; render(); return; }
     if (d.sg) { S.stores = [d.sg]; S.sumStores = null; S.ui.storeMenu = false; S.ui.range = null; render(); return; }
     if (d.nav) { if (d.nav === 'more' && S.view === 'more') return; S.view = d.nav; S.ui.drawer = null; window.scrollTo(0, 0); render(); return; }
@@ -1051,7 +1130,10 @@ function bind() {
 function debounce(fn, ms = 180) { let t; return () => { clearTimeout(t); t = setTimeout(fn, ms); }; }
 function rerenderKeep(sel) { const el = $(sel); const pos = el ? el.selectionStart : null; render(); const n = $(sel); if (n) { n.focus(); try { n.setSelectionRange(pos, pos); } catch (e) { } } }
 function setUser(u) {
-  S.user = u; const mine = myStores();
+  S.user = u;
+  let ord = u && u.storeOrder; try { ord = ord || JSON.parse(localStorage.getItem('smg-store-order:' + (u ? u.uid : '')) || 'null'); } catch (e) { }
+  applyStoreOrder(ord || DEFAULT_ORDER);
+  const mine = myStores();
   S.stores = S.stores.filter(s => mine.includes(s)); if (!S.stores.length) S.stores = [mine[0] || 'suwon'];
   S.sumStores = null; S.ui.range = null; S.ui.drawer = null; S.ui.entry = null;
 }
