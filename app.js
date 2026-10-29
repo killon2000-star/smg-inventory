@@ -412,7 +412,7 @@ async function saveEntry() {
 function importBox() {
   return `<div class="drop" id="drop"><div style="font-weight:700">엑셀·CSV 파일을 끌어 놓거나 고르세요</div>
     <div class="muted" style="font-size:13px;margin:4px 0 10px">품번·바코드·상품명·수량 칸을 자동으로 찾습니다. PDF·사진은 입력할 수 없습니다.</div>
-    <label class="btn"><input type="file" id="fileIn" accept=".xlsx,.xls,.csv" hidden>파일 고르기</label></div>
+    <button class="btn" id="fileBtn">파일 고르기</button></div>
   <div class="row"><input class="inp" id="linkIn" placeholder="구글시트 링크 붙여넣기 (링크가 있는 모든 사용자 보기 권한)" style="flex:1;min-width:220px"><button class="btn" id="linkGo">링크 열기</button></div>`;
 }
 const HDR = {
@@ -713,7 +713,7 @@ function posDrawer() {
   return `<div class="hd"><h3>토스포스 매출리포트 올리기</h3><button class="x" data-close aria-label="닫기">×</button></div>
   <div class="card" style="display:flex;flex-direction:column;gap:10px">
     <div class="field"><label for="posStore">매장</label><select class="inp" id="posStore">${myStores().map(s => `<option value="${s}" ${(pv && pv.store) === s ? 'selected' : ''}>${esc(storeName(s))}</option>`).join('')}</select></div>
-    <div class="drop"><div style="font-weight:700">토스포스에서 받은 zip 또는 xlsx</div><div class="muted" style="font-size:13px;margin:4px 0 10px">zip은 관리 › 파일 비밀번호에 등록한 비밀번호로 앱이 풉니다</div><label class="btn"><input type="file" id="posIn" accept=".zip,.xlsx" hidden>파일 고르기</label></div>
+    <div class="drop"><div style="font-weight:700">토스포스에서 받은 zip 또는 xlsx</div><div class="muted" style="font-size:13px;margin:4px 0 10px">zip은 관리 › 파일 비밀번호에 등록한 비밀번호로 앱이 풉니다</div><button class="btn" id="posFileBtn">파일 고르기</button></div>
   </div>
   ${pv ? pv.err ? `<div class="note bad">🔺 ${esc(pv.err)}</div>` : `<div class="card"><h2>확인 · ${esc(storeName(pv.store))}</h2>
     <div class="alerts">${pv.days.map(d => `<div class="al"><span class="ic">${d.ok ? '✔' : '🔺'}</span><span class="tx"><b>${d.date}(${wd(d.date)})</b> 매출 ${won(d.s)} · ${fmt(d.p)}건 · 상품 ${d.items}종 ${fmt(d.q)}개${d.ok ? ' — 결제 합계와 상품 합계 일치' : ` — 🔺 결제 ${won(d.s)} ≠ 상품 ${won(d.si)}`}${d.exists ? '<br>🔸 이미 올린 날짜입니다. 저장하면 덮어씁니다.' : ''}</span></div>`).join('')}
@@ -766,6 +766,14 @@ async function savePos() {
     await DB.saveMoves(list); for (const m of list) { S.moves.push(m); S.stock[st][m.pid] = stockOf(st, m.pid) + m.qty; }
   }
   S.ui.posPreview = null; S.ui.drawer = null; toast(`매출 ${pv.days.length}일치를 저장했습니다`);
+}
+function pickFile(accept, cb) {
+  // 화면이 다시 그려져도 사라지지 않도록 문서 맨 끝에 따로 만든 파일 선택 칸
+  let inp = document.getElementById('smgFilePick');
+  if (inp) inp.remove();
+  inp = document.createElement('input'); inp.type = 'file'; inp.id = 'smgFilePick'; inp.accept = accept; inp.style.display = 'none';
+  inp.addEventListener('change', () => { const f = inp.files && inp.files[0]; if (f) cb(f); });
+  document.body.appendChild(inp); inp.click();
 }
 function loadScript(src) { return new Promise((ok, no) => { const s = document.createElement('script'); s.src = src; s.onload = ok; s.onerror = () => no(new Error('라이브러리를 불러오지 못했습니다')); document.head.appendChild(s); }); }
 
@@ -867,7 +875,7 @@ function productsAdmin() {
 }
 function seedView() {
   return `<div class="card"><h2>처음 자료 넣기 (대표만, 한 번만)</h2><p style="margin:0 0 10px;font-size:13px">Claude가 보내 드린 <b>smg-seed-수원.json</b> 파일을 고르면 수원 상품·재고·입출고 기록·매출·정산 자료를 한 번에 넣습니다. 이미 넣었다면 다시 하지 마세요 (같은 내용으로 덮어씁니다).</p>
-  <label class="btn pri"><input type="file" id="seedIn" accept=".json" hidden>파일 고르기</label><div id="seedMsg" class="muted" style="margin-top:8px"></div></div>`;
+  <button class="btn pri" id="seedBtn" ${S.ui.seeding ? 'disabled' : ''}>파일 고르기</button><div class="muted" style="margin-top:8px;font-weight:600">${esc(S.ui.seedMsg || '')}</div></div>`;
 }
 function moreView() {
   const nav = NAV.filter(n => n.show() && !['home', 'products', 'entry', 'count'].includes(n.id));
@@ -965,6 +973,17 @@ function bind() {
     if (d.ld != null) { S.ui.entry.lines.splice(+d.ld, 1); render(); return; }
     if (t.id === 'eClear') { S.ui.entry.lines = []; render(); return; }
     if (t.id === 'eSave') { await saveEntry(); return; }
+    if (t.id === 'fileBtn') { pickFile('.xlsx,.xls,.csv', f => readFile(f)); return; }
+    if (t.id === 'posFileBtn') { const st = $('#posStore').value; pickFile('.zip,.xlsx', f => readPos(f, st)); return; }
+    if (t.id === 'seedBtn') {
+      pickFile('.json,application/json', f => {
+        S.ui.seeding = true; S.ui.seedMsg = `${f.name} 읽는 중…`; render();
+        f.text().then(JSON.parse).then(d => DB.seed(d, (a, b) => { S.ui.seedMsg = `저장 중 ${fmt(a)} / ${fmt(b)}`; render(); }))
+          .then(n => { S.ui.seedMsg = `✔ ${fmt(n)}건 저장했습니다. 홈으로 가서 재고를 확인해 주세요.`; })
+          .catch(e => { S.ui.seedMsg = '🔺 ' + (e.message || e); })
+          .finally(() => { S.ui.seeding = false; render(); });
+      }); return;
+    }
     if (t.id === 'linkGo') { readLink($('#linkIn').value.trim()); return; }
     if (t.id === 'impCancel') { S.ui.imp = null; render(); return; }
     if (t.id === 'impUse') { for (const r of S.ui.imp.rows) if (r.pid && r.qty > 0) addLine(r.pid, r.qty, r.dup ? `파일 ${r.dup}줄과 같은 상품 — 수량 합침` : null); S.ui.imp = null; S.ui.entry.mode = 'hand'; render(); return; }
@@ -1002,12 +1021,9 @@ function bind() {
     if (t.id === 'eMemo') S.ui.entry.memo = t.value;
     if (d.lq != null) { S.ui.entry.lines[+d.lq].qty = Math.max(0, parseInt(t.value || '0', 10)); render(); return; }
     if (d.ip != null) { const r = S.ui.imp.rows[+d.ip]; r.pid = t.value; render(); return; }
-    if (t.id === 'fileIn' && t.files[0]) { readFile(t.files[0]); return; }
     if (d.cnt) { const st = S.stores[0]; const v = t.value === '' ? null : Math.max(0, parseInt(t.value, 10)); if (v == null) delete S.ui.counts[st][d.cnt]; else S.ui.counts[st][d.cnt] = v; render(); return; }
     if (t.id === 'ra' || t.id === 'rb') { const a = $('#ra').value, b = $('#rb').value; if (a && b && a <= b) S.ui.range = { unit: S.ui.salesUnit, ab: [a, b] }; render(); return; }
     if (d.sum) { const cur = (S.sumStores || S.stores).filter(s => s !== d.sum); if (t.checked) cur.push(d.sum); S.sumStores = cur.length ? cur : [d.sum]; render(); return; }
-    if (t.id === 'posIn' && t.files[0]) { readPos(t.files[0], $('#posStore').value); return; }
-    if (t.id === 'seedIn' && t.files[0]) { const f = t.files[0]; const box = $('#seedMsg'); box.textContent = '읽는 중…'; f.text().then(JSON.parse).then(d => DB.seed(d, (a, b) => box.textContent = `저장 중 ${a} / ${b}`)).then(n => { box.textContent = `✔ ${n}건 저장했습니다`; }).catch(e => { box.textContent = '🔺 ' + e.message; }); return; }
     if (t.id === 'setM') { S.ui.settleMonth = t.value; render(); return; }
     if (d.pst) { const [id, s] = d.pst.split(':'); const p = S.ui.draft[id]; p.stores = t.checked ? [...new Set([...p.stores, s])] : p.stores.filter(x => x !== s); render(); return; }
     if (d.pp) { const [id, k] = d.pp.split(':'); S.ui.draft[id][k] = t.checked; return; }
@@ -1027,7 +1043,7 @@ function bind() {
     eq.onkeydown = e => { if (e.key === 'Enter') { const v = eq.value.trim(); const c = findProduct(v); if (c.length) { addLine(c[0].id, 1); render(); setTimeout(() => $('#eq') && $('#eq').focus(), 0); } else { const b = $('#eSug [data-add]'); if (b) b.click(); } } };
   }
   const drop = $('#drop');
-  if (drop && $('#fileIn')) { drop.ondragover = e => { e.preventDefault(); drop.classList.add('on'); }; drop.ondragleave = () => drop.classList.remove('on'); drop.ondrop = e => { e.preventDefault(); drop.classList.remove('on'); if (e.dataTransfer.files[0]) readFile(e.dataTransfer.files[0]); }; }
+  if (drop && $('#fileBtn')) { drop.ondragover = e => { e.preventDefault(); drop.classList.add('on'); }; drop.ondragleave = () => drop.classList.remove('on'); drop.ondrop = e => { e.preventDefault(); drop.classList.remove('on'); if (e.dataTransfer.files[0]) readFile(e.dataTransfer.files[0]); }; }
   const ov = $('#ov'); if (ov) ov.onclick = e => { if (e.target === ov) { if (S.ui.stopScan) S.ui.stopScan(); S.ui.drawer = null; render(); } };
   document.onkeydown = e => { if (e.key === 'Escape' && (S.ui.drawer || S.ui.storeMenu)) { S.ui.drawer = null; S.ui.storeMenu = false; render(); } };
 }
