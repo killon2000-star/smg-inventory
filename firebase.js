@@ -67,6 +67,7 @@ window.SMG_FIREBASE = function (S, X) {
         unsub.push(db.collection('stores').doc(st).collection('sales').onSnapshot(q => { S.sales[st] = {}; q.docs.forEach(d => S.sales[st][d.id] = d.data()); X.render(); }, () => { }));
       }
     }
+    if (!S.user.limited) unsub.push(db.collection('places').onSnapshot(q => { S.places = q.docs.map(d => d.data()); X.render(); }, () => { }));
     if (!S.user.limited) unsub.push(db.collection('warehouse').doc('main').onSnapshot(d => { S.warehouse = (d.exists && d.data().q) || {}; }, () => { }));
     if (S.user.perms.sales || S.user.perms.approve || S.user.owner) {
       const z = await db.collection('config').doc('zip').get().catch(() => null); S.zipPw = (z && z.exists && z.data().pw) || {};
@@ -90,7 +91,8 @@ window.SMG_FIREBASE = function (S, X) {
           b.set(db.collection('stores').doc(m.store).collection('moves').doc(m.id), { ...m, uid: S.user.uid });
           b.set(db.collection('stores').doc(m.store), { q: { [m.pid]: inc(m.qty) } }, { merge: true });
           if (m.type === '창고 보관' || m.type === '창고에서 가져옴') b.set(db.collection('warehouse').doc('main'), { q: { [m.pid]: inc(-m.qty) } }, { merge: true });
-          if (m.type === '매장 이동') {
+          if (m.place) b.set(db.collection('places').doc(m.place), { q: { [m.pid]: inc(-m.qty) } }, { merge: true });
+          if (m.type === '매장 이동' && !m.place) {
             const to = (m.memo.match(/→ ([^·]+)/) || [])[1]; const toId = (X.STORES.find(s => s.name === (to || '').trim()) || {}).id;
             if (toId) b.set(db.collection('transfers').doc(m.id), { pid: m.pid, qty: -m.qty, from: m.store, to: toId, date: m.date, by: m.by, status: 'sent', at: m.at });
           }
@@ -109,6 +111,7 @@ window.SMG_FIREBASE = function (S, X) {
       await db.collection('users').doc(uid).set({ ...d, updatedAt: ts(), updatedBy: S.user.name }, { merge: true });
       return true;
     },
+    async savePlace(p) { await db.collection('places').doc(p.id).set(p); },
     async saveStoreOrder(order) { await db.collection('users').doc(S.user.uid).update({ storeOrder: order }); },
     async deleteUser(uid) { await db.collection('users').doc(uid).delete(); },
     async saveZip(pw) { await db.collection('config').doc('zip').set({ pw }, { merge: true }); },

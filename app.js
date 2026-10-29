@@ -22,11 +22,13 @@ const TYPES = [
   { id: '매장 이동', sign: -1, d: '다른 매장으로 보냄 — 받는 매장이 확인하면 그 매장 재고에 더해짐', to: true },
   { id: '창고 보관', sign: -1, d: '판매 종료 후 창고로 보냄' },
   { id: '창고에서 가져옴', sign: +1, d: '창고에 보관하던 상품을 다시 매장으로' },
-  { id: '타 업체 이동', sign: -1, d: '다른 회사·행사로 보냄', partner: true },
+  { id: '외부에서 돌아옴', sign: +1, d: '행사장·팝업 등 외부 장소에 보냈던 상품이 매장으로 돌아옴', from: true },
+  { id: '타 업체 이동', sign: -1, d: '다른 회사로 보냄', partner: true },
   { id: '반품', sign: -1, d: '공급처로 돌려보냄', partner: true },
   { id: '폐기', sign: -1, d: '파손·불량으로 폐기' },
 ];
 const COUNT_TYPE = '실사 조정';
+const PLACE_KINDS = ['행사장', '팝업', '창고', '거래처', '기타'];
 const PERM_DEF = [
   { k: 'move', t: '입출고 등록', s: '입고·이동·창고·폐기 등록, 파일·링크로 올리기' },
   { k: 'count', t: '실재고 입력·수정', s: '매장 책임자. 실사 수량 반영' },
@@ -75,6 +77,7 @@ const S = {
   moves: [], transfers: [],
   sales: {},               // sales[store][YYYY-MM].days[DD]
   settle: [], users: [], asof: '',
+  places: [],              // 외부 장소 (행사장·팝업 등): {id, name, kind, start, end, addr, person, memo, q:{pid:qty}}
   zipPw: { suwon: '0000' },
   ui: { q: '', f: 'all', ip: '', salesUnit: 'day', range: null, recType: '', recQ: '', counts: {}, countQ: '', countIp: '', entry: null, imp: null, adminTab: 'pending', showApply: false, posPreview: null, storeMenu: false },
 };
@@ -351,7 +354,7 @@ function productDrawer(pid) {
   const rows = STORES.filter(s => myStores().includes(s.id)).map(s => ({ s, q: stockOf(s.id, pid), has: (S.stock[s.id] || {})[pid] != null }));
   const mv = limited() ? [] : S.moves.filter(m => m.pid === pid && myStores().includes(m.store)).slice(-30).reverse();
   return `<div class="hd"><div><div class="muted" style="font-size:12px">${esc(p.ip)}${p.cat ? ' · ' + esc(p.cat) : ''}</div><h3>${esc(p.name)}</h3></div><button class="x" data-close aria-label="닫기">×</button></div>
-  <div class="card"><dl class="kv"><dt>바코드</dt><dd class="num" style="text-align:left">${esc(p.barcode || '-')}</dd><dt>품번</dt><dd>${esc(p.sku || '-')}</dd>${!limited() && p.price ? `<dt>판매가</dt><dd>${won(p.price)}</dd>` : ''}${S.warehouse[pid] ? `<dt>창고 보관</dt><dd>${fmt(S.warehouse[pid])}개</dd>` : ''}</dl></div>
+  <div class="card"><dl class="kv"><dt>바코드</dt><dd class="num" style="text-align:left">${esc(p.barcode || '-')}</dd><dt>품번</dt><dd>${esc(p.sku || '-')}</dd>${!limited() && p.price ? `<dt>판매가</dt><dd>${won(p.price)}</dd>` : ''}${S.warehouse[pid] ? `<dt>창고 보관</dt><dd>${fmt(S.warehouse[pid])}개</dd>` : ''}${S.places.filter(pl => (pl.q || {})[pid]).map(pl => `<dt>외부 · ${esc(pl.kind)}</dt><dd>${esc(placeLabel(pl))} — ${fmt(pl.q[pid])}개</dd>`).join('')}</dl></div>
   <div class="card"><h2>매장별 재고</h2><table><tbody>${rows.map(r => `<tr><td class="nowrap"><span class="dot" style="background:${storeColor(r.s.id)};display:inline-block;margin-right:6px"></span>${esc(r.s.name)}</td><td class="n big ${r.q < 0 ? 'qty-neg' : ''}" style="font-size:18px">${r.has ? fmt(r.q) : '-'}</td><td style="width:1%">${r.has ? statusPill(r.q) : '<span class="pill p-mute">미등록</span>'}</td></tr>`).join('')}</tbody></table></div>
   ${can('move') ? `<div class="row"><button class="btn pri" data-quick="입고" data-qp="${esc(pid)}">입고 등록</button><button class="btn" data-quick="매장 이동" data-qp="${esc(pid)}">매장 이동</button>${can('count') ? `<button class="btn" data-quick="count" data-qp="${esc(pid)}">실사 입력</button>` : ''}</div>` : ''}
   ${limited() ? '' : `<div class="card"><h2>입출고 기록 <span class="r">최근 30건</span></h2>${movesTable(mv, false, true)}</div>`}`;
@@ -363,6 +366,43 @@ function movesTable(list, withName = true, compact = false) {
   </tbody></table></div>`;
 }
 function typePill(t) { const pos = ['입고', '창고에서 가져옴', '매장 이동(받음)']; return `<span class="pill ${t === COUNT_TYPE ? 'p-info' : pos.includes(t) ? 'p-ok' : t === '판매' ? 'p-mute' : 'p-warn'}">${esc(t)}</span>`; }
+
+/* ───────── 외부 장소 ───────── */
+const placeById = id => S.places.find(p => p.id === id);
+function placeLabel(p) {
+  if (!p) return '';
+  const per = p.start ? ` · ${p.start.slice(2).replace(/-/g, '.')}${p.end && p.end !== p.start ? '~' + p.end.slice(5).replace('-', '.') : ''}` : '';
+  return `${p.name}${p.addr ? ' · ' + p.addr : ''}${per}`;
+}
+function placeQty(p) { return Object.values(p.q || {}).reduce((a, b) => a + b, 0); }
+function placeDrawer() {
+  const f = S.ui.placeForm ||= { name: '', kind: '행사장', start: today(), end: today(), addr: '', person: '', memo: '' };
+  const dup = S.places.filter(p => norm(p.name) === norm(f.name) && f.name.trim());
+  return `<div class="hd"><h3>외부 장소 등록</h3><button class="x" data-close aria-label="닫기">×</button></div>
+  <div class="card" style="display:flex;flex-direction:column;gap:12px">
+    <div class="field"><label for="plName">장소·행사 이름</label><input class="inp" id="plName" value="${esc(f.name)}" placeholder="예: 코믹월드 338"></div>
+    <div class="field"><label>구분</label><div class="chips">${PLACE_KINDS.map(k => `<button class="chip ${f.kind === k ? 'on' : ''}" data-plk="${k}">${k}</button>`).join('')}</div></div>
+    <div class="formgrid"><div class="field"><label for="plStart">시작일</label><input class="inp" type="date" id="plStart" value="${f.start}"></div><div class="field"><label for="plEnd">종료일</label><input class="inp" type="date" id="plEnd" value="${f.end}"></div></div>
+    <div class="field"><label for="plAddr">장소 · 위치</label><input class="inp" id="plAddr" value="${esc(f.addr)}" placeholder="예: 수원메쎄 B홀, 부스 A-12"></div>
+    <div class="formgrid"><div class="field"><label for="plPerson">현장 담당자</label><input class="inp" id="plPerson" value="${esc(f.person)}" placeholder="이름"></div><div class="field"><label for="plMemo">메모</label><input class="inp" id="plMemo" value="${esc(f.memo)}"></div></div>
+    ${dup.length ? `<div class="note warn">🔸 같은 이름의 장소가 이미 ${dup.length}곳 있습니다: ${dup.map(p => esc(placeLabel(p))).join(' / ')}<br>날짜·위치가 다르면 새로 등록하고, 같은 곳이면 목록에서 고르세요.</div>` : ''}
+  </div>
+  <div class="row" style="justify-content:flex-end"><button class="btn" data-close>취소</button><button class="btn pri" id="plSave" ${f.name.trim() && f.start ? '' : 'disabled'}>장소 등록</button></div>`;
+}
+async function savePlace() {
+  const f = S.ui.placeForm; const n = S.places.filter(p => p.start === f.start).length + 1;
+  const id = 'P' + f.start.replace(/-/g, '').slice(2) + '-' + String(n).padStart(2, '0') + Math.random().toString(36).slice(2, 5);
+  const p = { id, name: f.name.trim(), kind: f.kind, start: f.start, end: f.end || f.start, addr: f.addr.trim(), person: f.person.trim(), memo: f.memo.trim(), q: {}, by: S.user.name, at: new Date().toISOString() };
+  if (DB.savePlace) await DB.savePlace(p);
+  S.places.push(p); S.ui.placeForm = null; S.ui.drawer = null;
+  const e = S.ui.entry; if (e) { if (e.type === '외부에서 돌아옴') e.from = id; else e.place = id; }
+  toast('장소를 등록했습니다');
+}
+function placeSelect(id, val, label) {
+  const list = S.places.slice().sort((a, b) => (b.start || '').localeCompare(a.start || ''));
+  return `<div class="field" style="grid-column:span 2;min-width:0"><label for="${id}">${label}</label><div class="row"><select class="inp" id="${id}" style="flex:1 1 220px;min-width:0"><option value="">${list.length ? '등록된 장소에서 고르기' : '등록된 장소가 없습니다 → 새 장소 등록'}</option>${list.map(p => `<option value="${p.id}" ${val === p.id ? 'selected' : ''}>[${esc(p.kind)}] ${esc(placeLabel(p))}${placeQty(p) ? ` · 남은 ${fmt(placeQty(p))}개` : ''}</option>`).join('')}</select><button class="btn" id="plNew">새 장소 등록</button></div>
+  ${val && placeById(val) ? `<div class="note" style="margin-top:4px"><b>[${esc(placeById(val).kind)}] ${esc(placeLabel(placeById(val)))}</b><br><span class="muted" style="font-size:12px">장소 번호 ${esc(val)}${placeById(val).person ? ' · 담당 ' + esc(placeById(val).person) : ''}${placeQty(placeById(val)) ? ' · 지금 그곳에 ' + fmt(placeQty(placeById(val))) + '개' : ''}</span></div>` : ''}</div>`;
+}
 
 /* ───────── 입출고 등록 ───────── */
 function newEntry(type = '입고') { return { type, date: today(), store: S.stores[0], to: '', partner: '', memo: '', lines: [], mode: 'hand' }; }
@@ -376,8 +416,9 @@ function entryView() {
     <div class="formgrid">
       <div class="field"><label for="eDate">날짜</label><input class="inp" type="date" id="eDate" value="${e.date}"></div>
       <div class="field"><label for="eStore">${T.to ? '보내는 매장' : '매장'}</label><select class="inp" id="eStore">${okStores.map(s => `<option value="${s}" ${e.store === s ? 'selected' : ''}>${esc(storeName(s))}</option>`).join('')}</select></div>
-      ${T.to ? `<div class="field"><label for="eTo">받는 곳</label><select class="inp" id="eTo"><option value="">선택</option>${STORES.filter(s => s.id !== e.store).map(s => `<option value="${s.id}" ${e.to === s.id ? 'selected' : ''}>${esc(s.name)}</option>`).join('')}<option value="__custom" ${e.to === '__custom' ? 'selected' : ''}>직접 입력</option></select></div>
-      ${e.to === '__custom' ? `<div class="field"><label for="eToText">받는 곳 직접 입력</label><input class="inp" id="eToText" value="${esc(e.toText || '')}" placeholder="예: 코믹월드 행사장, 본사 창고, 팝업 매장"><span class="muted" style="font-size:12px">목록에 없는 곳은 받기 확인 없이 보낸 매장 재고에서만 빠집니다</span></div>` : ''}` : ''}
+      ${T.to ? `<div class="field"><label for="eTo">받는 곳</label><select class="inp" id="eTo"><option value="">선택</option>${STORES.filter(s => s.id !== e.store).map(s => `<option value="${s.id}" ${e.to === s.id ? 'selected' : ''}>${esc(s.name)}</option>`).join('')}<option value="__custom" ${e.to === '__custom' ? 'selected' : ''}>외부 장소 (행사장·팝업 등)</option></select></div>
+      ${e.to === '__custom' ? placeSelect('ePlace', e.place, '외부 장소') : ''}` : ''}
+      ${T.from ? placeSelect('eFrom', e.from, '돌아온 곳 (외부 장소)') : ''}
       ${T.partner ? `<div class="field"><label for="ePartner">${e.type === '반품' ? '반품처' : '받는 업체'}</label><input class="inp" id="ePartner" value="${esc(e.partner)}" placeholder="업체 이름"></div>` : ''}
       <div class="field" style="grid-column:span 2;min-width:0"><label for="eMemo">메모</label><input class="inp" id="eMemo" value="${esc(e.memo)}" placeholder="예: 10/21 출고리스트, 파손 사유"></div>
     </div>
@@ -400,7 +441,9 @@ function entryLines(e) {
 function lineIssues(e) {
   const out = []; const T = TYPES.find(t => t.id === e.type);
   if (T.to && !e.to) out.push({ lv: 'bad', block: true, t: '받는 곳을 골라 주세요.' });
-  if (T.to && e.to === '__custom' && !(e.toText || '').trim()) out.push({ lv: 'bad', block: true, t: '받는 곳 이름을 적어 주세요.' });
+  if (T.to && e.to === '__custom' && !e.place) out.push({ lv: 'bad', block: true, t: '외부 장소를 고르거나 [새 장소 등록]으로 만들어 주세요.' });
+  if (T.from && !e.from) out.push({ lv: 'bad', block: true, t: '돌아온 외부 장소를 골라 주세요.' });
+  if (T.from && e.from) { const pl = placeById(e.from); const over = e.lines.filter(l => (+l.qty || 0) > ((pl && pl.q || {})[l.pid] || 0)); if (over.length) out.push({ lv: 'warn', t: `그 장소로 보낸 수량보다 많이 돌아온 상품 ${over.length}종이 있습니다. 수량을 확인해 주세요.` }); }
   if (T.partner && !e.partner.trim()) out.push({ lv: 'bad', block: true, t: `${e.type === '반품' ? '반품처' : '받는 업체'}를 적어 주세요.` });
   const neg = e.lines.filter(l => stockOf(e.store, l.pid) + T.sign * (+l.qty || 0) < 0);
   if (neg.length) out.push({ lv: 'warn', t: `반영하면 재고가 마이너스가 되는 상품 ${neg.length}종이 있습니다. 수량을 확인해 주세요.` });
@@ -421,7 +464,7 @@ async function saveEntry() {
   const list = [];
   for (const l of e.lines) {
     const q = T.sign * (+l.qty);
-    const m = { id: 'n' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), date: e.date, store: e.store, type: e.type, pid: l.pid, qty: q, memo: [e.to ? `→ ${e.to === '__custom' ? (e.toText || '').trim() : storeName(e.to)}` : '', e.partner, e.memo].filter(Boolean).join(' · '), by, at };
+    const m = { id: 'n' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), date: e.date, store: e.store, type: e.type, pid: l.pid, qty: q, memo: [e.to ? `→ ${e.to === '__custom' ? placeLabel(placeById(e.place)) : storeName(e.to)}` : '', T.from ? `← ${placeLabel(placeById(e.from))}` : '', e.partner, e.memo].filter(Boolean).join(' · '), place: (e.to === '__custom' && e.place) || (T.from && e.from) || null, by, at };
     list.push(m);
   }
   await DB.saveMoves(list);
@@ -429,6 +472,7 @@ async function saveEntry() {
     S.moves.push(m); (S.stock[m.store] ||= {})[m.pid] = stockOf(m.store, m.pid) + m.qty;
     if (m.type === '창고 보관') S.warehouse[m.pid] = (S.warehouse[m.pid] || 0) - m.qty;
     if (m.type === '창고에서 가져옴') S.warehouse[m.pid] = (S.warehouse[m.pid] || 0) - m.qty;
+    if (m.place) { const pl = placeById(m.place); if (pl) { pl.q ||= {}; pl.q[m.pid] = (pl.q[m.pid] || 0) - m.qty; } }
     if (m.type === '매장 이동' && e.to !== '__custom') S.transfers.push({ id: m.id, pid: m.pid, qty: -m.qty, from: m.store, to: e.to, date: m.date, by, status: 'sent' });
   }
   const n = list.length; S.ui.entry = newEntry(e.type); S.ui.imp = null;
@@ -1066,6 +1110,9 @@ function bind() {
           .finally(() => { S.ui.seeding = false; render(); });
       }); return;
     }
+    if (t.id === 'plNew') { S.ui.placeForm = null; S.ui.drawer = placeDrawer; render(); return; }
+    if (d.plk) { S.ui.placeForm.kind = d.plk; render(); return; }
+    if (t.id === 'plSave') { await savePlace(); return; }
     if (t.id === 'linkGo') { readLink($('#linkIn').value.trim()); return; }
     if (t.id === 'impCancel') { S.ui.imp = null; render(); return; }
     if (t.id === 'impUse') { for (const r of S.ui.imp.rows) if (r.pid && r.qty > 0) addLine(r.pid, r.qty, r.dup ? `파일 ${r.dup}줄과 같은 상품 — 수량 합침` : null); S.ui.imp = null; S.ui.entry.mode = 'hand'; render(); return; }
@@ -1099,7 +1146,9 @@ function bind() {
     if (t.id === 'eDate') S.ui.entry.date = t.value;
     if (t.id === 'eStore') { S.ui.entry.store = t.value; render(); return; }
     if (t.id === 'eTo') { S.ui.entry.to = t.value; render(); if (t.value === '__custom') setTimeout(() => $('#eToText') && $('#eToText').focus(), 0); return; }
-    if (t.id === 'eToText') { S.ui.entry.toText = t.value; render(); return; }
+    if (t.id === 'ePlace') { S.ui.entry.place = t.value; render(); return; }
+    if (t.id === 'eFrom') { S.ui.entry.from = t.value; render(); return; }
+    if (['plName', 'plStart', 'plEnd', 'plAddr', 'plPerson', 'plMemo'].includes(t.id)) { const k = { plName: 'name', plStart: 'start', plEnd: 'end', plAddr: 'addr', plPerson: 'person', plMemo: 'memo' }[t.id]; S.ui.placeForm[k] = t.value; if (k === 'start' && (!S.ui.placeForm.end || S.ui.placeForm.end < t.value)) S.ui.placeForm.end = t.value; render(); return; }
     if (t.id === 'ePartner') { S.ui.entry.partner = t.value; render(); return; }
     if (t.id === 'eMemo') S.ui.entry.memo = t.value;
     if (d.lq != null) { S.ui.entry.lines[+d.lq].qty = Math.max(0, parseInt(t.value || '0', 10)); render(); return; }

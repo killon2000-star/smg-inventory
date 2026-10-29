@@ -73,6 +73,9 @@ service cloud.firestore {
       allow update: if perm('move') && store(resource.data.to);
     }
 
+    // 외부 장소 (행사장·팝업 등)
+    match /places/{id} { allow read: if active() && !limitedUser(); allow write: if perm('move'); }
+
     // 창고 보관 수량
     match /warehouse/{doc} { allow read: if active() && !limitedUser(); allow write: if perm('move'); }
 
