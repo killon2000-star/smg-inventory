@@ -13,7 +13,7 @@ const STORES = [
 ];
 const COMPANIES = ['SMG 홀딩스', 'SMG 크리에이티브', '온인터내셔널', 'SMG STORE_수원', 'BOX CAFE', 'SMG MUSEUM_홍대', 'CAFE 오마케', '리밋션_홍대', '기타(직접 입력)'];
 const POSITIONS = ['대표', '전무', '상무', '본부장', '편집장', '부장', '차장', '과장', '대리', '수석팀장', '팀장', '부팀장', '매니저', '사원'];
-const SALES_REC = new Set(['대표', '전무', '상무', '본부장', '편집장', '부장', '차장', '과장', '수석팀장', '팀장']);     // 팀장 이상 → 매출 보기 추천
+const SALES_REC = new Set(['대표', '전무', '상무', '본부장', '편집장', '부장', '차장', '과장', '대리', '수석팀장', '팀장', '부팀장']);   // 부팀장 이상 (대표 지시 2026-10-30)     // 팀장 이상 → 매출 보기 추천
 const COUNT_REC = new Set(['대표', '전무', '상무', '본부장', '편집장', '부장', '차장', '과장', '대리', '수석팀장', '팀장', '부팀장', '매니저']); // 매장 책임자 → 실재고 추천
 const WORK_PLACES = STORES.map(s => s.name).concat(['본사', '창고']);
 const TYPES = [
@@ -32,7 +32,7 @@ const PLACE_KINDS = ['행사장', '팝업', '창고', '거래처', '기타'];
 const PERM_DEF = [
   { k: 'move', t: '입출고 등록', s: '입고·이동·창고·폐기 등록, 파일·링크로 올리기' },
   { k: 'count', t: '실재고 입력·수정', s: '매장 책임자. 실사 수량 반영' },
-  { k: 'sales', t: '매출 보기', s: '팀장 이상. 매출 화면, 토스포스 파일 올리기' },
+  { k: 'sales', t: '매출 보기', s: '부팀장 이상. 매출 화면, 토스포스 파일 올리기' },
   { k: 'approve', t: '사용자 승인', s: '가입 승인, 권한 변경, 퇴사 처리' },
 ];
 
@@ -146,6 +146,7 @@ function stockOf(store, pid) { return (S.stock[store] || {})[pid] || 0; }
 /* 권한 */
 const can = k => !!(S.user && !S.user.limited && S.user.perms && S.user.perms[k]);
 const isOwner = () => !!(S.user && S.user.owner);
+const canSettle = () => isOwner() || !!(S.user && !S.user.limited && S.user.perms && S.user.perms.settle);
 const myStores = () => (S.user && S.user.owner ? STORES.map(s => s.id) : S.user && S.user.perms ? S.user.perms.stores : []);
 const limited = () => !!(S.user && S.user.limited);
 
@@ -182,7 +183,7 @@ const NAV = [
   { id: 'transfer', t: '매장 이동', show: () => can('move') },
   { id: 'records', t: '기록', show: () => !limited() },
   { id: 'sales', t: '매출', grp: '관리자', show: () => can('sales') },
-  { id: 'settle', t: '정산', show: () => isOwner() },
+  { id: 'settle', t: '정산', show: () => canSettle() },
   { id: 'admin', t: '관리', show: () => can('approve') || isOwner() },
 ];
 function render() {
@@ -1005,14 +1006,14 @@ function loadScript(src) { return new Promise((ok, no) => { const s = document.c
 
 /* ───────── 정산 (대표만) ───────── */
 function settleView() {
-  if (!isOwner()) return '';
+  if (!canSettle()) return '';
   const months = [...new Set(S.settle.map(r => r.month))].sort().reverse();
   const m = S.ui.settleMonth || months[0];
   const rows = S.settle.filter(r => r.month === m);
   const ipRows = rows.filter(r => r.kind === 'ip').sort((a, b) => b.net - a.net); const ded = rows.filter(r => r.kind !== 'ip');
   const T = k => rows.reduce((a, r) => a + (+r[k] || 0), 0);
   const st = rows[0] ? rows[0].status : '';
-  return `${head('정산', '대표 계정에만 보입니다 · POS 매출 × 홀딩스 정산서 요율', `<select class="inp" id="setM" style="width:auto">${months.map(x => `<option ${x === m ? 'selected' : ''}>${x}</option>`).join('')}</select>`)}
+  return `${head('정산', '대표와 대표가 허용한 정산 담당자만 보입니다 · POS 매출 × 홀딩스 정산서 요율', `<select class="inp" id="setM" style="width:auto">${months.map(x => `<option ${x === m ? 'selected' : ''}>${x}</option>`).join('')}</select>`)}
   <div class="tiles"><div class="tile"><span class="lb">판매 금액</span><span class="v big${String(fmt(ipRows.reduce((a, r) => a + r.sales, 0))).length>9?' long':''}">${fmt(ipRows.reduce((a, r) => a + r.sales, 0))}<small>원</small></span></div>
     <div class="tile"><span class="lb">온인터 배분</span><span class="v big${String(fmt(T('onin'))).length>9?' long':''}">${fmt(T('onin'))}<small>원</small></span></div>
     <div class="tile"><span class="lb">크리에이티브 지급</span><span class="v big${String(fmt(-T('creative'))).length>9?' long':''}">${fmt(-T('creative'))}<small>원</small></span></div>
@@ -1045,7 +1046,8 @@ function permEditor(u, p, idp) {
   <div class="field"><label>권한</label><div class="checks">
     <label class="ck dis"><input type="checkbox" checked disabled><span><span class="t">재고 수량 보기</span><span class="s">모든 승인 사용자 기본</span></span></label>
     ${PERM_DEF.map(d => `<label class="ck ${lim ? 'dis' : ''}"><input type="checkbox" data-pp="${idp}:${d.k}" ${p[d.k] && !lim ? 'checked' : ''} ${lim ? 'disabled' : ''}><span><span class="t">${d.t}</span>${rec[d.k] ? '<span class="rec">추천</span>' : ''}<span class="s" style="display:block">${d.s}</span></span></label>`).join('')}
-    <label class="ck dis"><input type="checkbox" disabled ${u.owner ? 'checked' : ''}><span><span class="t">정산 보기</span><span class="s" style="display:block">대표 계정 고정 · 줄 수 없음</span></span></label>
+    ${isOwner() && !lim ? `<label class="ck"><input type="checkbox" data-pp="${idp}:settle" ${p.settle ? 'checked' : ''}><span><span class="t">정산 보기</span><span class="s" style="display:block">정산 담당자만 · 대표만 줄 수 있음</span></span></label>`
+      : `<label class="ck dis"><input type="checkbox" disabled ${u.owner || p.settle ? 'checked' : ''}><span><span class="t">정산 보기</span><span class="s" style="display:block">대표만 줄 수 있음${p.settle ? ' · 대표가 허용함' : ''}</span></span></label>`}
   </div></div>
   ${lim ? '<div class="note warn">🔸 기타(직접 입력) 소속은 재고 수량 확인만 됩니다. 다른 권한을 주려면 소속을 목록 회사로 바꿔야 합니다. 가격·매출·기록·직원 정보도 보이지 않습니다.</div>' : ''}`;
 }
@@ -1066,7 +1068,7 @@ function usersView() {
   const lab = { active: '<span class="pill p-ok">사용 중</span>', suspended: '<span class="pill p-warn">🔸 일시 정지</span>', resigned: '<span class="pill p-mute">퇴사</span>' };
   return `<div class="card" style="padding:8px 12px"><div class="tw"><table><thead><tr><th>이름</th><th>직급</th><th class="hide-s">소속</th><th>매장</th><th>권한</th><th>상태</th><th></th></tr></thead><tbody>
   ${U.map(u => `<tr><td class="nowrap"><b>${esc(u.name)}</b><div class="code">${esc(u.email)}</div></td><td class="nowrap">${esc(u.position)}</td><td class="hide-s">${esc(u.company)}</td><td style="font-size:12px">${(u.perms && u.perms.stores.length === STORES.length) ? '전체' : esc((u.perms ? u.perms.stores : []).map(storeName).join(', '))}</td>
-    <td style="font-size:12px">${u.limited ? '수량만' : PERM_DEF.filter(d => u.perms && u.perms[d.k]).map(d => d.t.replace(' 등록', '').replace('실재고 입력·수정', '실재고').replace('사용자 승인', '승인')).join(' · ') || '보기만'}${u.owner ? ' · 정산' : ''}</td><td>${lab[u.status]}</td>
+    <td style="font-size:12px">${u.limited ? '수량만' : PERM_DEF.filter(d => u.perms && u.perms[d.k]).map(d => d.t.replace(' 등록', '').replace('실재고 입력·수정', '실재고').replace('사용자 승인', '승인')).join(' · ') || '보기만'}${u.owner || (u.perms && u.perms.settle) ? ' · 정산' : ''}</td><td>${lab[u.status]}</td>
     <td class="nowrap">${u.owner ? '<span class="muted" style="font-size:12px">대표</span>' : u.status === 'active' ? `<button class="btn sm" data-edit="${u.uid}">권한</button> <button class="btn sm" data-susp="${u.uid}">정지</button> <button class="btn sm" data-resign="${u.uid}">퇴사 처리</button>` : `<button class="btn sm" data-restore="${u.uid}">복구</button>`}</td></tr>`).join('')}
   </tbody></table></div></div>
   <div class="note">퇴사 처리하면 그 직원은 앱을 켜 둔 상태에서도 바로 로그아웃되고, 서버에서 모든 자료 읽기가 막힙니다. 그 직원이 남긴 기록은 이름 그대로 남습니다.</div>`;
@@ -1292,13 +1294,13 @@ function bind() {
     if (t.id === 'posSave') { await savePos(); return; }
     if (d.at) { S.ui.adminTab = d.at; render(); return; }
     if (t.id === 'showApply') { S.ui.showApply = true; render(); return; }
-    if (d.approve) { const u = S.users.find(x => x.uid === d.approve); const p = S.ui.draft[u.uid]; u.perms = { stores: p.stores, move: !p.lim && !!p.move, count: !p.lim && !!p.count, sales: !p.lim && !!p.sales, approve: !p.lim && !!p.approve }; u.limited = p.lim; u.status = 'active'; u.approvedAt = today(); u.approvedBy = S.user.name; await DB.saveUser(u); toast(`${u.name} 승인했습니다`); return; }
+    if (d.approve) { const u = S.users.find(x => x.uid === d.approve); const p = S.ui.draft[u.uid]; u.perms = { stores: p.stores, move: !p.lim && !!p.move, count: !p.lim && !!p.count, sales: !p.lim && !!p.sales, approve: !p.lim && !!p.approve, settle: !p.lim && isOwner() && !!p.settle }; u.limited = p.lim; u.status = 'active'; u.approvedAt = today(); u.approvedBy = S.user.name; await DB.saveUser(u); toast(`${u.name} 승인했습니다`); return; }
     if (d.reject) { const u = S.users.find(x => x.uid === d.reject); confirmDrawer('신청 거절', `<p style="margin:0">${esc(u.name)}의 신청을 거절할까요?</p>`, '거절', async () => { S.users = S.users.filter(x => x !== u); if (DB.deleteUser) await DB.deleteUser(u.uid); toast('거절했습니다'); }); return; }
     if (d.resign) { const u = S.users.find(x => x.uid === d.resign); confirmDrawer(`${u.name} 퇴사 처리`, `<p style="margin:0 0 8px"><b>${esc(u.name)}</b> (${esc(u.position)}) 을 퇴사 처리할까요?</p><ul style="margin:0;padding-left:18px;font-size:13px"><li>앱을 켜 둔 상태여도 바로 로그아웃됩니다</li><li>같은 구글 계정으로 다시 들어오거나 재신청할 수 없습니다</li><li>남긴 입출고 기록은 이름 그대로 남습니다</li></ul>`, '퇴사 처리', async () => { u.status = 'resigned'; u.resignedAt = today(); u.resignedBy = S.user.name; await DB.saveUser(u); toast(`${u.name} 퇴사 처리했습니다`); }); return; }
     if (d.susp) { const u = S.users.find(x => x.uid === d.susp); u.status = 'suspended'; await DB.saveUser(u); toast(`${u.name} 일시 정지했습니다`); return; }
     if (d.restore) { const u = S.users.find(x => x.uid === d.restore); u.status = 'active'; await DB.saveUser(u); toast(`${u.name} 다시 사용하게 했습니다`); return; }
     if (d.edit) { editDrawer(d.edit); return; }
-    if (d.saveperm) { const u = S.users.find(x => x.uid === d.saveperm); const p = S.ui.draft[u.uid]; u.perms = { stores: p.stores, move: !!p.move, count: !!p.count, sales: !!p.sales, approve: !!p.approve }; await DB.saveUser(u); S.ui.drawer = null; toast('권한을 저장했습니다'); return; }
+    if (d.saveperm) { const u = S.users.find(x => x.uid === d.saveperm); const p = S.ui.draft[u.uid]; u.perms = { stores: p.stores, move: !!p.move, count: !!p.count, sales: !!p.sales, approve: !!p.approve, settle: isOwner() ? !!p.settle : !!(u.perms && u.perms.settle) }; await DB.saveUser(u); S.ui.drawer = null; toast('권한을 저장했습니다'); return; }
     if (t.id === 'confirmOk') { const f = S.ui.confirm; S.ui.drawer = null; S.ui.confirm = null; await f(); render(); return; }
     if (t.id === 'addStore') { alertBox('매장 추가는 실제 앱에서 저장됩니다. 미리보기에서는 4곳 고정입니다.'); return; }
     if (t.id === 'logout') { FB.signOut(); return; }

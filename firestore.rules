@@ -14,6 +14,7 @@ service cloud.firestore {
     function active() { return isOwner() || (signed() && exists(/databases/$(database)/documents/users/$(request.auth.uid)) && me().status == 'active'); }
     function limitedUser() { return !isOwner() && me().get('limited', false) == true; }
     function perm(k) { return isOwner() || (active() && !limitedUser() && me().perms.get(k, false) == true); }
+    function settleOf(d) { return d.get('perms', null) != null && d.perms.get('settle', false) == true; }
     function store(s) { return isOwner() || (active() && s in me().perms.stores); }
 
     // 앱 설정 (매장 목록 등)
@@ -32,10 +33,12 @@ service cloud.firestore {
          && request.resource.data.get('owner', false) == false && request.resource.data.get('limited', false) == false
          && request.resource.data.email == request.auth.token.email));
       // 승인·권한·퇴사: 승인 권한자만, 대표 계정은 못 바꿈, 기타 소속은 수량 보기만
+      // 정산 보기(perms.settle)는 대표만 바꿀 수 있음
       allow update: if perm('approve') && resource.data.get('owner', false) == false
         && request.resource.data.get('owner', false) == false
-        && (resource.data.company != '기타(직접 입력)' || request.resource.data.get('limited', false) == true);
-      allow update: if isOwner() && request.auth.uid == uid;
+        && (resource.data.company != '기타(직접 입력)' || request.resource.data.get('limited', false) == true)
+        && settleOf(request.resource.data) == settleOf(resource.data);
+      allow update: if isOwner();
       // 본인: 매장 표시 순서만 바꿀 수 있음
       allow update: if active() && request.auth.uid == uid
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['storeOrder']);
@@ -86,7 +89,7 @@ service cloud.firestore {
     // 창고 보관 수량
     match /warehouse/{doc} { allow read: if active() && !limitedUser(); allow write: if perm('move'); }
 
-    // 정산: 대표만
-    match /settle/{m} { allow read, write: if isOwner(); }
+    // 정산: 대표 + 대표가 허용한 정산 담당자(읽기만)
+    match /settle/{m} { allow read: if isOwner() || (active() && !limitedUser() && me().perms.get('settle', false) == true); allow write: if isOwner(); }
   }
 }

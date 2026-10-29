@@ -75,7 +75,7 @@ window.SMG_FIREBASE = function (S, X) {
     }
     if (S.user.perms.approve || S.user.owner) unsub.push(db.collection('users').onSnapshot(q => { S.users = q.docs.map(d => ({ uid: d.id, ...d.data() })); X.render(); }));
     else S.users = [S.user];
-    if (S.user.owner) unsub.push(db.collection('settle').onSnapshot(q => { S.settle = q.docs.flatMap(d => d.data().rows || []); X.render(); }, () => { }));
+    if (S.user.owner || (S.user.perms.settle && !S.user.limited)) unsub.push(db.collection('settle').onSnapshot(q => { S.settle = q.docs.flatMap(d => d.data().rows || []); X.render(); }, () => { }));
     S.asof = new Date(Date.now() + 9 * 3600e3).toISOString().slice(0, 10);
   }
   function mergeTransfers(q) {
