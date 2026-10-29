@@ -50,9 +50,9 @@ window.SMG_FIREBASE = function (S, X) {
 
   /* 자료 불러오기 + 실시간 반영 */
   async function loadAll() {
-    const mine = S.user.perms.stores;
+    const mine = S.user.owner ? X.STORES.map(s => s.id) : S.user.perms.stores;
     const cfg = await db.collection('config').doc('app').get().catch(() => null);
-    if (cfg && cfg.exists && cfg.data().stores) { X.STORES.length = 0; cfg.data().stores.forEach(s => X.STORES.push(s)); }
+    if (cfg && cfg.exists && cfg.data().stores) cfg.data().stores.forEach(s => { if (!X.STORES.find(x => x.id === s.id)) X.STORES.push(s); });   // 코드 목록 + 관리 화면에서 추가한 매장
     unsub.push(db.collection('products').onSnapshot(q => { S.products = q.docs.map(d => d.data()); X.indexProducts(); X.render(); }));
     for (const st of mine) {
       unsub.push(db.collection('stores').doc(st).onSnapshot(d => { S.stock[st] = (d.exists && d.data().q) || {}; X.render(); }, () => { }));

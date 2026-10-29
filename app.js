@@ -9,8 +9,9 @@ const STORES = [
   { id: 'boxcafe', name: 'BOX CAFE' },
   { id: 'museum', name: 'SMG MUSEUM_홍대' },
   { id: 'omake', name: 'CAFE 오마케' },
+  { id: 'limission', name: '리밋션_홍대' },
 ];
-const COMPANIES = ['SMG 홀딩스', 'SMG 크리에이티브', '온인터내셔널', 'SMG STORE_수원', 'BOX CAFE', 'SMG MUSEUM_홍대', 'CAFE 오마케', '기타(직접 입력)'];
+const COMPANIES = ['SMG 홀딩스', 'SMG 크리에이티브', '온인터내셔널', 'SMG STORE_수원', 'BOX CAFE', 'SMG MUSEUM_홍대', 'CAFE 오마케', '리밋션_홍대', '기타(직접 입력)'];
 const POSITIONS = ['대표', '전무', '상무', '본부장', '부장', '수석팀장', '팀장', '부팀장', '매니저', '사원'];
 const SALES_REC = new Set(['대표', '전무', '상무', '본부장', '부장', '수석팀장', '팀장']);     // 팀장 이상 → 매출 보기 추천
 const COUNT_REC = new Set(['대표', '전무', '상무', '본부장', '부장', '수석팀장', '팀장', '부팀장', '매니저']); // 매장 책임자 → 실재고 추천
@@ -83,10 +84,10 @@ const DemoBackend = {
     const r = await fetch('demo-data.json'); const d = await r.json();
     S.asof = d.asof;
     S.products = d.products;
-    S.stock = { suwon: d.stock.suwon, boxcafe: {}, museum: {}, omake: {} };
+    S.stock = { suwon: d.stock.suwon, boxcafe: {}, museum: {}, omake: {}, limission: {} };
     S.moves = d.moves;
     S.incoming = d.incoming;
-    S.sales = { suwon: d.sales.suwon, boxcafe: {}, museum: {}, omake: {} };
+    S.sales = { suwon: d.sales.suwon, boxcafe: {}, museum: {}, omake: {}, limission: {} };
     S.settle = d.settle;
     S.users = demoUsers();
   },
@@ -138,7 +139,7 @@ function stockOf(store, pid) { return (S.stock[store] || {})[pid] || 0; }
 /* 권한 */
 const can = k => !!(S.user && !S.user.limited && S.user.perms && S.user.perms[k]);
 const isOwner = () => !!(S.user && S.user.owner);
-const myStores = () => (S.user && S.user.perms ? S.user.perms.stores : []);
+const myStores = () => (S.user && S.user.owner ? STORES.map(s => s.id) : S.user && S.user.perms ? S.user.perms.stores : []);
 const limited = () => !!(S.user && S.user.limited);
 
 /* ───────── 경고·오류 찾기 ───────── */
