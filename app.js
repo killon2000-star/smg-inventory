@@ -37,7 +37,7 @@ const PERM_DEF = [
 ];
 
 const DEFAULT_ORDER = STORES.map(s => s.id);
-const APP_VERSION = '2026-10-30 02:21';   // 앱 화면을 마지막으로 고친 시각 (한국 시간)
+const APP_VERSION = '2026-10-30 08:38';   // 앱 화면을 마지막으로 고친 시각 (한국 시간)
 /* ───────── 작은 도구 ───────── */
 const $ = (s, el = document) => el.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -193,7 +193,7 @@ function render() {
   const app = $('#app');
   if (!S.user || S.ui.showApply) { app.innerHTML = loginView(); bindLogin(); return; }
   const nav = NAV.filter(n => n.show());
-  if (!nav.find(n => n.id === S.view)) S.view = 'home';
+  if (S.view !== 'more' && !nav.find(n => n.id === S.view)) S.view = 'home';
   const pendingN = S.users.filter(u => u.status === 'pending').length;
   const sv = S.stores.length === 1 ? storeName(S.stores[0]) : `${S.stores.length}개 매장`;
   app.innerHTML = `
@@ -209,7 +209,8 @@ function render() {
   <div class="shell">
     <nav class="side" aria-label="메뉴">
       ${nav.map(n => `${n.grp ? `<div class="grp">${n.grp}</div>` : ''}<button data-nav="${n.id}" class="${S.view === n.id ? 'on' : ''}">${esc(n.t)}${n.id === 'admin' && pendingN && can('approve') ? `<span class="cnt">${pendingN}</span>` : ''}</button>`).join('')}
-      <div class="grp" style="margin-top:24px">앱 업데이트 ${APP_VERSION.slice(5).replace('-', '/')}</div>
+      <div style="margin:24px 12px 0">${textSizeBox()}</div>
+      <div class="grp" style="margin-top:16px">앱 업데이트 ${APP_VERSION.slice(5).replace('-', '/')}</div>
     </nav>
     <main><div class="page" id="page">${pageView()}</div></main>
   </div>
@@ -1127,7 +1128,7 @@ function seedView() {
 }
 function moreView() {
   const nav = NAV.filter(n => n.show() && !['home', 'products', 'entry', 'count'].includes(n.id));
-  return `${head('더보기', `앱 업데이트 ${APP_VERSION}`)}<div class="card" style="padding:6px">${nav.map(n => `<button class="btn" style="width:100%;justify-content:flex-start;border:0;min-height:48px" data-nav="${n.id}">${esc(n.t)}</button>`).join('')}</div>`;
+  return `${head('더보기', `앱 업데이트 ${APP_VERSION}`)}<div class="card">${textSizeBox()}</div><div class="card" style="padding:6px">${nav.map(n => `<button class="btn" style="width:100%;justify-content:flex-start;border:0;min-height:48px" data-nav="${n.id}">${esc(n.t)}</button>`).join('')}</div>`;
 }
 
 /* ───────── 로그인·신청 ───────── */
@@ -1241,7 +1242,7 @@ function onScanned(code) {
   else if (S.view === 'count') { S.ui.countQ = code; render(); }
   else openProduct(c[0].id);
 }
-function openProduct(pid) { S.ui.drawer = () => productDrawer(pid); render(); }
+function openProduct(pid) { S.ui.drawer = () => productDrawer(pid); render(); resetZoom(); }
 
 /* ───────── 이벤트 ───────── */
 function bind() {
@@ -1258,8 +1259,9 @@ function bind() {
     if (d.mv) { const [id, dir] = d.mv.split(':'); moveStore(id, +dir); render(); return; }
     if (t.id === 'smOrderDone') { await saveStoreOrder(); S.ui.storeEdit = false; toast('매장 순서를 저장했습니다'); return; }
     if (t.id === 'smAll') { S.stores = [...myStores()]; S.sumStores = null; S.ui.range = null; S.ui.storeMenu = false; render(); return; }
-    if (d.sg) { S.stores = [d.sg]; S.sumStores = null; S.ui.storeMenu = false; S.ui.range = null; render(); return; }
-    if (d.nav) { if (d.nav === 'more' && S.view === 'more') return; S.view = d.nav; S.ui.drawer = null; window.scrollTo(0, 0); render(); return; }
+    if (d.sg) { S.stores = [d.sg]; S.sumStores = null; S.ui.storeMenu = false; S.ui.range = null; render(); goTop(); return; }
+    if (d.nav) { if (d.nav === 'more' && S.view === 'more') return; S.view = d.nav; S.ui.drawer = null; render(); goTop(); return; }
+    if (d.tz) { applyTextSize(parseFloat(d.tz)); render(); return; }
     if (d.al != null) { const a = alerts(S.stores)[+d.al]; if (a && a.go) { a.go(); render(); } return; }
     if (d.pid && ev.target.tagName !== 'INPUT') { openProduct(d.pid); return; }
     if (d.close != null) { if (S.ui.stopScan) S.ui.stopScan(); S.ui.drawer = null; S.ui.posPreview = null; render(); return; }
@@ -1288,7 +1290,7 @@ function bind() {
           .finally(() => { S.ui.seeding = false; render(); });
       }); return;
     }
-    if (d.ib) { S.ui.ib = d.ib; S.ui.ibMsg = null; S.ui.ibF = 'all'; render(); return; }
+    if (d.ib) { S.ui.ib = d.ib; S.ui.ibMsg = null; S.ui.ibF = 'all'; render(); goTop(); return; }
     if (t.id === 'ibNew') { S.ui.ib = 'new'; S.ui.ibForm = null; render(); return; }
     if (t.id === 'ibBack') { S.ui.ib = null; render(); return; }
     if (d.ibf) { S.ui.ibF = d.ibf; render(); return; }
@@ -1371,6 +1373,20 @@ function bind() {
 }
 function debounce(fn, ms = 180) { let t; return () => { clearTimeout(t); t = setTimeout(fn, ms); }; }
 function rerenderKeep(sel) { const el = $(sel); const pos = el ? el.selectionStart : null; render(); const n = $(sel); if (n) { n.focus(); try { n.setSelectionRange(pos, pos); } catch (e) { } } }
+/* ───────── 화면 맞춤: 확대해서 보다가 다른 화면으로 가면 원래 크기로 ───────── */
+function resetZoom() {
+  const vv = window.visualViewport;
+  if (!vv || vv.scale <= 1.01) return;          // 확대 안 했으면 그대로
+  const m = document.querySelector('meta[name="viewport"]'); if (!m) return;
+  const orig = m.getAttribute('content');
+  m.setAttribute('content', 'width=device-width,initial-scale=1,maximum-scale=1,viewport-fit=cover');
+  setTimeout(() => m.setAttribute('content', orig), 400);   // 다시 손가락 확대 가능하게
+}
+function goTop() { resetZoom(); window.scrollTo(0, 0); }
+const TEXT_SIZES = [['보통', 1], ['크게', 1.12], ['아주 크게', 1.25]];
+function applyTextSize(z) { S.ui.textZoom = z; document.documentElement.style.zoom = z === 1 ? '' : String(z); try { localStorage.setItem('smg-text-zoom', String(z)); } catch (e) { } }
+try { const z = parseFloat(localStorage.getItem('smg-text-zoom') || '1'); if (z && z !== 1) applyTextSize(z); } catch (e) { }
+function textSizeBox() { const z = S.ui.textZoom || 1; return `<div class="field"><label>글자 크기 (이 기기만)</label><div class="seg">${TEXT_SIZES.map(([t, v]) => `<button class="${z === v ? 'on' : ''}" data-tz="${v}">${t}</button>`).join('')}</div></div>`; }
 function setUser(u) {
   S.user = u;
   let ord = u && u.storeOrder; try { ord = ord || JSON.parse(localStorage.getItem('smg-store-order:' + (u ? u.uid : '')) || 'null'); } catch (e) { }
