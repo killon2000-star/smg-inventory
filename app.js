@@ -719,7 +719,7 @@ function posDrawer() {
   ${pv ? pv.err ? `<div class="note bad">🔺 ${esc(pv.err)}</div>` : `<div class="card"><h2>확인 · ${esc(storeName(pv.store))}</h2>
     <div class="alerts">${pv.days.map(d => `<div class="al"><span class="ic">${d.ok ? '✔' : '🔺'}</span><span class="tx"><b>${d.date}(${wd(d.date)})</b> 매출 ${won(d.s)} · ${fmt(d.p)}건 · 상품 ${d.items}종 ${fmt(d.q)}개${d.ok ? ' — 결제 합계와 상품 합계 일치' : ` — 🔺 결제 ${won(d.s)} ≠ 상품 ${won(d.si)}`}${d.exists ? '<br>🔸 이미 올린 날짜입니다. 저장하면 덮어씁니다.' : ''}</span></div>`).join('')}
     ${pv.match ? `<div class="al"><span class="ic">${pv.unmatched.length ? '🔸' : '✔'}</span><span class="tx">재고 차감: 상품 ${pv.match.length}종 찾음${pv.unmatched.length ? ` · 못 찾은 ${pv.unmatched.length}종 (${esc(pv.unmatched.slice(0, 3).join(', '))}${pv.unmatched.length > 3 ? ' 외' : ''}) — 재고에 없는 상품은 차감하지 않습니다` : ''}</span></div>` : ''}</div>
-    <label class="ck"><input type="checkbox" id="posDeduct" checked><span><span class="t">판매 수량을 재고에서 빼기</span><span class="s" style="display:block">찾은 상품만 '판매'로 기록합니다</span></span></label>
+    <label class="ck"><input type="checkbox" id="posDeduct" ${pv.days.some(d => d.exists) ? '' : 'checked'}><span><span class="t">판매 수량을 재고에서 빼기</span><span class="s" style="display:block">${pv.days.some(d => d.exists) ? '🔸 이미 올린 날짜가 있어 꺼 두었습니다. 그날 재고를 이미 뺐다면 다시 빼면 두 번 빠집니다.' : "찾은 상품만 '판매'로 기록합니다"}</span></span></label>
     <div class="row" style="justify-content:flex-end;margin-top:10px"><button class="btn pri" id="posSave" ${pv.days.every(d => d.ok) ? '' : 'disabled'}>매출 저장</button></div></div>` : ''}`;
 }
 async function readPos(f, store) {
