@@ -779,13 +779,13 @@ async function receive(id) {
 /* ───────── 기록 ───────── */
 function recordsView() {
   const q = norm(S.ui.recQ); let L = S.moves.filter(m => S.stores.includes(m.store));
+  const tot = {}; for (const m of L) tot[m.type] = (tot[m.type] || 0) + 1;
   if (S.ui.recType) L = L.filter(m => m.type === S.ui.recType);
   if (q) L = L.filter(m => norm((S.P[m.pid] || {}).name).includes(q) || norm(m.memo).includes(q) || (S.P[m.pid] || {}).barcode === S.ui.recQ.trim());
   const types = [...new Set(S.moves.map(m => m.type))];
-  const tot = {}; for (const m of L) tot[m.type] = (tot[m.type] || 0) + m.qty;
   return `${head('기록', `${fmt(L.length)}건 · 최근 것부터`)}
   <div class="card" style="display:flex;flex-direction:column;gap:10px"><div class="row"><div class="search">${ic('search')}<input class="inp" id="rq" type="search" placeholder="상품명·메모·바코드" value="${esc(S.ui.recQ)}"></div></div>
-  <div class="chips"><button class="chip ${!S.ui.recType ? 'on' : ''}" data-rt="">전체</button>${types.map(t => `<button class="chip ${S.ui.recType === t ? 'on' : ''}" data-rt="${esc(t)}">${esc(t)} <span class="num">${fmt(Math.abs(tot[t] || 0))}</span></button>`).join('')}</div></div>
+  <div class="chips"><button class="chip ${!S.ui.recType ? 'on' : ''}" data-rt="">전체</button>${types.map(t => `<button class="chip ${S.ui.recType === t ? 'on' : ''}" data-rt="${esc(t)}">${esc(t)} <span class="num">${fmt(tot[t] || 0)}건</span></button>`).join('')}</div></div>
   <div class="card" style="padding:8px 12px">${movesTable(L.slice(-400).reverse())}${L.length > 400 ? '<p class="muted" style="font-size:13px">최근 400건만 보여 줍니다.</p>' : ''}</div>`;
 }
 
