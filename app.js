@@ -1159,7 +1159,7 @@ function loginView() {
     ${S.mode === 'demo' ? '<div class="note">미리보기: 직원이 처음 들어오면 보는 화면입니다. 실제로는 구글 로그인 후 이 신청서를 냅니다.</div>' : ''}
     ${inAppNotice()}
     ${sent ? `<div class="card"><h2>🔸 승인 대기 중</h2><p style="margin:0">신청을 보냈습니다. 유명훈 본부장님이 승인하면 바로 쓸 수 있습니다.</p></div>${S.mode === 'live' ? '<button class="btn" id="logout2">다른 계정으로 로그인</button>' : ''}` : S.mode === 'live' && !S.ui.authUser ? `
-    <p class="muted" style="margin:0;text-align:center">회사에서 쓰는 구글 계정으로 로그인한 뒤 사용 신청을 보내 주세요.</p>
+    <p class="muted" style="margin:0;text-align:center">구글 계정으로 로그인한 뒤 사용 신청을 보내 주세요.</p>
     <button class="gbtn" id="gLogin">${GICON}Google 계정으로 로그인</button>` : `
     ${S.mode === 'live' ? '' : `<button class="gbtn" id="gLogin">${GICON}Google 계정으로 계속하기</button>`}
     <div class="card" style="display:flex;flex-direction:column;gap:12px"><h2>사용 신청</h2>
