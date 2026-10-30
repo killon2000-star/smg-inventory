@@ -101,7 +101,7 @@ const DemoBackend = {
     if (d.incoming && d.incoming.length) S.inbounds.push({ id: 'IB-261112-AOT', store: 'suwon', date: d.incoming[0].date, title: '진격의 거인 팝업 입고 예정 (SMG 상품리스트)', ip: '진격의 거인', from: 'SMG 홀딩스', status: 'planned', by: '', at: '2026-10-29',
       items: d.incoming.map(x => { const p = d.products.find(q => q.id === x.pid) || {}; return { key: 'p:' + x.pid, pid: x.pid, name: p.name || x.pid, code: p.barcode || p.sku || x.pid, plan: x.qty, price: p.price || null, actual: null }; }), extra: [] });
     S.sales = { suwon: d.sales.suwon, boxcafe: {}, museum: {}, omake: {}, limission: {} };
-    S.settle = d.settle;
+    S.settle = d.settle; S.settleRules = d.settleRules || null;
     S.users = demoUsers();
   },
   async saveMoves(list) { /* 미리보기: 화면 안에서만 반영 */ return true; },
@@ -1046,12 +1046,56 @@ function pickFile(accept, cb) {
 }
 function loadScript(src) { return new Promise((ok, no) => { const s = document.createElement('script'); s.src = src; s.onload = ok; s.onerror = () => no(new Error('라이브러리를 불러오지 못했습니다')); document.head.appendChild(s); }); }
 
+/* ───────── 정산 계산: 매출 파일을 올리면 바로 다시 계산 ───────── */
+function settleKey(R, ip, name) {
+  if (ip === '하이큐 쉬는시간') return R.hkC.includes(name) ? '하이큐 쉬는시간(SMG-C)' : '하이큐 쉬는시간(SMG_H)';
+  if (ip === 'SMG-C 은혼 요시와라 대염상' && String(name).includes('(영상)')) return '은혼 요시와라 대염상(MP)';
+  return ip;
+}
+function settleRate(R, key, month) {
+  if (R.creConsign.includes(key)) return ['크리에이티브 위탁', 0.8];
+  if (R.oninBuy.includes(key)) return ['온인터 사입', 0.8];
+  if (key === R.license.key) return ['홀딩스', month < R.license.before ? R.license.old : R.license.new];
+  if (R.rates[key]) return R.rates[key];
+  return ['요율 확인 필요', null];
+}
+function computeSettle(store = 'suwon') {
+  const R = S.settleRules; if (!R) return null;
+  const out = []; const months = Object.keys(S.sales[store] || {}).filter(m => m >= R.from && !R.confirmed.includes(m)).sort();
+  for (const m of months) {
+    const g = {}; let lastD = '';
+    for (const [dd, rec] of Object.entries(S.sales[store][m].days || {})) {
+      lastD = dd > lastD ? dd : lastD;
+      for (const [name, [q, sales, ip]] of Object.entries(rec.pr || {})) {
+        const k = settleKey(R, ip, name); const x = g[k] ||= { sales: 0, gel: 0 }; x.sales += sales;
+        if (k === R.gelKey && name.includes(R.gelKeyword)) x.gel += sales;
+      }
+    }
+    for (const [k, x] of Object.entries(g)) {
+      const [sup, rate] = settleRate(R, k, m);
+      const onin = rate == null ? '' : Math.round(x.sales * rate);
+      const cre = sup === '크리에이티브 위탁' ? Math.round(x.gel * R.gelCreRate + (x.sales - x.gel) * R.creRate) : 0;
+      out.push({ month: m, ip: k, supplier: sup, sales: x.sales, rate: rate == null ? '' : rate, onin, creative: cre, net: rate == null ? '' : onin - cre, status: '예상', last_date: `${m}-${lastD}`, kind: 'ip' });
+    }
+    out.push({ month: m, ip: '시공비 (월 차감)', supplier: '차감', sales: 0, rate: '', onin: -R.construction, creative: 0, net: -R.construction, status: '예상', last_date: `${m}-${lastD}`, kind: 'deduct' });
+  }
+  return out;
+}
+function settleRows() {
+  const calc = computeSettle(); if (!calc) return S.settle;
+  const done = S.settle.filter(r => (S.settleRules.confirmed || []).includes(r.month));
+  return done.concat(calc);
+}
+
 /* ───────── 정산 (대표만) ───────── */
 function settleView() {
   if (!canSettle()) return '';
-  const months = [...new Set(S.settle.map(r => r.month))].sort().reverse();
+  const ALL = settleRows();
+  const months = [...new Set(ALL.map(r => r.month))].sort().reverse();
   const m = S.ui.settleMonth || months[0];
-  const rows = S.settle.filter(r => r.month === m);
+  const rows = ALL.filter(r => r.month === m);
+  const lastDate = rows.reduce((a, r) => (r.last_date > a ? r.last_date : a), '');
+  const unknown = rows.filter(r => r.kind === 'ip' && r.rate === '');
   const ipRows = rows.filter(r => r.kind === 'ip').sort((a, b) => b.net - a.net); const ded = rows.filter(r => r.kind !== 'ip');
   const T = k => rows.reduce((a, r) => a + (+r[k] || 0), 0);
   const st = rows[0] ? rows[0].status : '';
@@ -1060,6 +1104,8 @@ function settleView() {
     <div class="tile"><span class="lb">온인터 배분</span><span class="v big${String(fmt(T('onin'))).length>9?' long':''}">${fmt(T('onin'))}<small>원</small></span></div>
     <div class="tile"><span class="lb">크리에이티브 지급</span><span class="v big${String(fmt(-T('creative'))).length>9?' long':''}">${fmt(-T('creative'))}<small>원</small></span></div>
     <div class="tile"><span class="lb">순수익 (${/확정/.test(st) ? '✔ 확정' : '🔸 예상'})</span><span class="v big${String(fmt(T('net'))).length>9?' long':''}">${fmt(T('net'))}<small>원</small></span><span class="d muted">시공비 차감 포함</span></div></div>
+  <div class="note" style="font-size:12.5px">${/확정/.test(st) ? '✔ 홀딩스 정산서와 맞춘 확정 금액입니다.' : `🔸 예상 금액 · 매출 <b>${esc(lastDate)}</b>까지 반영 · 토스포스 파일을 올리면 바로 다시 계산됩니다.${S.settleRules ? '' : ' (정산 요율이 아직 등록되지 않아 마지막으로 넣은 자료를 보여 줍니다)'}`}</div>
+  ${unknown.length ? `<div class="note bad">🔺 요율이 정해지지 않은 IP ${unknown.length}개: ${unknown.map(r => esc(r.ip)).join(', ')} — 순수익 합계에서 빠져 있습니다.</div>` : ''}
   <div class="card"><h2>IP별</h2><div class="tw"><table><thead><tr><th>IP</th><th class="hide-s">공급</th><th class="n">판매 금액</th><th class="n">요율</th><th class="n">온인터 배분</th><th class="n hide-s">크리에이티브 지급</th><th class="n">순수익</th></tr></thead><tbody>
   ${ipRows.map(r => `<tr><td class="nm">${esc(r.ip)}</td><td class="hide-s nowrap muted">${esc(r.supplier)}</td><td class="n">${fmt(r.sales)}</td><td class="n">${r.rate === '' ? '-' : Math.round(r.rate * 100) + '%'}</td><td class="n">${fmt(r.onin)}</td><td class="n hide-s">${r.creative ? fmt(-r.creative) : '-'}</td><td class="n" style="font-weight:700">${fmt(r.net)}</td></tr>`).join('')}
   ${ded.map(r => `<tr><td class="nm">${esc(r.ip)}</td><td class="hide-s muted">차감</td><td class="n">-</td><td class="n">-</td><td class="n">${fmt(r.onin)}</td><td class="n hide-s">-</td><td class="n" style="font-weight:700;color:var(--bad)">${fmt(r.net)}</td></tr>`).join('')}
@@ -1070,12 +1116,13 @@ function settleView() {
 function adminView() {
   const tabs = [['pending', '승인 대기'], ['users', '직원'], ['stores', '매장·회사'], ['pw', '파일 비밀번호'], ['products', '상품 목록']].filter(([k]) => can('approve') || k === 'products');
   if (isOwner()) tabs.push(['check', '자료 점검']);
+  if (isOwner() && S.mode === 'live') tabs.push(['rules', '정산 요율']);
   if (isOwner() && S.mode === 'live') tabs.push(['seed', '처음 자료 넣기']);
   const t = S.ui.adminTab;
   const pendingN = S.users.filter(u => u.status === 'pending').length;
   return `${head('관리', '승인권자: 유명훈 본부장 · 사용자 승인 권한이 있는 사람만 볼 수 있습니다', S.mode === 'demo' ? '<button class="btn" id="showApply">직원 신청 화면 보기</button>' : '')}
   <div class="seg">${tabs.map(([k, n]) => `<button class="${t === k ? 'on' : ''}" data-at="${k}">${n}${k === 'pending' && pendingN ? ` (${pendingN})` : ''}</button>`).join('')}</div>
-  ${t === 'check' ? checkView() : t === 'seed' ? seedView() : t === 'pending' ? pendingView() : t === 'users' ? usersView() : t === 'stores' ? storesAdmin() : t === 'pw' ? pwView() : productsAdmin()}`;
+  ${t === 'rules' ? rulesView() : t === 'check' ? checkView() : t === 'seed' ? seedView() : t === 'pending' ? pendingView() : t === 'users' ? usersView() : t === 'stores' ? storesAdmin() : t === 'pw' ? pwView() : productsAdmin()}`;
 }
 function recPerms(u) {
   const lim = u.company === '기타(직접 입력)';
@@ -1143,6 +1190,12 @@ function productsAdmin() {
     <p class="muted" style="margin:0 0 10px;font-size:13px">새 상품은 엑셀로 한꺼번에 등록하거나 한 개씩 추가합니다. 같은 바코드는 두 번 등록되지 않습니다.</p>
     ${dupBar.length || dupName.length ? `<div class="alerts">${dupBar.map(([k, v]) => `<div class="al"><span class="ic">🔺</span><span class="tx"><b>바코드·품번 중복</b> ${esc(k)} — ${v.map(p => esc(p.name)).join(' / ')}</span></div>`).join('')}
     ${dupName.map(v => `<div class="al"><span class="ic">🔸</span><span class="tx"><b>같은 이름, 다른 품번</b> ${esc(v[0].name)} — ${v.map(p => `${esc(p.barcode || p.sku)}${p.price ? ` (${fmt(p.price)}원)` : ''}`).join(' / ')}</span></div>`).join('')}</div>` : '<div class="empty">✔ 중복 없음</div>'}</div>`;
+}
+function rulesView() {
+  const R = S.settleRules;
+  return `<div class="card"><h2>정산 요율 (대표만)</h2><p class="muted" style="margin:0 0 10px;font-size:13px">IP별 온인터 요율표입니다. 이 표로 매출 파일을 올릴 때마다 정산 예상을 다시 계산합니다. 요율표는 Firebase의 정산 칸(대표·정산 담당자만 읽기)에만 저장되고 공개 코드에는 들어가지 않습니다.</p>
+  ${R ? `<div class="note">✔ 등록됨 · ${esc(R.updated || '')} · IP ${Object.keys(R.rates).length}개 + 크리에이티브 위탁 ${R.creConsign.length}개 · 시공비 월 ${fmt(R.construction)}원</div>` : '<div class="note warn">🔸 아직 등록되지 않았습니다. Claude가 보내 드린 smg-정산요율.json 파일을 골라 주세요.</div>'}
+  <div style="margin-top:10px"><button class="btn pri" id="rulesBtn">요율 파일 고르기</button></div></div>`;
 }
 function checkView() {
   const rows = [];
@@ -1318,6 +1371,7 @@ function bind() {
     if (t.id === 'eSave') { await saveEntry(); return; }
     if (t.id === 'fileBtn') { pickFile('.xlsx,.xls,.csv', f => readFile(f)); return; }
     if (t.id === 'posFileBtn') { const st = $('#posStore').value; pickFile('.zip,.xlsx', f => readPos(f, st)); return; }
+    if (t.id === 'rulesBtn') { pickFile('.json,application/json', f => f.text().then(JSON.parse).then(async r => { if (!r.rates || !r.creConsign) throw new Error('정산 요율 파일이 아닙니다'); if (DB.saveSettleRules) await DB.saveSettleRules(r); S.settleRules = r; toast('정산 요율을 저장했습니다'); }).catch(e => alertBox('🔺 ' + e.message))); return; }
     if (t.id === 'seedBtn') {
       pickFile('.json,application/json', f => {
         S.ui.seeding = true; S.ui.seedMsg = `${f.name} 읽는 중…`; render();
