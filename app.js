@@ -217,7 +217,7 @@ function render() {
   <nav class="tabbar" aria-label="아래 메뉴">${tabbar(nav)}</nav>
   ${S.ui.drawer ? `<div class="ov" id="ov"><div class="dr" role="dialog" aria-modal="true">${S.ui.drawer()}</div></div>` : ''}
   ${S.ui.toast ? `<div class="toast" role="status">${esc(S.ui.toast)}</div>` : ''}`;
-  bind();
+  bind(); pinTabbar();
 }
 function tabbar(nav) {
   const main = [{ id: 'home', t: '홈', i: 'home' }, { id: 'products', t: '상품', i: 'box' }];
@@ -1382,6 +1382,17 @@ function resetZoom() {
   m.setAttribute('content', 'width=device-width,initial-scale=1,maximum-scale=1,viewport-fit=cover');
   setTimeout(() => m.setAttribute('content', orig), 400);   // 다시 손가락 확대 가능하게
 }
+// 손가락으로 확대해도 아래 메뉴는 화면 아래에 같은 크기로 붙어 있게
+function pinTabbar() {
+  const vv = window.visualViewport, bar = document.querySelector('.tabbar');
+  if (!vv || !bar) return;
+  if (vv.scale <= 1.01) { bar.style.transform = ''; return; }
+  const layoutH = document.documentElement.clientHeight;
+  const x = vv.offsetLeft, y = vv.offsetTop + vv.height - layoutH;
+  bar.style.transformOrigin = 'left bottom';
+  bar.style.transform = `translate(${x}px, ${y}px) scale(${1 / vv.scale})`;
+}
+if (window.visualViewport) { visualViewport.addEventListener('resize', pinTabbar); visualViewport.addEventListener('scroll', pinTabbar); }
 function goTop() { resetZoom(); window.scrollTo(0, 0); }
 const TEXT_SIZES = [['보통', 1], ['크게', 1.12], ['아주 크게', 1.25]];
 function applyTextSize(z) { S.ui.textZoom = z; document.documentElement.style.zoom = z === 1 ? '' : String(z); try { localStorage.setItem('smg-text-zoom', String(z)); } catch (e) { } }
