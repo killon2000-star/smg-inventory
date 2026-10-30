@@ -122,6 +122,22 @@ window.SMG_FIREBASE = function (S, X) {
       const u = auth.currentUser;
       await db.collection('users').doc(u.uid).set({ name: f.name, email: u.email, company: f.company, companyOther: f.other || '', places: f.places, position: f.position, phone: f.phone || '', memo: f.memo || '', status: 'pending', perms: null, createdAt: ts() });
     },
+    /* 대표 전용: 매출·정산 자료만 다시 넣기 (한 달씩, 이미 올린 날짜는 그대로 둠) */
+    async reseedSales(data, progress) {
+      if (!S.user.owner) throw new Error('대표 계정만 할 수 있습니다');
+      const ok = [], fail = []; const jobs = [];
+      for (const [st, months] of Object.entries(data.sales || {})) for (const [ym, v] of Object.entries(months)) jobs.push(['sales', st + ' ' + ym, db.doc(`stores/${st}/sales/${ym}`), v, true]);
+      const byM = {}; for (const r of (data.settle || [])) (byM[r.month] ||= []).push(r);
+      for (const [m, rows] of Object.entries(byM)) jobs.push(['settle', '정산 ' + m, db.doc('settle/' + m), { rows }, false]);
+      if (data.settleRules) jobs.push(['rules', '정산 요율', db.doc('settle/_rules'), data.settleRules, false]);
+      let i = 0;
+      for (const [kind, label, ref, v, merge] of jobs) {
+        try { await ref.set(v, merge ? { merge: true } : {}); ok.push(label); }
+        catch (e) { fail.push(label + ' — ' + (e.code || '') + ' ' + (e.message || e)); }
+        progress && progress(++i, jobs.length);
+      }
+      return { ok, fail };
+    },
     /* 대표 전용: 처음 한 번 수원 자료 넣기 */
     async seed(data, progress) {
       if (!S.user.owner) throw new Error('대표 계정만 할 수 있습니다');

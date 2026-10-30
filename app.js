@@ -1212,7 +1212,8 @@ function checkView() {
 }
 function seedView() {
   return `<div class="card"><h2>처음 자료 넣기 (대표만, 한 번만)</h2><p style="margin:0 0 10px;font-size:13px"><b>smg-seed-수원.json</b> 파일을 고르면 수원 상품·재고·입출고 기록·매출·정산 자료를 한 번에 넣습니다. 이미 넣었다면 다시 하지 마세요 (같은 내용으로 덮어씁니다).</p>
-  <button class="btn pri" id="seedBtn" ${S.ui.seeding ? 'disabled' : ''}>파일 고르기</button><div class="muted" style="margin-top:8px;font-weight:600">${esc(S.ui.seedMsg || '')}</div></div>`;
+  <div class="row"><button class="btn pri" id="seedBtn" ${S.ui.seeding ? 'disabled' : ''}>전체 다시 넣기</button><button class="btn" id="reseedBtn" ${S.ui.seeding ? 'disabled' : ''}>매출·정산만 다시 넣기</button></div>
+  <p class="muted" style="font-size:12.5px;margin:8px 0 0">매출이 빠진 날이 있을 때는 <b>[매출·정산만 다시 넣기]</b>를 쓰세요. 한 달씩 넣고, 앱에서 이미 올린 날짜(예: 10/30)는 지우지 않습니다. 실패한 달이 있으면 아래에 이유가 나옵니다.</p><div class="muted" style="margin-top:8px;font-weight:600">${esc(S.ui.seedMsg || '')}</div></div>`;
 }
 function moreView() {
   const nav = NAV.filter(n => n.show() && !['home', 'products', 'entry', 'count'].includes(n.id));
@@ -1372,6 +1373,15 @@ function bind() {
     if (t.id === 'fileBtn') { pickFile('.xlsx,.xls,.csv', f => readFile(f)); return; }
     if (t.id === 'posFileBtn') { const st = $('#posStore').value; pickFile('.zip,.xlsx', f => readPos(f, st)); return; }
     if (t.id === 'rulesBtn') { pickFile('.json,application/json', f => f.text().then(JSON.parse).then(async r => { if (!r.rates || !r.creConsign) throw new Error('정산 요율 파일이 아닙니다'); if (DB.saveSettleRules) await DB.saveSettleRules(r); S.settleRules = r; toast('정산 요율을 저장했습니다'); }).catch(e => alertBox('🔺 ' + e.message))); return; }
+    if (t.id === 'reseedBtn') {
+      pickFile('.json,application/json', f => {
+        S.ui.seeding = true; S.ui.seedMsg = `${f.name} 읽는 중…`; render();
+        f.text().then(JSON.parse).then(d => DB.reseedSales(d, (a, b) => { S.ui.seedMsg = `넣는 중 ${a} / ${b}`; render(); }))
+          .then(r => { S.ui.seedMsg = r.fail.length ? `🔺 ${r.ok.length}건 성공, ${r.fail.length}건 실패: ${r.fail.join(' / ')}` : `✔ ${r.ok.length}건 모두 넣었습니다. 관리 › 자료 점검과 정산 화면을 확인해 주세요.`; })
+          .catch(e => { S.ui.seedMsg = '🔺 ' + (e.message || e); })
+          .finally(() => { S.ui.seeding = false; render(); });
+      }); return;
+    }
     if (t.id === 'seedBtn') {
       pickFile('.json,application/json', f => {
         S.ui.seeding = true; S.ui.seedMsg = `${f.name} 읽는 중…`; render();
