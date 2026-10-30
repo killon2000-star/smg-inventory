@@ -201,8 +201,9 @@ function render() {
   const sv = S.stores.length === 1 ? storeName(S.stores[0]) : `${S.stores.length}개 매장 함께 보기`;
   app.innerHTML = `
   <header class="top">
+    <button class="logo-btn" id="logoHome" aria-label="첫 화면으로"><img src="logo-w.png" alt="SMG STORE"></button>
     <button class="store-btn" id="storeBtn" aria-haspopup="true" aria-expanded="${S.ui.storeMenu}">
-      <img src="logo-w.png" alt="SMG STORE"><span class="nm">${esc(sv)}</span><span class="car"></span>
+      <span class="nm">${esc(sv)}</span><span class="car"></span>
     </button>
     <span class="sp"></span>
     ${S.mode === 'demo' ? '' : `<div class="who"><span class="nmx">${esc(S.user.name)} · ${esc(S.user.position)}</span><button class="btn sm" id="logout">로그아웃</button></div>`}
@@ -1270,6 +1271,7 @@ function bind() {
     if (d.install != null) { doInstall(); return; }
     if (d.openext != null) { openExternal(); return; }
     if (d.copylink != null) { copyLink(); return; }
+    if (t.id === 'logoHome') { S.view = 'home'; S.ui.drawer = null; S.ui.storeMenu = false; S.ui.ib = null; render(); goTop(); return; }
     if (t.id === 'storeBtn2') { S.ui.storeMenu = true; render(); return; }
     if (t.id === 'storeBtn') { S.ui.storeMenu = !S.ui.storeMenu; render(); return; }
     if (t.id === 'scrim' || t.id === 'smClose') { if (S.ui.storeEdit) await saveStoreOrder(); S.ui.storeEdit = false; S.ui.storeMenu = false; render(); return; }
