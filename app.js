@@ -37,7 +37,7 @@ const PERM_DEF = [
 ];
 
 const DEFAULT_ORDER = STORES.map(s => s.id);
-const APP_VERSION = '2026-10-31 00:20';   // 앱 화면을 마지막으로 고친 시각 (한국 시간)
+const APP_VERSION = '2026-10-31 00:25';   // 앱 화면을 마지막으로 고친 시각 (한국 시간)
 /* ───────── 작은 도구 ───────── */
 const $ = (s, el = document) => el.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -1756,14 +1756,15 @@ function pinTabbar() {
   bar.style.transform = `translate(${x}px, ${y}px) scale(${1 / vv.scale})`;
 }
 if (window.visualViewport) { visualViewport.addEventListener('resize', pinTabbar); visualViewport.addEventListener('scroll', pinTabbar); }
-// 왼쪽 아래 시계 (대한민국 시간, 요일 포함)
+// 왼쪽 아래 시계 — 쓰는 기기의 시스템 시간 (해외에서는 현지 시간 + 한국 시간 함께)
 (function kclock() {
-  const el = document.createElement('div'); el.className = 'kclock'; el.setAttribute('aria-label', '한국 시간');
-  const dF = new Intl.DateTimeFormat('ko-KR', { timeZone: 'Asia/Seoul', year: 'numeric', month: 'long', day: 'numeric', weekday: 'short' });
-  const tF = new Intl.DateTimeFormat('ko-KR', { timeZone: 'Asia/Seoul', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
+  const el = document.createElement('div'); el.className = 'kclock'; el.setAttribute('aria-label', '현재 시간');
+  const W = '일월화수목금토', p2 = n => String(n).padStart(2, '0');
+  const kF = new Intl.DateTimeFormat('ko-KR', { timeZone: 'Asia/Seoul', hour: '2-digit', minute: '2-digit', hour12: false });
   const tick = () => {
-    const now = new Date(), p = Object.fromEntries(dF.formatToParts(now).map(x => [x.type, x.value]));
-    el.innerHTML = `<span class="kd">${p.year}.${String(p.month).replace('월', '').padStart(2, '0')}.${String(p.day).padStart(2, '0')} <b>(${p.weekday})</b></span><span class="kt">${tF.format(now)}</span>`;
+    const d = new Date(), abroad = d.getTimezoneOffset() !== -540;
+    let zone = ''; try { zone = Intl.DateTimeFormat().resolvedOptions().timeZone.split('/').pop().replace(/_/g, ' '); } catch (e) { }
+    el.innerHTML = `<span class="kd">${d.getFullYear()}.${p2(d.getMonth() + 1)}.${p2(d.getDate())} <b>(${W[d.getDay()]})</b>${abroad ? ` <span class="kz">${zone || '현지'}</span>` : ''}</span><span class="kt">${p2(d.getHours())}:${p2(d.getMinutes())}:${p2(d.getSeconds())}</span>${abroad ? `<span class="kk">한국 ${kF.format(d)}</span>` : ''}`;
     el.style.display = S.user && !S.ui.showApply ? '' : 'none';
   };
   const start = () => { document.body.appendChild(el); tick(); setInterval(tick, 1000); };

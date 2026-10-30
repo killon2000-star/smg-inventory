@@ -94,15 +94,18 @@ button{cursor:pointer}
 .tzlist button{background:none;border:0;border-top:1px solid var(--line-2);text-align:left;padding:0 14px;min-height:44px;color:var(--ink,inherit)}
 .tzlist button:first-child{border-top:0}
 .tzlist button.on{color:var(--red);font-weight:700;background:var(--surface-2)}
-.kclock{position:fixed;z-index:56;left:max(12px,env(safe-area-inset-left,0px));bottom:12px;display:flex;flex-direction:column;gap:1px;padding:8px 12px;border-radius:10px;background:var(--black,#111);color:#fff;font-variant-numeric:tabular-nums;box-shadow:0 4px 14px rgba(0,0,0,.18);pointer-events:none;line-height:1.25}
-.kclock .kd{font-size:12px;color:#d6d6db}
+.kclock{position:fixed;z-index:56;left:max(10px,env(safe-area-inset-left,0px));bottom:10px;width:190px;box-sizing:border-box;display:grid;grid-template-columns:1fr auto;align-items:baseline;gap:2px 8px;padding:10px 14px;border-radius:10px;background:var(--black,#111);color:#fff;font-variant-numeric:tabular-nums;box-shadow:0 4px 14px rgba(0,0,0,.18);pointer-events:none;line-height:1.25}
+.kclock .kd{grid-column:1/-1;font-size:12.5px;color:#d6d6db}
 .kclock .kd b{color:#fff;font-weight:700}
-.kclock .kt{font-size:18px;font-weight:700;letter-spacing:.02em}
-.side{padding-bottom:84px}
+.kclock .kz{font-size:11px;color:#9a9aa2;margin-left:4px}
+.kclock .kt{font-size:24px;font-weight:700;letter-spacing:.02em}
+.kclock .kk{font-size:11.5px;color:#d6d6db;white-space:nowrap}
+.side{padding-bottom:96px}
 @media (max-width: 900px){
-  .kclock{bottom:calc(var(--tabh,64px) + 8px);left:8px;padding:5px 9px;flex-direction:row;align-items:baseline;gap:6px;opacity:.92}
-  .kclock .kd{font-size:11px}
-  .kclock .kt{font-size:13px}
+  .kclock{left:0;right:0;width:auto;bottom:var(--tabh,64px);border-radius:0;box-shadow:none;padding:5px max(14px,env(safe-area-inset-left,0px));grid-template-columns:auto 1fr auto;gap:10px;align-items:center}
+  .kclock .kd{grid-column:auto;font-size:12px}
+  .kclock .kt{font-size:15px;text-align:right}
+  .kclock .kk{font-size:11px}
   main{padding-bottom:calc(var(--tabh,64px) + 56px)}
 }
 .ipgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px}
@@ -318,7 +321,7 @@ tr.flag td{background:var(--warn-bg)}
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 <script src="config.js"></script>
 <script src="firebase.js?v=24"></script>
-<script src="app.js?v=30"></script>
+<script src="app.js?v=31"></script>
 <script>if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});</script>
 
 </body></html>
