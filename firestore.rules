@@ -19,6 +19,8 @@ service cloud.firestore {
 
     // 앱 설정 (매장 목록 등)
     match /config/app { allow read: if signed(); allow write: if perm('approve'); }
+    // 공지사항: 로그인한 사람 모두 보기, 대표만 쓰기
+    match /config/notice { allow read: if signed(); allow write: if isOwner(); }
     // 토스포스 zip 비밀번호: 매출·승인 권한자만
     match /config/zip { allow read: if perm('sales') || perm('approve'); allow write: if perm('approve') || perm('sales'); }
 

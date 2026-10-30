@@ -37,7 +37,7 @@ const PERM_DEF = [
 ];
 
 const DEFAULT_ORDER = STORES.map(s => s.id);
-const APP_VERSION = '2026-10-31 00:55';   // 앱 화면을 마지막으로 고친 시각 (한국 시간)
+const APP_VERSION = '2026-10-31 01:00';   // 앱 화면을 마지막으로 고친 시각 (한국 시간)
 /* ───────── 작은 도구 ───────── */
 const $ = (s, el = document) => el.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -242,7 +242,7 @@ function render() {
     <button class="store-btn" id="storeBtn" aria-haspopup="true" aria-expanded="${S.ui.storeMenu}">
       <span class="nm">${esc(sv)}</span><span class="car"></span>
     </button>
-    <span class="sp"></span>
+    ${noticeBar()}
     ${S.mode === 'demo' ? '' : `<div class="who"><span class="nmx">${esc(S.user.name)} · ${esc(S.user.position)}</span><button class="btn sm" id="logout">로그아웃</button></div>`}
   </header>
   ${S.mode === 'demo' ? `<div class="demobar"><span class="demo-tag">미리보기</span><label for="roleSel">권한별로 보기</label><select id="roleSel">${DEMO_ROLES.map(r => `<option value="${r.uid}" ${S.user.uid === r.uid ? 'selected' : ''}>${esc(r.label)}</option>`).join('')}</select><span class="muted hide-s">수원 실제 자료 · 저장한 내용은 새로고침하면 처음 상태로 돌아갑니다</span></div>` : ''}
@@ -545,6 +545,30 @@ async function saveIpPlan(list) {
   if (DB.saveIpPlan) await DB.saveIpPlan(list.map(({ _lane, ...r }) => r), S.ipPlanAt).catch(e => toast('저장하지 못했습니다: ' + e.message));
 }
 function kstStamp() { const d = new Date(Date.now() + 9 * 3600e3); return `${d.getUTCMonth() + 1}/${d.getUTCDate()} ${String(d.getUTCHours()).padStart(2, '0')}:${String(d.getUTCMinutes()).padStart(2, '0')} ${S.user ? S.user.name : ''}`.trim(); }
+
+/* ───────── 공지사항 (대표만 입력, 모든 직원에게 맨 위 가운데 표시) ───────── */
+function noticeBar() {
+  const n = S.notice && S.notice.text && S.notice.text.trim() ? S.notice : null;
+  if (!n && !isOwner()) return '<span class="sp"></span>';
+  return `<button class="notice${n ? '' : ' empty'}" id="noticeBtn" aria-label="공지사항${n ? ' 보기' : ' 입력'}"><span class="nt-ic">공지</span><span class="nt-tx">${n ? esc(n.text.split('\n')[0]) : '공지사항 입력하기'}</span>${n && n.text.includes('\n') ? '<span class="nt-more">더보기</span>' : ''}</button>`;
+}
+function noticeDrawer() {
+  const n = S.notice || {}, edit = isOwner();
+  return `<div class="hd"><h3>공지사항</h3><button class="x" data-close aria-label="닫기">×</button></div>
+  ${edit ? `<div class="card" style="display:flex;flex-direction:column;gap:10px">
+      <div class="field"><label for="ntText">공지 내용 <span class="muted" style="font-weight:400">· 첫 줄이 맨 위에 보이고, 누르면 전체가 보입니다</span></label>
+      <textarea class="inp" id="ntText" rows="6" style="resize:vertical;min-height:120px" placeholder="예: 11/12(목) 진격의 거인 팝업 오픈 — 전날 18시까지 진열 완료">${esc(n.text || '')}</textarea></div>
+      ${n.at ? `<div class="muted" style="font-size:12px">마지막 수정 ${esc(n.at)}</div>` : ''}
+    </div>
+    <div class="row" style="justify-content:space-between">${n.text ? '<button class="btn" id="ntClear" style="color:var(--red)">공지 내리기</button>' : '<span></span>'}<span class="row"><button class="btn" data-close>취소</button><button class="btn pri" id="ntSave">공지 올리기</button></span></div>`
+  : `<div class="card"><div style="white-space:pre-wrap;line-height:1.6;font-size:15px">${esc(n.text || '등록된 공지가 없습니다')}</div>${n.at ? `<div class="muted" style="font-size:12px;margin-top:10px">${esc(n.at)}</div>` : ''}</div>
+    <div class="row" style="justify-content:flex-end"><button class="btn pri" data-close>확인</button></div>`}`;
+}
+async function saveNotice(text) {
+  const n = { text: text.trim(), at: kstStamp(), by: S.user ? S.user.name : '' };
+  S.notice = n;
+  if (DB.saveNotice) await DB.saveNotice(n).catch(e => { toast('저장하지 못했습니다: ' + e.message); });
+}
 
 function homeView() {
   const st = S.stores;
@@ -1606,6 +1630,9 @@ function bind() {
     if (d.openext != null) { openExternal(); return; }
     if (d.copylink != null) { copyLink(); return; }
     if (t.closest && t.closest('#navBack')) { try { history.back(); } catch (e) { goBack(); } return; }
+    if (t.id === 'noticeBtn') { S.ui.drawer = noticeDrawer; render(); return; }
+    if (t.id === 'ntSave' && isOwner()) { const v = (document.getElementById('ntText') || {}).value || ''; S.ui.drawer = null; await saveNotice(v); toast(v.trim() ? '공지를 올렸습니다' : '공지를 내렸습니다'); return; }
+    if (t.id === 'ntClear' && isOwner()) { S.ui.drawer = null; await saveNotice(''); toast('공지를 내렸습니다'); return; }
     if (t.id === 'logoHome') { S.view = 'home'; S.ui.drawer = null; S.ui.storeMenu = false; S.ui.ib = null; render(); goTop(); return; }
     if (t.id === 'storeBtn2') { S.ui.storeMenu = true; render(); return; }
     if (t.id === 'storeBtn') { S.ui.storeMenu = !S.ui.storeMenu; render(); return; }

@@ -70,8 +70,8 @@ button{cursor:pointer}
 .schip.more{color:var(--muted);font-weight:600}
 .logo-btn{background:none;border:0;padding:4px;border-radius:6px;display:flex;align-items:center;flex:none}
 .logo-btn:hover{background:#1d1d20}
-.logo-btn img{height:30px;width:auto}
-@media (max-width:900px){.logo-btn img{height:24px}}
+.logo-btn img{height:40px;width:auto}
+@media (max-width:900px){.logo-btn img{height:30px}}
 /* store menu */
 .pop{position:fixed;z-index:70;top:calc(env(safe-area-inset-top,0px) + 58px);left:max(8px,env(safe-area-inset-left,0px));width:min(360px,calc(100vw - 16px));
   background:var(--surface);color:var(--ink);border:1px solid var(--line);border-radius:10px;box-shadow:var(--shadow);padding:10px}
@@ -158,6 +158,13 @@ body:not(.in-app) .kclock{display:none!important}
 .back-btn{display:inline-flex;align-items:center;gap:6px;height:36px;padding:0 16px 0 12px;border-radius:18px;border:1px solid var(--line);background:var(--surface);color:var(--ink);font-weight:700;font-size:14px;flex:none;align-self:flex-start;margin-left:8px;box-shadow:0 1px 2px rgba(0,0,0,.06)}
 .back-btn:hover{background:var(--surface-2)}
 .back-btn .ar{width:8px;height:8px;border-left:2px solid currentColor;border-bottom:2px solid currentColor;transform:rotate(45deg);margin-left:4px}
+.notice{flex:1;min-width:0;display:flex;align-items:center;justify-content:center;gap:10px;margin:0 16px;height:38px;padding:0 14px;border-radius:19px;background:#1b1b1f;border:1px solid #2e2e34;color:#fff;font-size:14px;font-weight:600}
+.notice:hover{background:#232328}
+.notice .nt-ic{flex:none;background:var(--red);color:#fff;font-size:11.5px;font-weight:800;padding:2px 8px;border-radius:10px}
+.notice .nt-tx{min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.notice .nt-more{flex:none;font-size:12px;color:#a9a9b1;font-weight:500}
+.notice.empty{background:none;border-style:dashed;color:#8c8c95;font-weight:500}
+.notice.empty .nt-ic{background:#3a3a40}
 .srow input{width:18px;height:18px;accent-color:var(--red)}
 .pop .foot{display:flex;gap:8px;justify-content:flex-end;margin-top:8px;padding-top:8px;border-top:1px solid var(--line-2)}
 .scrim{position:fixed;inset:0;z-index:65;background:transparent}
@@ -301,6 +308,8 @@ tr.flag td{background:var(--warn-bg)}
 @media (max-width: 900px){
   .shell{grid-template-columns:1fr}
   .side{display:none}
+  .top{flex-wrap:wrap}
+  .notice{order:9;flex:1 0 100%;margin:0;height:34px;justify-content:flex-start;font-size:13px}
   .tabbar{display:block;position:fixed;left:0;right:0;bottom:0;z-index:55;background:var(--surface);border-top:1px solid var(--line);
     padding-bottom:env(safe-area-inset-bottom,0px);padding-left:env(safe-area-inset-left,0px);padding-right:env(safe-area-inset-right,0px)}
   .tabgrid{display:grid}
@@ -338,8 +347,8 @@ tr.flag td{background:var(--warn-bg)}
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 <script src="config.js"></script>
-<script src="firebase.js?v=24"></script>
-<script src="app.js?v=37"></script>
+<script src="firebase.js?v=25"></script>
+<script src="app.js?v=38"></script>
 <script>if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});</script>
 
 </body></html>
