@@ -165,6 +165,20 @@ body:not(.in-app) .kclock{display:none!important}
 .notice .nt-more{flex:none;font-size:12px;color:#a9a9b1;font-weight:500}
 .notice.empty{background:none;border-style:dashed;color:#8c8c95;font-weight:500}
 .notice.empty .nt-ic{background:#3a3a40}
+.fresh{padding:12px 14px}
+.fresh .fr-hd{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 10px;margin-bottom:6px}
+.fresh .fr-hd .muted{font-size:12px}
+.frlist{display:flex;flex-direction:column}
+.frrow{display:grid;grid-template-columns:140px 1fr 1fr;gap:4px 14px;align-items:center;padding:8px 2px;border-top:1px solid var(--line-2);font-size:13.5px}
+.frlist.nosale .frrow{grid-template-columns:140px 1fr}
+.frn{display:flex;align-items:center;gap:7px;font-weight:700;white-space:nowrap}
+.fri{min-width:0}
+.fri .k{display:inline-block;font-size:11.5px;color:var(--muted);font-weight:600;margin-right:6px}
+@media (max-width: 900px){
+  .frrow,.frlist.nosale .frrow{grid-template-columns:1fr 1fr}
+  .frn{grid-column:1/-1}
+  .fri .k{display:block;margin:0}
+}
 .srow input{width:18px;height:18px;accent-color:var(--red)}
 .pop .foot{display:flex;gap:8px;justify-content:flex-end;margin-top:8px;padding-top:8px;border-top:1px solid var(--line-2)}
 .scrim{position:fixed;inset:0;z-index:65;background:transparent}
@@ -348,7 +362,7 @@ tr.flag td{background:var(--warn-bg)}
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 <script src="config.js"></script>
 <script src="firebase.js?v=26"></script>
-<script src="app.js?v=39"></script>
+<script src="app.js?v=40"></script>
 <script>if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});</script>
 
 </body></html>

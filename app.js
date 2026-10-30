@@ -37,7 +37,7 @@ const PERM_DEF = [
 ];
 
 const DEFAULT_ORDER = STORES.map(s => s.id);
-const APP_VERSION = '2026-10-31 01:05';   // 앱 화면을 마지막으로 고친 시각 (한국 시간)
+const APP_VERSION = '2026-10-31 01:20';   // 앱 화면을 마지막으로 고친 시각 (한국 시간)
 /* ───────── 작은 도구 ───────── */
 const $ = (s, el = document) => el.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -394,7 +394,24 @@ function salesUpdated(stores) {
   for (const st of stores) for (const [ym, m] of Object.entries(S.sales[st] || {})) for (const [dd, r] of Object.entries(m.days)) { const d = ym + '-' + dd; if (d > last) last = d; if (r.up && (!up || r.up.at > up.at)) up = r.up; }
   return { last, up };
 }
+// 여러 매장을 함께 볼 때: 매장마다 마지막 반영 시각이 다를 수 있으니 매장별로 따로 보여 줌
+function freshTable(stores, opt = {}) {
+  if (stores.length < 2) return '';
+  const showSales = can('sales') && opt.sales !== false;
+  const rows = stores.map(st => ({ st, lm: lastMove([st]), su: showSales ? salesUpdated([st]) : null }));
+  const maxSale = rows.reduce((a, r) => (r.su && r.su.last > a ? r.su.last : a), '');
+  const maxMove = rows.reduce((a, r) => (r.lm && (r.lm.at || '') > a ? r.lm.at : a), '');
+  return `<div class="card fresh"><div class="fr-hd"><b>매장별 마지막 반영</b><span class="muted">매장마다 올린 시각이 달라서 합계는 아래 시각 기준입니다</span></div>
+  <div class="frlist${showSales ? '' : ' nosale'}">
+  ${rows.map(r => {
+    const late = showSales && r.su && maxSale && r.su.last && r.su.last < maxSale ? dDiff(r.su.last, maxSale) : 0;
+    return `<div class="frrow"><span class="frn"><span class="dot" style="background:${storeColor(r.st)}"></span>${esc(shortName(r.st))}</span>
+      <span class="fri"><span class="k">재고</span>${r.lm ? `<b>${kst(r.lm.at)}</b> <span class="muted">${esc(r.lm.type)}${r.lm.by && !/claude/i.test(r.lm.by) ? ' · ' + esc(r.lm.by) : ''}</span>` : '<span class="muted">아직 없음</span>'}</span>
+      ${showSales ? `<span class="fri"><span class="k">매출</span>${r.su && r.su.last ? `<b>${md(r.su.last)}</b>까지${r.su.up ? ` <span class="muted">(${kst(r.su.up.at)} 올림)</span>` : ''}${late ? ` <span class="pill p-warn">🔸 ${late}일 늦음</span>` : ''}` : '<span class="pill p-warn">🔸 자료 없음</span>'}</span>` : ''}</div>`;
+  }).join('')}</div></div>`;
+}
 function freshLine(stores) {
+  if (stores.length > 1) return `${stores.length}개 매장 · 매장마다 반영 시각이 다릅니다 (아래 표)`;
   const lm = lastMove(stores); const parts = [];
   if (lm) parts.push(`재고 마지막 반영 <b>${kst(lm.at)}</b> (${esc(lm.type)}${lm.by && !/claude/i.test(lm.by) ? ' · ' + esc(lm.by) : ''})`);
   if (can('sales')) { const su = salesUpdated(stores); if (su.last) parts.push(`매출 <b>${md(su.last)} 마감</b>까지${su.up ? ` (${kst(su.up.at)} ${esc(su.up.by)} 올림)` : ''}`); }
@@ -588,6 +605,7 @@ function homeView() {
     }
   }
   return `${head(multi ? `${st.length}개 매장 요약` : storeName(st[0]), `${freshLine(st) || '아직 반영된 자료가 없습니다'}${limited() ? ' · 재고 수량만 볼 수 있는 계정입니다' : ''}`, installBtn('sm'))}
+  ${freshTable(st)}
   <div class="note" style="font-size:12.5px">ℹ︎ 실시간 자료가 아닙니다. 판매는 <b>토스포스 매출 파일</b>을 올려야, 입고·이동은 <b>등록</b>해야 재고에 반영됩니다. 위 시각을 확인해 주세요.</div>
   ${ipStrip()}
   <div class="tiles">
@@ -628,7 +646,7 @@ function productsView() {
   const rows = productRows(); const st = S.stores; const multi = st.length > 1;
   const ips = [...new Set(S.products.filter(p => st.some(s => (S.stock[s] || {})[p.id] != null)).map(p => p.ip))].sort((a, b) => a.localeCompare(b, 'ko'));
   const shown = rows.slice(0, 300);
-  return `${head('상품·재고', `${fmt(rows.length)}종 · ${freshLine(st) || '이름·바코드·품번·IP로 찾기'}`, `<button class="btn" id="scanBtn">${ic('scan')} 바코드 스캔</button>`)}
+  return `${head('상품·재고', `${fmt(rows.length)}종 · ${freshLine(st) || '이름·바코드·품번·IP로 찾기'}`, `<button class="btn" id="scanBtn">${ic('scan')} 바코드 스캔</button>`)}${freshTable(st, { sales: false })}
   <div class="card" style="display:flex;flex-direction:column;gap:10px">
     <div class="row"><div class="search">${ic('search')}<input class="inp" id="pq" type="search" placeholder="상품명, 바코드, 품번, IP" value="${esc(S.ui.q)}" autocomplete="off"></div>
       <select class="inp" id="pip" style="width:auto;min-width:160px" aria-label="IP"><option value="">IP 전체</option>${ips.map(i => `<option ${S.ui.ip === i ? 'selected' : ''}>${esc(i)}</option>`).join('')}</select></div>
@@ -1184,7 +1202,7 @@ function salesView() {
   S._quick = quick;
   const noData = stores.filter(s => !per[s].days);
   const su = salesUpdated(stores);
-  return `${head('매출', `토스포스 매출리포트 기준 · ${last ? `<b>${last} 마감</b>까지` : '아직 자료 없음'}${su.up ? ` · 마지막 올림 ${kst(su.up.at)} ${esc(su.up.by)}` : ''}`, `<button class="btn" id="posBtn">토스포스 파일 올리기</button>`)}
+  return `${head('매출', `토스포스 매출리포트 기준 · ${S.stores.length > 1 ? '매장마다 마감일이 다릅니다 (아래 표)' : `${last ? `<b>${last} 마감</b>까지` : '아직 자료 없음'}${su.up ? ` · 마지막 올림 ${kst(su.up.at)} ${esc(su.up.by)}` : ''}`}`, `<button class="btn" id="posBtn">토스포스 파일 올리기</button>`)}${freshTable(S.stores)}
   <div class="card" style="display:flex;flex-direction:column;gap:12px">
     <div class="seg">${units.map(([k, t]) => `<button class="${unit === k ? 'on' : ''}" data-su="${k}">${t}</button>`).join('')}</div>
     <div class="row"><div class="field"><label for="ra">시작일</label>${dateSel('ra', a)}</div><div class="field"><label for="rb">종료일</label>${dateSel('rb', b)}</div>
