@@ -77,7 +77,7 @@ window.SMG_FIREBASE = function (S, X) {
     }
     if (S.user.perms.approve || S.user.owner) unsub.push(db.collection('users').onSnapshot(q => { S.users = q.docs.map(d => ({ uid: d.id, ...d.data() })); X.render(); }));
     else S.users = [S.user];
-    if (S.user.owner || (S.user.perms.settle && !S.user.limited)) unsub.push(db.collection('settle').onSnapshot(q => { S.settle = q.docs.filter(d => d.id !== '_rules').flatMap(d => d.data().rows || []); const r = q.docs.find(d => d.id === '_rules'); S.settleRules = r ? r.data() : null; X.render(); }, () => { }));
+    if (S.user.owner) unsub.push(db.collection('settle').onSnapshot(q => { S.settle = q.docs.filter(d => d.id !== '_rules').flatMap(d => d.data().rows || []); const r = q.docs.find(d => d.id === '_rules'); S.settleRules = r ? r.data() : null; X.render(); }, () => { }));
   }
   function mergeTransfers(q) {
     const m = new Map(S.transfers.map(t => [t.id, t])); q.docs.forEach(d => m.set(d.id, { id: d.id, ...d.data() }));
