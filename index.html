@@ -145,6 +145,9 @@ tr.flag td{background:var(--warn-bg)}
 .field label{font-size:12px;color:var(--muted);font-weight:600}
 .inp,select.inp,textarea.inp{border:1px solid var(--line);background:var(--surface);border-radius:7px;padding:8px 10px;min-height:38px;width:100%}
 .inp:focus{border-color:var(--ink-2);outline:none}
+.dsel{display:flex;gap:4px;min-width:0}
+.dsel select.inp{width:auto;flex:1 1 0;min-width:0;padding-left:6px;padding-right:2px}
+.dsel select.inp:first-of-type{flex:1.4 1 0}
 .inp.qty{text-align:right;font-variant-numeric:tabular-nums;width:90px}
 .search{position:relative;flex:1;min-width:200px}
 .search .inp{padding-left:34px}
@@ -242,7 +245,7 @@ tr.flag td{background:var(--warn-bg)}
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 <script src="config.js"></script>
 <script src="firebase.js?v=14"></script>
-<script src="app.js?v=16"></script>
+<script src="app.js?v=17"></script>
 <script>if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});</script>
 
 </body></html>

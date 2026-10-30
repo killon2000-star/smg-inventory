@@ -298,6 +298,19 @@ function freshLine(stores) {
   return parts.join(' · ');
 }
 
+/* ───────── 날짜 고르기: 년·월·일을 따로 고르는 칸 ───────── */
+function dateSel(id, val) {
+  const v = /^\d{4}-\d{2}-\d{2}$/.test(val || '') ? val : today();
+  const [y, m, d] = v.split('-').map(Number);
+  const y0 = 2025, y1 = Number(today().slice(0, 4)) + 1;
+  const last = new Date(Date.UTC(y, m, 0)).getUTCDate();
+  const opt = (a, b, cur, suf) => { let o = ''; for (let i = a; i <= b; i++) o += `<option value="${i}" ${i === cur ? 'selected' : ''}>${i}${suf}</option>`; return o; };
+  return `<span class="dsel"><input type="hidden" id="${id}" value="${v}">
+    <select class="inp" data-dsel="${id}:y" aria-label="년">${opt(y0, Math.max(y1, y), y, '년')}</select>
+    <select class="inp" data-dsel="${id}:m" aria-label="월">${opt(1, 12, m, '월')}</select>
+    <select class="inp" data-dsel="${id}:d" aria-label="일">${opt(1, last, Math.min(d, last), '일')}</select></span>`;
+}
+
 /* ───────── 홈 ───────── */
 function storeStats(st) {
   const m = S.stock[st] || {};
@@ -409,7 +422,7 @@ function placeDrawer() {
   <div class="card" style="display:flex;flex-direction:column;gap:12px">
     <div class="field"><label for="plName">장소·행사 이름</label><input class="inp" id="plName" value="${esc(f.name)}" placeholder="예: 코믹월드 338"></div>
     <div class="field"><label>구분</label><div class="chips">${PLACE_KINDS.map(k => `<button class="chip ${f.kind === k ? 'on' : ''}" data-plk="${k}">${k}</button>`).join('')}</div></div>
-    <div class="formgrid"><div class="field"><label for="plStart">시작일</label><input class="inp" type="date" id="plStart" value="${f.start}"></div><div class="field"><label for="plEnd">종료일</label><input class="inp" type="date" id="plEnd" value="${f.end}"></div></div>
+    <div class="formgrid"><div class="field"><label for="plStart">시작일</label>${dateSel('plStart', f.start)}</div><div class="field"><label for="plEnd">종료일</label>${dateSel('plEnd', f.end)}</div></div>
     <div class="field"><label for="plAddr">장소 · 위치</label><input class="inp" id="plAddr" value="${esc(f.addr)}" placeholder="예: 수원메쎄 B홀, 부스 A-12"></div>
     <div class="formgrid"><div class="field"><label for="plPerson">현장 담당자</label><input class="inp" id="plPerson" value="${esc(f.person)}" placeholder="이름"></div><div class="field"><label for="plMemo">메모</label><input class="inp" id="plMemo" value="${esc(f.memo)}"></div></div>
     ${dup.length ? `<div class="note warn">🔸 같은 이름의 장소가 이미 ${dup.length}곳 있습니다: ${dup.map(p => esc(placeLabel(p))).join(' / ')}<br>날짜·위치가 다르면 새로 등록하고, 같은 곳이면 목록에서 고르세요.</div>` : ''}
@@ -487,7 +500,7 @@ function ibNewView() {
   <div class="card" style="display:flex;flex-direction:column;gap:12px">
     <div class="formgrid">
       <div class="field"><label for="ibStore">받는 매장</label><select class="inp" id="ibStore">${myStores().map(s => `<option value="${s}" ${f.store === s ? 'selected' : ''}>${esc(storeName(s))}</option>`).join('')}</select></div>
-      <div class="field"><label for="ibDate">입고 예정일</label><input class="inp" type="date" id="ibDate" value="${f.date}"></div>
+      <div class="field"><label for="ibDate">입고 예정일</label>${dateSel('ibDate', f.date)}</div>
       <div class="field"><label for="ibFrom">보내는 곳</label><input class="inp" id="ibFrom" value="${esc(f.from)}" placeholder="예: SMG 홀딩스 물류"></div>
       <div class="field"><label for="ibIp">IP (선택)</label><input class="inp" id="ibIp" value="${esc(f.ip)}" placeholder="예: 진격의 거인"></div>
       <div class="field" style="grid-column:1/-1"><label for="ibTitle">제목</label><input class="inp" id="ibTitle" value="${esc(f.title)}" placeholder="비워 두면 파일 이름으로 들어갑니다"></div>
@@ -581,7 +594,7 @@ function entryView() {
   <div class="card" style="display:flex;flex-direction:column;gap:14px">
     <div class="field"><label>종류</label><div class="chips">${TYPES.map(t => `<button class="chip ${e.type === t.id ? 'on' : ''}" data-et="${t.id}">${t.id}</button>`).join('')}</div><span class="muted" style="font-size:12px">${esc(T.d)}</span></div>
     <div class="formgrid">
-      <div class="field"><label for="eDate">날짜</label><input class="inp" type="date" id="eDate" value="${e.date}"></div>
+      <div class="field"><label for="eDate">날짜</label>${dateSel('eDate', e.date)}</div>
       <div class="field"><label for="eStore">${T.to ? '보내는 매장' : '매장'}</label><select class="inp" id="eStore">${okStores.map(s => `<option value="${s}" ${e.store === s ? 'selected' : ''}>${esc(storeName(s))}</option>`).join('')}</select></div>
       ${T.to ? `<div class="field"><label for="eTo">받는 곳</label><select class="inp" id="eTo"><option value="">선택</option>${STORES.filter(s => s.id !== e.store).map(s => `<option value="${s.id}" ${e.to === s.id ? 'selected' : ''}>${esc(s.name)}</option>`).join('')}<option value="__custom" ${e.to === '__custom' ? 'selected' : ''}>외부 장소 (행사장·팝업 등)</option></select></div>
       ${e.to === '__custom' ? placeSelect('ePlace', e.place, '외부 장소') : ''}` : ''}
@@ -879,7 +892,7 @@ function salesView() {
   return `${head('매출', `토스포스 매출리포트 기준 · ${last ? `<b>${last} 마감</b>까지` : '아직 자료 없음'}${su.up ? ` · 마지막 올림 ${kst(su.up.at)} ${esc(su.up.by)}` : ''}`, `<button class="btn" id="posBtn">토스포스 파일 올리기</button>`)}
   <div class="card" style="display:flex;flex-direction:column;gap:12px">
     <div class="seg">${units.map(([k, t]) => `<button class="${unit === k ? 'on' : ''}" data-su="${k}">${t}</button>`).join('')}</div>
-    <div class="row"><div class="field"><label for="ra">시작일</label><input class="inp" type="date" id="ra" value="${a}"></div><div class="field"><label for="rb">종료일</label><input class="inp" type="date" id="rb" value="${b}"></div>
+    <div class="row"><div class="field"><label for="ra">시작일</label>${dateSel('ra', a)}</div><div class="field"><label for="rb">종료일</label>${dateSel('rb', b)}</div>
       <div class="chips" style="align-self:flex-end">${quick.map(([t], i) => `<button class="chip" data-qr="${i}">${t}</button>`).join('')}</div></div>
     ${multi ? `<div class="field"><label>합산에 넣을 매장</label><div class="chips">${stores.map(s => `<label class="chip ${sum.includes(s) ? 'on' : ''}" style="display:inline-flex;gap:6px;align-items:center;cursor:pointer"><input type="checkbox" data-sum="${s}" ${sum.includes(s) ? 'checked' : ''} style="accent-color:var(--red)"><span class="dot" style="background:${storeColor(s)}"></span>${esc(storeName(s))}</label>`).join('')}</div></div>` : ''}
   </div>
@@ -1329,14 +1342,22 @@ function bind() {
   };
   app.onchange = ev => {
     const t = ev.target, d = t.dataset;
+    if (d.dsel) {
+      const [id, part] = d.dsel.split(':'); const h = document.getElementById(id); if (!h) return;
+      let [y, m, dd] = h.value.split('-').map(Number);
+      if (part === 'y') y = +t.value; if (part === 'm') m = +t.value; if (part === 'd') dd = +t.value;
+      dd = Math.min(dd, new Date(Date.UTC(y, m, 0)).getUTCDate());
+      h.value = `${y}-${String(m).padStart(2, '0')}-${String(dd).padStart(2, '0')}`;
+      app.onchange({ target: h }); return;
+    }
     if (t.id === 'roleSel') { setUser(S.users.find(u => u.uid === t.value)); render(); return; }
     if (d.sc) { const on = t.checked; let s = S.stores.filter(x => x !== d.sc); if (on) s.push(d.sc); if (!s.length) s = [d.sc]; S.stores = STORES.map(x => x.id).filter(x => s.includes(x)); S.sumStores = null; S.ui.range = null; render(); return; }
     if (t.id === 'pip') { S.ui.ip = t.value; render(); return; }
     if (t.id === 'cip') { S.ui.countIp = t.value; render(); return; }
-    if (t.id === 'eDate') S.ui.entry.date = t.value;
+    if (t.id === 'eDate') { S.ui.entry.date = t.value; render(); return; }
     if (t.id === 'eStore') { S.ui.entry.store = t.value; render(); return; }
     if (t.id === 'eTo') { S.ui.entry.to = t.value; render(); if (t.value === '__custom') setTimeout(() => $('#eToText') && $('#eToText').focus(), 0); return; }
-    if (['ibStore', 'ibDate', 'ibFrom', 'ibIp', 'ibTitle'].includes(t.id)) { S.ui.ibForm[{ ibStore: 'store', ibDate: 'date', ibFrom: 'from', ibIp: 'ip', ibTitle: 'title' }[t.id]] = t.value; return; }
+    if (['ibStore', 'ibDate', 'ibFrom', 'ibIp', 'ibTitle'].includes(t.id)) { S.ui.ibForm[{ ibStore: 'store', ibDate: 'date', ibFrom: 'from', ibIp: 'ip', ibTitle: 'title' }[t.id]] = t.value; if (t.id === 'ibDate') render(); return; }
     if (d.iba != null) { const ib = S.inbounds.find(x => x.id === S.ui.ib); ib.items[+d.iba].actual = t.value === '' ? null : Math.max(0, parseInt(t.value, 10)); if (DB.saveInbound) DB.saveInbound(ib); render(); return; }
     if (t.id === 'ePlace') { S.ui.entry.place = t.value; render(); return; }
     if (t.id === 'eFrom') { S.ui.entry.from = t.value; render(); return; }
