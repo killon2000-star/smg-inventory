@@ -37,7 +37,7 @@ const PERM_DEF = [
 ];
 
 const DEFAULT_ORDER = STORES.map(s => s.id);
-const APP_VERSION = '2026-10-31 00:40';   // 앱 화면을 마지막으로 고친 시각 (한국 시간)
+const APP_VERSION = '2026-10-31 00:45';   // 앱 화면을 마지막으로 고친 시각 (한국 시간)
 /* ───────── 작은 도구 ───────── */
 const $ = (s, el = document) => el.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -210,6 +210,8 @@ function render() {
   if (inChange && ptrDown) { renderPending = true; return; }
   renderPending = false;
   const app = $('#app');
+  const inApp = !!(S.user && !S.ui.showApply && (S.mode !== 'live' || S.user.status === 'active' || S.user.owner));
+  document.body.classList.toggle('in-app', inApp);
   if (!S.user || S.ui.showApply) { app.innerHTML = loginView(); bindLogin(); return; }
   const nav = NAV.filter(n => n.show());
   if (S.view !== 'more' && !nav.find(n => n.id === S.view)) S.view = 'home';
@@ -1790,7 +1792,6 @@ const KR_HOLIDAYS = {
     q('.kt span').textContent = `${p2(d.getHours())}:${p2(d.getMinutes())}:${p2(d.getSeconds())}`;
     el.classList.toggle('abroad', abroad); q('.kt').dataset.k = abroad ? '한국 ' + kst2(d).split(' ')[1] : '';
     if (abroad) { q('.kz').textContent = (zone || '현지') + ' 시간'; q('.kk').textContent = '한국 ' + kst2(d); }
-    el.style.display = S.user && !S.ui.showApply ? '' : 'none';
     if (!el._fit && el.offsetWidth) { el._fit = 1; fit(); }
   };
   const start = () => { document.body.appendChild(el); tick(); setInterval(tick, 1000); addEventListener('resize', fit); document.fonts && document.fonts.ready.then(fit); setTimeout(fit, 1500); };
