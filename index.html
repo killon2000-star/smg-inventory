@@ -105,6 +105,41 @@ button{cursor:pointer}
   .kclock .kt{font-size:13px}
   main{padding-bottom:calc(var(--tabh,64px) + 56px)}
 }
+.ipgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px}
+.ipcard{display:flex;flex-direction:column;gap:10px;border-top:4px solid var(--c)}
+.iphd{display:flex;align-items:center;gap:8px;min-width:0}
+.iphd b{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.iphd .muted{white-space:nowrap}
+.ipnow{display:flex;flex-direction:column;gap:5px}
+.ipname{font-size:20px;font-weight:800;line-height:1.25;letter-spacing:-.01em}
+.ipnow.empty .ipname{font-size:15px;font-weight:600}
+.ipmeta{font-size:12.5px;color:var(--muted)}
+.ipmeta b{color:var(--ink)}
+.ipmeta b.red{color:var(--red)}
+.ipbar{height:6px;border-radius:3px;background:var(--line-2);overflow:hidden}
+.ipbar i{display:block;height:100%;background:var(--c)}
+.ipnote{font-size:12px;color:var(--ink-2)}
+.ipnext{display:flex;align-items:center;gap:8px;font-size:13px;border-top:1px solid var(--line-2);padding-top:8px;min-width:0}
+.ipnext + .ipnext{border-top:0;padding-top:0}
+.ipnext .t{font-weight:700;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ipnext .d{margin-left:auto;color:var(--muted);font-size:12px;white-space:nowrap}
+.tlwrap{overflow-x:auto;margin:8px -4px 0;padding:0 4px}
+.tl{--tll:108px;position:relative;min-width:640px}
+.tlrow{display:flex;border-top:1px solid var(--line-2)}
+.tlrow.tlhead{border-top:0;height:22px}
+.tllb{width:var(--tll);flex:none;white-space:nowrap;position:sticky;left:0;z-index:3;background:var(--surface);display:flex;align-items:center;gap:6px;font-size:12.5px;font-weight:700;padding-right:6px}
+.tltrack{position:relative;flex:1}
+.tlm{position:absolute;top:2px;font-size:11.5px;color:var(--muted);border-left:1px solid var(--line);padding-left:4px;height:20px}
+.tlbar{position:absolute;height:24px;border-radius:6px;background:color-mix(in srgb,var(--c) 16%,var(--surface));border:1px solid var(--c);display:flex;align-items:center;overflow:hidden;min-width:4px}
+.tlbar span{font-size:11.5px;font-weight:700;padding:0 6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--ink)}
+.tlbar.on{background:var(--c)}
+.tlbar.on span{color:#fff}
+.tlbar.past{opacity:.5}
+.tltoday{z-index:2;position:absolute;top:18px;bottom:0;width:2px;background:var(--red);pointer-events:none}
+.ipstrip{display:flex;flex-wrap:wrap;align-items:center;gap:6px 14px;width:100%;text-align:left;background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:10px 14px;font-size:13px;color:var(--ink)}
+.ipstrip .lb{font-size:11.5px;font-weight:700;color:var(--red)}
+.ipstrip .it{display:inline-flex;align-items:center;gap:5px;white-space:nowrap}
+.ipstrip .go{margin-left:auto;color:var(--muted);font-size:12px}
 .srow input{width:18px;height:18px;accent-color:var(--red)}
 .pop .foot{display:flex;gap:8px;justify-content:flex-end;margin-top:8px;padding-top:8px;border-top:1px solid var(--line-2)}
 .scrim{position:fixed;inset:0;z-index:65;background:transparent}
@@ -282,8 +317,8 @@ tr.flag td{background:var(--warn-bg)}
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 <script src="config.js"></script>
-<script src="firebase.js?v=23"></script>
-<script src="app.js?v=29"></script>
+<script src="firebase.js?v=24"></script>
+<script src="app.js?v=30"></script>
 <script>if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});</script>
 
 </body></html>

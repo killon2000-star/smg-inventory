@@ -37,7 +37,7 @@ const PERM_DEF = [
 ];
 
 const DEFAULT_ORDER = STORES.map(s => s.id);
-const APP_VERSION = '2026-10-30 23:55';   // 앱 화면을 마지막으로 고친 시각 (한국 시간)
+const APP_VERSION = '2026-10-31 00:20';   // 앱 화면을 마지막으로 고친 시각 (한국 시간)
 /* ───────── 작은 도구 ───────── */
 const $ = (s, el = document) => el.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -73,6 +73,7 @@ const ICON = {
   won: '<circle cx="12" cy="12" r="9"/><path d="M7 9l2 6 3-6 3 6 2-6M6.5 12h11"/>',
   gear: '<circle cx="12" cy="12" r="3"/><path d="M12 3v2.5M12 18.5V21M3 12h2.5M18.5 12H21M5.6 5.6l1.8 1.8M16.6 16.6l1.8 1.8M5.6 18.4l1.8-1.8M16.6 7.4l1.8-1.8"/>',
   user: '<circle cx="12" cy="8" r="3.5"/><path d="M5 20c1-4 4-6 7-6s6 2 7 6"/>',
+  star: '<path d="M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8-5.2-2.7-5.2 2.7 1-5.8-4.3-4.1 5.9-.9z"/>',
   scan: '<path d="M4 8V5a1 1 0 0 1 1-1h3M16 4h3a1 1 0 0 1 1 1v3M20 16v3a1 1 0 0 1-1 1h-3M8 20H5a1 1 0 0 1-1-1v-3"/><path d="M7 9v6M10 9v6M13 9v6M17 9v6"/>',
 };
 const ic = (n, s = 18) => `<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${ICON[n]}</svg>`;
@@ -189,6 +190,7 @@ function alerts(stores) {
 /* ───────── 렌더 뼈대 ───────── */
 const NAV = [
   { id: 'home', t: '홈', i: 'home', show: () => true },
+  { id: 'ipnow', t: 'IP 현황', show: () => true },
   { id: 'products', t: '상품·재고', i: 'box', show: () => true },
   { id: 'entry', t: '입출고 등록', i: 'plus', show: () => can('move') },
   { id: 'count', t: '실사', i: 'check', show: () => can('count') },
@@ -199,7 +201,14 @@ const NAV = [
   { id: 'settle', t: '정산', show: () => canSettle() },
   { id: 'admin', t: '관리', show: () => can('approve') || isOwner() },
 ];
+// 글칸에서 바로 버튼을 누를 때: 칸이 바뀌어 화면을 다시 그리면 누른 버튼이 사라져 클릭이 안 먹힘 → 손을 뗄 때까지 미룸
+let inChange = false, ptrDown = false, renderPending = false;
+document.addEventListener('pointerdown', () => { ptrDown = true; }, true);
+const ptrUp = () => setTimeout(() => { ptrDown = false; if (renderPending) { renderPending = false; render(); } }, 0);
+document.addEventListener('pointerup', ptrUp, true); document.addEventListener('pointercancel', ptrUp, true);
 function render() {
+  if (inChange && ptrDown) { renderPending = true; return; }
+  renderPending = false;
   const app = $('#app');
   if (!S.user || S.ui.showApply) { app.innerHTML = loginView(); bindLogin(); return; }
   const nav = NAV.filter(n => n.show());
@@ -230,9 +239,11 @@ function render() {
   ${S.ui.drawer ? `<div class="ov" id="ov"><div class="dr" role="dialog" aria-modal="true">${S.ui.drawer()}</div></div>` : ''}
   ${S.ui.toast ? `<div class="toast" role="status">${esc(S.ui.toast)}</div>` : ''}`;
   bind(); pinTabbar();
+  const tw = document.querySelector('.tlwrap'), tt = tw && tw.querySelector('.tltoday');
+  if (tw && tt && tw.scrollWidth > tw.clientWidth && !tw.dataset.sc) { tw.scrollLeft = Math.max(0, tt.offsetLeft - 108 - tw.clientWidth * 0.2); tw.dataset.sc = 1; }
 }
 // 아래 메뉴: 권한 있는 메뉴를 모두 보여 줌 (6개 넘으면 두 줄)
-const TAB = { home: ['홈', 'home'], products: ['상품', 'box'], entry: ['입출고', 'plus'], count: ['실사', 'check'], inbound: ['입고확인', 'truck'], transfer: ['매장이동', 'swap'], records: ['기록', 'list'], sales: ['매출', 'chart'], settle: ['정산', 'won'], admin: ['관리', 'user'], more: ['설정', 'gear'] };
+const TAB = { home: ['홈', 'home'], ipnow: ['IP현황', 'star'], products: ['상품', 'box'], entry: ['입출고', 'plus'], count: ['실사', 'check'], inbound: ['입고확인', 'truck'], transfer: ['매장이동', 'swap'], records: ['기록', 'list'], sales: ['매출', 'chart'], settle: ['정산', 'won'], admin: ['관리', 'user'], more: ['설정', 'gear'] };
 function tabbar(nav) {
   const pendingN = can('approve') ? S.users.filter(u => u.status === 'pending').length : 0;
   const out = [...nav.map(n => n.id), 'more'];
@@ -336,6 +347,7 @@ function storeMenu() {
 function pageView() {
   switch (S.view) {
     case 'home': return homeView();
+    case 'ipnow': return ipView();
     case 'products': return productsView();
     case 'entry': return entryView();
     case 'count': return countView();
@@ -386,6 +398,131 @@ function storeStats(st) {
   for (const [, q] of Object.entries(m)) { if (q > 0) { qty += q; kinds++; } else if (q === 0) out++; else neg++; }
   return { qty, kinds, out, neg };
 }
+/* ───────── IP 현황 (전 매장 팝업·전시·카페 운영 일정) ───────── */
+const IP_KINDS = ['팝업', '전시', '카페'];
+const STORE_KIND = { suwon: '팝업', limission: '팝업', museum: '전시', boxcafe: '카페', omake: '카페' };
+const STORE_PLACE = { suwon: 'AK PLAZA 수원 5층', limission: '홍대 4층 리밋션샵', museum: '홍대 4층 오뮤지엄', boxcafe: '홍대 AK 3층', omake: '신촌' };
+// 처음 값: SMG 홀딩스 전체 개최 일정(10/20 받은 표) 기준. 관리자가 앱에서 고치면 그 값이 우선합니다.
+const IP_PLAN_DEFAULT = [
+  ['suwon', '하이큐!! 쉬는시간', '2026-09-24', '2026-10-13', 'SMG-C', ''],
+  ['suwon', '에반게리온 Light & Shadow', '2026-10-15', '2026-11-10', '홀딩스', '종료일 확인 필요'],
+  ['suwon', '진격의 거인 (MAPPA)', '2026-11-12', '2026-12-01', '홀딩스', '오픈·종료일 확인 필요'],
+  ['suwon', '주술회전 2 (MAPPA)', '2026-12-05', '2026-12-27', '홀딩스', ''],
+  ['suwon', '슈가슈가룬 2', '2026-12-29', '2027-01-26', 'SMG-C', ''],
+  ['suwon', '은혼 구작 2', '2027-01-28', '2027-02-24', 'SMG-C', ''],
+  ['suwon', '약혼', '2027-02-25', '2027-03-24', '홀딩스', ''],
+  ['limission', '다모여', '2026-09-24', '2026-10-14', '홀딩스', ''],
+  ['limission', '쿠로코의 농구', '2026-10-15', '2026-11-11', 'SMG-C', ''],
+  ['limission', '진격의 거인 (MAPPA)', '2026-11-12', '2026-12-02', '홀딩스', ''],
+  ['limission', '주술회전 2 (MAPPA)', '2026-12-03', '2026-12-30', '홀딩스', '슈가슈가룬 2와 기간 겹침'],
+  ['limission', '슈가슈가룬 2', '2026-12-24', '2027-01-27', 'SMG-C', ''],
+  ['limission', '은혼 구작 2', '2027-01-28', '2027-02-24', 'SMG-C', ''],
+  ['limission', '약혼', '2027-02-25', '2027-03-24', '홀딩스', ''],
+  ['museum', '코난 전시', '2026-08-06', '2026-08-19', '', ''],
+  ['museum', '전지적 독자 시점', '2026-12-17', '2027-02-07', '', ''],
+  ['museum', '이누야샤', '2027-02-18', '2027-02-24', '', '날짜 미정'],
+  ['museum', '은혼 원화전 20주년', '2027-05-27', '2027-08-31', '', ''],
+  ['boxcafe', '코난', '2026-08-13', '2026-09-23', '', ''],
+  ['boxcafe', '주술회전 LTR', '2026-09-24', '2026-12-02', '', ''],
+  ['boxcafe', '하이큐 SD', '2026-12-03', '2027-01-13', '', '다른 안: 프리렌'],
+  ['boxcafe', '팔재', '2027-01-14', '2027-02-03', '', ''],
+  ['boxcafe', '화산귀환', '2027-02-04', '2027-03-03', '', ''],
+  ['omake', '에픽 x 카제나', '2026-09-17', '2026-09-30', '', ''],
+  ['omake', '오란고교 호스트부', '2026-10-01', '2026-10-28', '', ''],
+  ['omake', '팔재', '2026-10-29', '2026-12-02', '', '다른 표는 오란고교 12/2까지 — 확인 필요'],
+  ['omake', '하이큐', '2026-12-03', '2026-12-09', '', ''],
+  ['omake', '하이큐 / 리락쿠마', '2026-12-10', '2027-01-13', '', ''],
+  ['omake', '카제나', '2027-01-21', '2027-02-24', '', ''],
+].map(([store, ip, start, end, host, note], i) => ({ id: 'd' + i, store, kind: STORE_KIND[store], ip, start, end, host, note }));
+const ipPlan = () => (S.ipPlan || IP_PLAN_DEFAULT).slice().sort((a, b) => a.start.localeCompare(b.start));
+const dDiff = (a, b) => Math.round((Date.parse(b) - Date.parse(a)) / 864e5);
+const canIpEdit = () => isOwner() || can('approve');
+const mdw = d => { const t = new Date(d + 'T00:00:00Z'); return `${t.getUTCMonth() + 1}/${t.getUTCDate()}(${'일월화수목금토'[t.getUTCDay()]})`; };
+function ipStatus(store, t = today()) {
+  const L = ipPlan().filter(r => r.store === store);
+  return { now: L.filter(r => r.start <= t && t <= r.end), next: L.filter(r => r.start > t).slice(0, 2), last: L.filter(r => r.end < t).slice(-1)[0] };
+}
+function ipCard(st) {
+  const t = today(), x = ipStatus(st), kind = STORE_KIND[st] || '';
+  const nowB = x.now.map(r => {
+    const tot = dDiff(r.start, r.end) + 1, gone = dDiff(r.start, t) + 1, left = dDiff(t, r.end);
+    return `<div class="ipnow"><div class="ipname">${esc(r.ip)}</div>
+      <div class="ipmeta">${mdw(r.start)} ~ ${mdw(r.end)} · ${tot}일${r.host ? ' · ' + esc(r.host) : ''}</div>
+      <div class="ipbar" aria-label="${gone}일째 / ${tot}일"><i style="width:${Math.min(100, gone / tot * 100).toFixed(1)}%"></i></div>
+      <div class="ipmeta"><b>${gone}일째</b> · ${left === 0 ? '<b class="red">오늘 종료</b>' : `종료까지 <b>${left}일</b>`}</div>
+      ${r.note ? `<div class="ipnote">🔸 ${esc(r.note)}</div>` : ''}</div>`;
+  }).join('');
+  const nx = x.next.map((r, i) => `<div class="ipnext${i ? ' muted' : ''}"><span class="pill ${i ? 'p-mute' : 'p-ok'}">${i ? '그다음' : '다음'}</span><span class="t">${esc(r.ip)}</span><span class="d">${mdw(r.start)}~ · D-${dDiff(t, r.start)}</span></div>`).join('');
+  return `<div class="card ipcard" style="--c:${storeColor(st)}">
+    <div class="iphd"><span class="dot" style="background:${storeColor(st)}"></span><b>${esc(storeName(st))}</b><span class="pill p-mute">${kind}</span><span class="sp"></span><span class="muted" style="font-size:12px">${esc(STORE_PLACE[st] || '')}</span></div>
+    ${nowB || `<div class="ipnow empty"><div class="ipname muted">지금 진행 중인 ${kind} 없음</div>${x.last ? `<div class="ipmeta">지난: ${esc(x.last.ip)} (~${mdw(x.last.end)})</div>` : ''}</div>`}
+    ${nx || '<div class="ipnext muted">다음 일정 미정</div>'}</div>`;
+}
+function ipTimeline() {
+  const t = today(), T = Date.parse(t);
+  const s0 = new Date(T); s0.setUTCDate(1); s0.setUTCMonth(s0.getUTCMonth() - 1);
+  const e0 = new Date(s0); e0.setUTCMonth(e0.getUTCMonth() + 5);
+  const A = s0.getTime(), B = e0.getTime(), W = B - A, pct = d => ((Date.parse(d) - A) / W * 100);
+  const months = []; for (let m = new Date(s0); m < e0; m.setUTCMonth(m.getUTCMonth() + 1)) months.push(new Date(m));
+  const rows = STORES.map(s => {
+    const L = ipPlan().filter(r => r.store === s.id && Date.parse(r.end) >= A && Date.parse(r.start) < B);
+    const lanes = []; L.forEach(r => { let k = lanes.findIndex(e => e < r.start); if (k < 0) { k = lanes.length; lanes.push(''); } lanes[k] = r.end; r._lane = k; });
+    const n = Math.max(1, lanes.length);
+    return `<div class="tlrow" style="height:${n * 30 + 8}px"><div class="tllb"><span class="dot" style="background:${storeColor(s.id)}"></span>${esc(shortName(s.id))}</div><div class="tltrack">
+      ${L.map(r => { const l = Math.max(0, pct(r.start)), w = Math.min(100, pct(r.end) + 100 / (W / 864e5)) - l; const on = r.start <= t && t <= r.end;
+        return `<div class="tlbar${on ? ' on' : ''}${r.end < t ? ' past' : ''}" style="left:${l}%;width:${w}%;top:${r._lane * 30 + 4}px;--c:${storeColor(s.id)}" title="${esc(r.ip)} ${r.start}~${r.end}"><span>${esc(r.ip)}</span></div>`; }).join('')}
+    </div></div>`;
+  }).join('');
+  return `<div class="card"><h2>앞으로 일정 <span class="muted" style="font-weight:500;font-size:12px">지난달 ~ 4달 뒤 · 빨간 선 = 오늘</span></h2>
+    <div class="tlwrap"><div class="tl">
+      <div class="tlrow tlhead"><div class="tllb"></div><div class="tltrack">${months.map(m => `<span class="tlm" style="left:${pct(m.toISOString().slice(0, 10))}%">${m.getUTCFullYear() !== new Date(T).getUTCFullYear() ? String(m.getUTCFullYear()).slice(2) + '년 ' : ''}${m.getUTCMonth() + 1}월</span>`).join('')}</div></div>
+      ${rows}
+      <div class="tltoday" style="left:calc(var(--tll) + (100% - var(--tll)) * ${(pct(t) / 100).toFixed(4)})"></div>
+    </div></div></div>`;
+}
+function ipListTable() {
+  const t = today(), f = S.ui.ipF || 'all';
+  const L = ipPlan().filter(r => f === 'all' || r.store === f).filter(r => S.ui.ipPast || r.end >= t);
+  return `<div class="card"><div class="row" style="justify-content:space-between;align-items:center"><h2 style="margin:0">전체 일정표</h2>${canIpEdit() ? '<button class="btn sm pri" id="ipAdd">+ 일정 추가</button>' : ''}</div>
+    <div class="chips" style="margin-top:10px"><button class="chip ${f === 'all' ? 'on' : ''}" data-ipf="all">전체</button>${STORES.map(s => `<button class="chip ${f === s.id ? 'on' : ''}" data-ipf="${s.id}">${esc(shortName(s.id))}</button>`).join('')}<label class="ck" style="margin-left:auto"><input type="checkbox" id="ipPast" ${S.ui.ipPast ? 'checked' : ''}><span class="t">지난 일정도</span></label></div>
+    <div class="tw"><table class="tb"><thead><tr><th>매장</th><th>구분</th><th>IP</th><th>기간</th><th class="r">일수</th><th>상태</th>${canIpEdit() ? '<th></th>' : ''}</tr></thead><tbody>
+    ${L.map(r => { const st = r.end < t ? '<span class="pill p-mute">종료</span>' : r.start <= t ? '<span class="pill p-bad">진행 중</span>' : `<span class="pill p-ok">D-${dDiff(t, r.start)}</span>`;
+      return `<tr><td class="nowrap"><span class="dot" style="background:${storeColor(r.store)};display:inline-block;margin-right:6px"></span>${esc(shortName(r.store))}</td><td class="nowrap">${esc(r.kind)}</td><td style="min-width:140px"><b>${esc(r.ip)}</b>${r.host ? ` <span class="muted">· ${esc(r.host)}</span>` : ''}${r.note ? `<div class="muted" style="font-size:12px">🔸 ${esc(r.note)}</div>` : ''}</td><td class="nowrap">${mdw(r.start)} ~ ${mdw(r.end)}</td><td class="r num">${dDiff(r.start, r.end) + 1}</td><td>${st}</td>${canIpEdit() ? `<td><button class="btn sm" data-ipe="${r.id}">고치기</button></td>` : ''}</tr>`; }).join('') || `<tr><td colspan="7" class="muted">일정이 없습니다</td></tr>`}
+    </tbody></table></div></div>`;
+}
+function ipView() {
+  const t = today(), live = STORES.map(s => ipStatus(s.id).now.length).reduce((a, b) => a + b, 0);
+  const soon = ipPlan().filter(r => r.start > t && dDiff(t, r.start) <= 14);
+  return `${head('IP 현황', `전 매장 팝업 · 전시 · 카페 운영 IP · 오늘 ${mdw(t)} 기준${S.ipPlanAt ? ' · 일정 수정 ' + esc(S.ipPlanAt) : ' · SMG 홀딩스 개최 일정표(10/20) 기준'}`)}
+  <div class="tiles"><div class="tile"><div class="k">지금 운영 중</div><div class="v num">${live}<small>개 IP</small></div></div>
+    <div class="tile"><div class="k">2주 안에 시작</div><div class="v num">${soon.length}<small>개</small></div><div class="d">${soon.slice(0, 2).map(r => esc(shortName(r.store) + ' ' + r.ip)).join(' · ') || '없음'}</div></div></div>
+  <div class="ipgrid">${STORES.map(s => ipCard(s.id)).join('')}</div>
+  ${ipTimeline()}
+  ${ipListTable()}`;
+}
+function ipStrip() {
+  const items = STORES.map(s => ({ s, x: ipStatus(s.id) })).filter(o => o.x.now.length);
+  if (!items.length) return '';
+  return `<button class="ipstrip" data-nav="ipnow" aria-label="IP 현황 보기"><span class="lb">지금 운영 중</span>${items.map(o => o.x.now.map(r => `<span class="it"><span class="dot" style="background:${storeColor(o.s.id)}"></span>${esc(shortName(o.s.id))} <b>${esc(r.ip)}</b> <span class="muted">종료 D-${dDiff(today(), r.end)}</span></span>`).join('')).join('')}<span class="go">전체 보기 ›</span></button>`;
+}
+function ipDrawer() {
+  const f = S.ui.ipForm;
+  return `<div class="hd"><h3>${f.id ? 'IP 일정 고치기' : 'IP 일정 추가'}</h3><button class="x" data-close aria-label="닫기">×</button></div>
+  <div class="card" style="display:flex;flex-direction:column;gap:12px">
+    <div class="field"><label for="ipStore">매장</label><select class="inp" id="ipStore">${STORES.map(s => `<option value="${s.id}" ${f.store === s.id ? 'selected' : ''}>${esc(s.name)}</option>`).join('')}</select></div>
+    <div class="field"><label>구분</label><div class="chips">${IP_KINDS.map(k => `<button class="chip ${f.kind === k ? 'on' : ''}" data-ipk="${k}">${k}</button>`).join('')}</div></div>
+    <div class="field"><label for="ipName">IP 이름</label><input class="inp" id="ipName" value="${esc(f.ip)}" placeholder="예: 진격의 거인 (MAPPA)"></div>
+    <div class="formgrid"><div class="field"><label for="ipStart">시작일</label>${dateSel('ipStart', f.start)}</div><div class="field"><label for="ipEnd">종료일</label>${dateSel('ipEnd', f.end)}</div></div>
+    <div class="formgrid"><div class="field"><label for="ipHost">주최</label><input class="inp" id="ipHost" value="${esc(f.host)}" placeholder="예: 홀딩스, SMG-C"></div><div class="field"><label for="ipNote">메모</label><input class="inp" id="ipNote" value="${esc(f.note)}" placeholder="예: 종료일 확인 필요"></div></div>
+  </div>
+  <div class="row" style="justify-content:space-between">${f.id ? '<button class="btn" id="ipDel" style="color:var(--red)">이 일정 지우기</button>' : '<span></span>'}<span class="row"><button class="btn" data-close>취소</button><button class="btn pri" id="ipSave">저장</button></span></div>`;
+}
+async function saveIpPlan(list) {
+  S.ipPlan = list; S.ipPlanAt = kstStamp();
+  if (DB.saveIpPlan) await DB.saveIpPlan(list.map(({ _lane, ...r }) => r), S.ipPlanAt).catch(e => toast('저장하지 못했습니다: ' + e.message));
+}
+function kstStamp() { const d = new Date(Date.now() + 9 * 3600e3); return `${d.getUTCMonth() + 1}/${d.getUTCDate()} ${String(d.getUTCHours()).padStart(2, '0')}:${String(d.getUTCMinutes()).padStart(2, '0')} ${S.user ? S.user.name : ''}`.trim(); }
+
 function homeView() {
   const st = S.stores;
   const al = alerts(st);
@@ -405,6 +542,7 @@ function homeView() {
   }
   return `${head(multi ? `${st.length}개 매장 요약` : storeName(st[0]), `${freshLine(st) || '아직 반영된 자료가 없습니다'}${limited() ? ' · 재고 수량만 볼 수 있는 계정입니다' : ''}`, installBtn('sm'))}
   <div class="note" style="font-size:12.5px">ℹ︎ 실시간 자료가 아닙니다. 판매는 <b>토스포스 매출 파일</b>을 올려야, 입고·이동은 <b>등록</b>해야 재고에 반영됩니다. 위 시각을 확인해 주세요.</div>
+  ${ipStrip()}
   <div class="tiles">
     <div class="tile"><span class="lb">현재 재고</span><span class="v big${String(fmt(tot.qty)).length>9?' long':''}">${fmt(tot.qty)}<small>개</small></span><span class="d muted">재고 있는 상품 ${fmt(tot.kinds)}종</span></div>
     <div class="tile"><span class="lb">품절 (재고 0)</span><span class="v big${String(fmt(tot.out)).length>9?' long':''}">${fmt(tot.out)}<small>종</small></span><span class="d muted">진열·품절 안내 확인</span></div>
@@ -1506,6 +1644,12 @@ function bind() {
     if (t.id === 'ibConfirm') { const ib = S.inbounds.find(x => x.id === S.ui.ib); confirmDrawer('실제 수량으로 입고 확정', `<p style="margin:0">${esc(ib.title)} — 실제 수량으로 재고에 더합니다. 확정한 뒤에는 수량을 고칠 수 없고, 차이는 기록으로 남습니다.</p>`, '입고 확정', () => ibConfirm(ib)); return; }
     if (t.id === 'plNew') { S.ui.placeForm = null; S.ui.drawer = placeDrawer; render(); return; }
     if (d.plk) { S.ui.placeForm.kind = d.plk; render(); return; }
+    if (d.ipf) { S.ui.ipF = d.ipf; render(); return; }
+    if (t.id === 'ipAdd') { S.ui.ipForm = { id: '', store: S.stores[0] || 'suwon', kind: STORE_KIND[S.stores[0]] || '팝업', ip: '', start: today(), end: today(), host: '', note: '' }; S.ui.drawer = ipDrawer; render(); return; }
+    if (d.ipe) { const r = ipPlan().find(x => x.id === d.ipe); if (r) { S.ui.ipForm = { ...r }; S.ui.drawer = ipDrawer; render(); } return; }
+    if (d.ipk) { S.ui.ipForm.kind = d.ipk; render(); return; }
+    if (t.id === 'ipSave') { const f = S.ui.ipForm; [['ipName', 'ip'], ['ipHost', 'host'], ['ipNote', 'note']].forEach(([i, k]) => { const e = document.getElementById(i); if (e) f[k] = e.value; }); if (!f.ip.trim()) { toast('IP 이름을 넣어 주세요'); return; } if (f.end < f.start) { toast('종료일이 시작일보다 빠릅니다'); return; } const L = ipPlan().map(({ _lane, ...r }) => r), r = { id: f.id || 'u' + Date.now().toString(36), store: f.store, kind: f.kind, ip: f.ip.trim(), start: f.start, end: f.end, host: f.host.trim(), note: f.note.trim() }; const i = L.findIndex(x => x.id === r.id); i >= 0 ? (L[i] = r) : L.push(r); S.ui.drawer = null; S.ui.ipForm = null; await saveIpPlan(L); toast('IP 일정을 저장했습니다'); return; }
+    if (t.id === 'ipDel') { const id = S.ui.ipForm.id; if (!S.ui.ipDelAsk) { S.ui.ipDelAsk = true; t.textContent = '한 번 더 누르면 지웁니다'; return; } S.ui.ipDelAsk = false; S.ui.drawer = null; S.ui.ipForm = null; await saveIpPlan(ipPlan().filter(x => x.id !== id).map(({ _lane, ...r }) => r)); toast('일정을 지웠습니다'); return; }
     if (t.id === 'plSave') { await savePlace(); return; }
     if (t.id === 'linkGo') { readLink($('#linkIn').value.trim()); return; }
     if (t.id === 'impCancel') { S.ui.imp = null; render(); return; }
@@ -1534,7 +1678,8 @@ function bind() {
     if (t.id === 'addStore') { alertBox('매장 추가는 실제 앱에서 저장됩니다. 미리보기에서는 4곳 고정입니다.'); return; }
     if (t.id === 'logout') { FB.signOut(); return; }
   };
-  app.onchange = ev => {
+  app.onchange = ev => { inChange = true; try { onChange(ev); } finally { inChange = false; } };
+  const onChange = ev => {
     const t = ev.target, d = t.dataset;
     if (d.dsel) {
       const [id, part] = d.dsel.split(':'); const h = document.getElementById(id); if (!h) return;
@@ -1542,7 +1687,7 @@ function bind() {
       if (part === 'y') y = +t.value; if (part === 'm') m = +t.value; if (part === 'd') dd = +t.value;
       dd = Math.min(dd, new Date(Date.UTC(y, m, 0)).getUTCDate());
       h.value = `${y}-${String(m).padStart(2, '0')}-${String(dd).padStart(2, '0')}`;
-      app.onchange({ target: h }); return;
+      onChange({ target: h }); return;
     }
     if (t.id === 'roleSel') { setUser(S.users.find(u => u.uid === t.value)); render(); return; }
     if (d.sc) { const on = t.checked; let s = S.stores.filter(x => x !== d.sc); if (on) s.push(d.sc); if (!s.length) s = [d.sc]; S.stores = STORES.map(x => x.id).filter(x => s.includes(x)); S.sumStores = null; S.ui.range = null; render(); return; }
@@ -1555,6 +1700,8 @@ function bind() {
     if (d.iba != null) { const ib = S.inbounds.find(x => x.id === S.ui.ib); ib.items[+d.iba].actual = t.value === '' ? null : Math.max(0, parseInt(t.value, 10)); if (DB.saveInbound) DB.saveInbound(ib); render(); return; }
     if (t.id === 'ePlace') { S.ui.entry.place = t.value; render(); return; }
     if (t.id === 'eFrom') { S.ui.entry.from = t.value; render(); return; }
+    if (t.id === 'ipPast') { S.ui.ipPast = t.checked; render(); return; }
+    if (['ipStore', 'ipName', 'ipStart', 'ipEnd', 'ipHost', 'ipNote'].includes(t.id)) { const k = { ipStore: 'store', ipName: 'ip', ipStart: 'start', ipEnd: 'end', ipHost: 'host', ipNote: 'note' }[t.id]; const f = S.ui.ipForm; f[k] = t.value; if (k === 'store') f.kind = STORE_KIND[t.value] || f.kind; if (k === 'start' && (!f.end || f.end < t.value)) f.end = t.value; render(); return; }
     if (['plName', 'plStart', 'plEnd', 'plAddr', 'plPerson', 'plMemo'].includes(t.id)) { const k = { plName: 'name', plStart: 'start', plEnd: 'end', plAddr: 'addr', plPerson: 'person', plMemo: 'memo' }[t.id]; S.ui.placeForm[k] = t.value; if (k === 'start' && (!S.ui.placeForm.end || S.ui.placeForm.end < t.value)) S.ui.placeForm.end = t.value; render(); return; }
     if (t.id === 'ePartner') { S.ui.entry.partner = t.value; render(); return; }
     if (t.id === 'eMemo') S.ui.entry.memo = t.value;

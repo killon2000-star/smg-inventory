@@ -53,6 +53,7 @@ window.SMG_FIREBASE = function (S, X) {
     const mine = S.user.owner ? X.STORES.map(s => s.id) : S.user.perms.stores;
     const cfg = await db.collection('config').doc('app').get().catch(() => null);
     if (cfg && cfg.exists && cfg.data().stores) cfg.data().stores.forEach(s => { if (!X.STORES.find(x => x.id === s.id)) X.STORES.push(s); });   // 코드 목록 + 관리 화면에서 추가한 매장
+    unsub.push(db.collection('config').doc('app').onSnapshot(d => { const x = d.exists ? d.data() : {}; if (x.ipPlan) { S.ipPlan = x.ipPlan; S.ipPlanAt = x.ipPlanAt || ''; } X.render(); }, () => { }));
     unsub.push(db.collection('products').onSnapshot(q => { S.products = q.docs.map(d => d.data()); X.indexProducts(); X.render(); }));
     for (const st of mine) {
       unsub.push(db.collection('stores').doc(st).onSnapshot(d => { S.stock[st] = (d.exists && d.data().q) || {}; X.render(); }, () => { }));
@@ -116,6 +117,7 @@ window.SMG_FIREBASE = function (S, X) {
     async savePlace(p) { await db.collection('places').doc(p.id).set(p); },
     async saveStoreOrder(order) { await db.collection('users').doc(S.user.uid).update({ storeOrder: order }); },
     async deleteUser(uid) { await db.collection('users').doc(uid).delete(); },
+    async saveIpPlan(list, at) { await db.collection('config').doc('app').set({ ipPlan: list, ipPlanAt: at }, { merge: true }); },
     async saveZip(pw) { await db.collection('config').doc('zip').set({ pw }, { merge: true }); },
     async saveProduct(p) { await db.collection('products').doc(key(p.id)).set(p, { merge: true }); },
     async apply(f) {
@@ -151,7 +153,7 @@ window.SMG_FIREBASE = function (S, X) {
       for (const [m, rows] of Object.entries(byM)) jobs.push(['settle/' + m, { rows }]);
       jobs.push(['config/zip', { pw: { suwon: '0000' } }]);
       for (let i = 0; i < jobs.length; i += 300) {
-        const b = db.batch(); for (const [path, d] of jobs.slice(i, i + 300)) b.set(db.doc(path), d);
+        const b = db.batch(); for (const [path, d] of jobs.slice(i, i + 300)) b.set(db.doc(path), d, path === 'config/app' ? { merge: true } : undefined);
         await b.commit(); progress && progress(Math.min(i + 300, jobs.length), jobs.length);
       }
       return jobs.length;
