@@ -37,7 +37,7 @@ const PERM_DEF = [
 ];
 
 const DEFAULT_ORDER = STORES.map(s => s.id);
-const APP_VERSION = '2026-10-31 07:35';   // 앱 화면을 마지막으로 고친 시각 (한국 시간)
+const APP_VERSION = '2026-10-31 07:45';   // 앱 화면을 마지막으로 고친 시각 (한국 시간)
 /* ───────── 작은 도구 ───────── */
 const $ = (s, el = document) => el.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -601,7 +601,7 @@ function homeView() {
       const s = d.reduce((a, b) => a + b.s, 0), p = d.reduce((a, b) => a + b.p, 0);
       const wk = st.map(x => dayRec(x, addDays(last, -7))).filter(Boolean).reduce((a, b) => a + b.s, 0);
       const ch = pct(s, wk);
-      salesBlock = `<div class="tile"><span class="lb">매출 · ${md(last)}(${wd(last)})</span><span class="v big${String(fmt(s)).length>9?' long':''}">${fmt(s)}<small>원</small></span><span class="d ${ch == null ? 'muted' : ch >= 0 ? '' : ''}">${ch == null ? '지난주 같은 요일 자료 없음' : `${ch >= 0 ? '✔' : '🔺'} 지난주 같은 요일 대비 ${ch >= 0 ? '+' : ''}${ch.toFixed(1)}%`} · ${fmt(p)}건</span></div>`;
+      salesBlock = `<div class="tile"><span class="lb">매출 · ${md(last)}(${wd(last)})</span><span class="v big${String(fmt(s)).length>9?' long':''}">${fmt(s)}<small>원</small></span><span class="d ${ch == null ? 'muted' : ch >= 0 ? '' : ''}">${ch == null ? '지난주 같은 요일 자료 없음' : `${chg(ch)} 지난주 같은 요일 대비`} · ${fmt(p)}건</span></div>`;
     }
   }
   return `${head(multi ? `${st.length}개 매장 요약` : storeName(st[0]), `${freshLine(st) || '아직 반영된 자료가 없습니다'}${limited() ? ' · 재고 수량만 볼 수 있는 계정입니다' : ''}`, installBtn('sm'))}
@@ -1182,6 +1182,56 @@ function aggregate(stores, a, b) {
   }
   return per;
 }
+// 증감 표시: 늘면 빨간 ▲, 줄면 파란 ▼ (한국 증권·매출 표기 관례)
+function chg(ch, digits = 1) {
+  if (ch == null || !isFinite(ch)) return '<span class="muted">비교 자료 없음</span>';
+  if (Math.abs(ch) < 0.05) return '<span class="chg flat">– 0.0%</span>';
+  return `<span class="chg ${ch > 0 ? 'up' : 'dn'}">${ch > 0 ? '▲' : '▼'} ${Math.abs(ch).toFixed(digits)}%</span>`;
+}
+const addMonths = (d, n) => { const [y, m, dd] = d.split('-').map(Number); const t = new Date(Date.UTC(y, m - 1 + n, 1)); const last = new Date(Date.UTC(t.getUTCFullYear(), t.getUTCMonth() + 1, 0)).getUTCDate(); return `${t.getUTCFullYear()}-${String(t.getUTCMonth() + 1).padStart(2, '0')}-${String(Math.min(dd, last)).padStart(2, '0')}`; };
+// 비교 기간: auto = 하루면 지난주 같은 요일, 1일부터면 지난달 같은 날짜, 그 밖엔 바로 앞 같은 일수 / month = 지난달 같은 날짜 / year = 작년 같은 날짜 / prev = 바로 앞 같은 일수
+function cmpRange(a, b, mode = 'auto') {
+  const len = daysBetween(a, b) + 1;
+  if (mode === 'auto') mode = len === 1 ? 'week' : a.slice(8) === '01' ? 'month' : 'prev';
+  if (mode === 'week') return { pa: addDays(a, -7), pb: addDays(b, -7), mode, label: len === 1 ? `지난주 ${wd(a)}요일(${md(addDays(a, -7))})` : `1주 전 (${md(addDays(a, -7))}~${md(addDays(b, -7))})` };
+  if (mode === 'month') { const pa = addMonths(a, -1); let pb = addMonths(b, -1); if (b.slice(8) >= '28' && b === addDays(addMonths(b.slice(0, 8) + '01', 1), -1)) pb = addDays(a.slice(0, 8) + '01', -1); return { pa, pb, mode, label: `지난달 같은 날짜 (${md(pa)}~${md(pb)})` }; }
+  if (mode === 'year') { const pa = addMonths(a, -12), pb = addMonths(b, -12); return { pa, pb, mode, label: `작년 같은 날짜 (${pa.slice(2, 4)}.${md(pa)}~${md(pb)})` }; }
+  return { pa: addDays(a, -len), pb: addDays(a, -1), mode: 'prev', label: `바로 앞 ${len}일 (${md(addDays(a, -len))}~${md(addDays(a, -1))})` };
+}
+const CMP_M = { s: ['매출', '원'], p: ['결제건수', '건'], t: ['객단가', '원'], q: ['판매수량', '개'] };
+function cmpDrawer() {
+  const c = S.ui.cmp; const { a, b, stores } = c; const r = cmpRange(a, b, c.mode);
+  const days = (x, y) => { const L = []; for (let d = x; d <= y; d = addDays(d, 1)) { const o = { d, s: 0, p: 0, q: 0, has: false }; for (const st of stores) { const v = dayRec(st, d); if (v) { o.s += v.s; o.p += v.p; o.q += v.q; o.has = true; } } o.t = o.p ? o.s / o.p : 0; L.push(o); } return L; };
+  const C = days(a, b), P = days(r.pa, r.pb);
+  const sumOf = L => { const o = L.reduce((x, v) => ({ s: x.s + v.s, p: x.p + v.p, q: x.q + v.q }), { s: 0, p: 0, q: 0 }); o.t = o.p ? o.s / o.p : 0; o.n = L.filter(v => v.has).length; return o; };
+  const cs = sumOf(C), ps = sumOf(P), m = c.metric, [mt, mu] = CMP_M[m];
+  const modes = [['auto', '추천'], ['prev', '바로 앞 기간'], ['month', '지난달 같은 날짜'], ['year', '작년 같은 날짜']];
+  // 두 기간을 겹쳐 그리는 그래프 (이번 = 빨강, 비교 = 회색)
+  const n = Math.max(C.length, P.length), W = 640, H = 170, L = 8, R = 8, T = 24, B = 24;
+  const mx = Math.max(1, ...C.map(v => v[m]), ...P.map(v => v[m]));
+  const X = i => L + (n > 1 ? i * (W - L - R) / (n - 1) : (W - L - R) / 2), Y = v => T + (1 - v / mx) * (H - T - B);
+  const line = (A, col, w, dash) => A.length > 1 ? `<polyline points="${A.map((v, i) => `${X(i).toFixed(1)},${Y(v[m]).toFixed(1)}`).join(' ')}" fill="none" stroke="${col}" stroke-width="${w}"${dash ? ' stroke-dasharray="5 4"' : ''}/>` : A.map((v, i) => `<circle cx="${X(i)}" cy="${Y(v[m])}" r="5" fill="${col}"/>`).join('');
+  const iC = C.reduce((k, v, i) => (v[m] > C[k][m] ? i : k), 0), iP = P.reduce((k, v, i) => (v[m] > P[k][m] ? i : k), 0);
+  const svg = `<svg class="trend" viewBox="0 0 ${W} ${H}" role="img" aria-label="${mt} 기간 비교"><line x1="${L}" x2="${W - R}" y1="${H - B}" y2="${H - B}" stroke="var(--line)"/>
+    ${line(P, 'var(--muted)', 1.6, true)}${line(C, 'var(--red)', 2.4)}
+    <text class="vl" x="${X(iC)}" y="${Y(C[iC][m]) - 8}" text-anchor="${iC < n * .15 ? 'start' : iC > n * .85 ? 'end' : 'middle'}" fill="var(--red)">${m === 's' || m === 't' ? man(C[iC][m]) : fmt(C[iC][m])}</text>
+    <text x="${L}" y="${H - 7}">${n > 1 ? '1일째' : ''}</text><text x="${W - R}" y="${H - 7}" text-anchor="end">${n > 1 ? n + '일째' : ''}</text></svg>`;
+  const val = (v, k) => k === 's' || k === 't' ? fmt(v) : fmt(v);
+  return `<div class="hd"><h3>${mt} 비교</h3><button class="x" data-close aria-label="닫기">×</button></div>
+  <div class="card" style="display:flex;flex-direction:column;gap:10px">
+    <div class="cmp-p"><span class="pl cur">이번</span><b>${md(a)}(${wd(a)}) ~ ${md(b)}(${wd(b)})</b> <span class="muted">${C.length}일</span></div>
+    <div class="cmp-p"><span class="pl pre">비교</span><b>${md(r.pa)}(${wd(r.pa)}) ~ ${md(r.pb)}(${wd(r.pb)})</b> <span class="muted">${r.label.split(' (')[0]} · ${P.length}일</span></div>
+    <div class="chips">${modes.map(([k, t]) => `<button class="chip ${(c.mode || 'auto') === k ? 'on' : ''}" data-cmpm="${k}">${t}</button>`).join('')}</div>
+    ${ps.n === 0 ? '<div class="note">🔸 비교 기간에 매출 자료가 없습니다. 다른 비교 기간을 골라 보세요.</div>' : ''}
+  </div>
+  <div class="card"><div class="tw"><table class="tb cmp-t"><thead><tr><th></th><th class="n">이번</th><th class="n">비교</th><th class="n">차이</th><th class="n">증감</th></tr></thead><tbody>
+    ${Object.entries(CMP_M).map(([k, [t, u]]) => `<tr class="${k === m ? 'sel' : ''}" data-cmpk="${k}"><td><b>${t}</b></td><td class="n"><b>${fmt(cs[k])}</b>${u}</td><td class="n">${fmt(ps[k])}${u}</td><td class="n">${cs[k] - ps[k] >= 0 ? '+' : ''}${fmt(cs[k] - ps[k])}</td><td class="n">${chg(pct(cs[k], ps[k]))}</td></tr>`).join('')}
+  </tbody></table></div></div>
+  <div class="card"><h2>${mt} 흐름 <span class="r"><span class="lg cur"></span>이번 <span class="lg pre"></span>비교</span></h2>${svg}</div>
+  <div class="card"><h2>날짜별 ${mt}</h2><div class="tw"><table class="tb cmp-t"><thead><tr><th>이번</th><th class="n">${mt}</th><th>비교</th><th class="n">${mt}</th><th class="n">증감</th></tr></thead><tbody>
+    ${Array.from({ length: n }, (_, i) => { const x = C[i], y = P[i]; return `<tr><td class="nowrap">${x ? `${md(x.d)}(${wd(x.d)})` : ''}</td><td class="n">${x ? (x.has ? `<b>${fmt(x[m])}</b>` : '<span class="muted">-</span>') : ''}</td><td class="nowrap muted">${y ? `${md(y.d)}(${wd(y.d)})` : ''}</td><td class="n">${y ? (y.has ? fmt(y[m]) : '<span class="muted">-</span>') : ''}</td><td class="n">${x && y && x.has && y.has ? chg(pct(x[m], y[m]), 0) : ''}</td></tr>`; }).join('')}
+  </tbody></table></div></div>`;
+}
 function salesView() {
   const stores = S.stores; const last = latestSalesDate(stores);
   const unit = S.ui.salesUnit;
@@ -1189,9 +1239,9 @@ function salesView() {
   const [a, b] = S.ui.range.ab;
   const sum = (S.sumStores || stores).filter(s => stores.includes(s));
   const per = aggregate(stores, a, b);
-  const len = daysBetween(a, b) + 1; let pa = addDays(a, -len), pb = addDays(a, -1);
-  if (len === 1) { pa = pb = addDays(a, -7); }   // 하루만 볼 때는 지난주 같은 요일과 비교
-  const cmpLabel = len === 1 ? `지난주 ${wd(a)}요일(${md(pa)}) 대비` : `이전 ${len}일 대비`;
+  const len = daysBetween(a, b) + 1; const cr = cmpRange(a, b, S.ui.cmpMode || 'auto'); const pa = cr.pa, pb = cr.pb;
+  const cmpLabel = cr.label.split(' (')[0] + ' 대비';
+  S.ui.cmpCtx = { a, b, stores: sum };
   const prev = aggregate(stores, pa, pb);
   const T = (o, ks) => ks.reduce((x, k) => ({ s: x.s + o[k].s, p: x.p + o[k].p, q: x.q + o[k].q }), { s: 0, p: 0, q: 0 });
   const cur = T(per, sum), pre = T(prev, sum);
@@ -1211,11 +1261,12 @@ function salesView() {
   </div>
   ${noData.length ? `<div class="note">${noData.map(s => esc(storeName(s))).join(', ')} — 이 기간 매출 자료가 없습니다. [토스포스 파일 올리기]로 넣어 주세요.</div>` : ''}
   <div class="tiles">
-    <div class="tile"><span class="lb">매출${multi ? ` · 합산 ${sum.length}곳` : ''}</span><span class="v big${String(fmt(cur.s)).length>9?' long':''}">${fmt(cur.s)}<small>원</small></span><span class="d">${ch == null ? '<span class="muted">이전 기간 자료 없음</span>' : `${ch >= 0 ? '✔ +' : '🔺 '}${ch.toFixed(1)}% <span class="muted">${cmpLabel}</span>`}</span></div>
-    <div class="tile"><span class="lb">결제건수</span><span class="v big${String(fmt(cur.p)).length>9?' long':''}">${fmt(cur.p)}<small>건</small></span><span class="d muted">이전 ${fmt(pre.p)}건</span></div>
-    <div class="tile"><span class="lb">객단가</span><span class="v big${String(fmt(cur.p ? cur.s / cur.p : 0)).length>9?' long':''}">${fmt(cur.p ? cur.s / cur.p : 0)}<small>원</small></span><span class="d muted">이전 ${fmt(pre.p ? pre.s / pre.p : 0)}원</span></div>
-    <div class="tile"><span class="lb">판매수량</span><span class="v big${String(fmt(cur.q)).length>9?' long':''}">${fmt(cur.q)}<small>개</small></span><span class="d muted">${a.slice(2).replace(/-/g, '.')} ~ ${b.slice(2).replace(/-/g, '.')}</span></div>
+    <button class="tile tbtn" data-cmp="s"><span class="lb">매출${multi ? ` · 합산 ${sum.length}곳` : ''}<span class="go">비교 ›</span></span><span class="v big${String(fmt(cur.s)).length>9?' long':''}">${fmt(cur.s)}<small>원</small></span><span class="d">${ch == null ? '<span class="muted">이전 기간 자료 없음</span>' : `${chg(ch)} <span class="muted">${cmpLabel}</span>`}</span></button>
+    <button class="tile tbtn" data-cmp="p"><span class="lb">결제건수<span class="go">비교 ›</span></span><span class="v big${String(fmt(cur.p)).length>9?' long':''}">${fmt(cur.p)}<small>건</small></span><span class="d">${chg(pct(cur.p, pre.p))} <span class="muted">이전 ${fmt(pre.p)}건</span></span></button>
+    <button class="tile tbtn" data-cmp="t"><span class="lb">객단가<span class="go">비교 ›</span></span><span class="v big${String(fmt(cur.p ? cur.s / cur.p : 0)).length>9?' long':''}">${fmt(cur.p ? cur.s / cur.p : 0)}<small>원</small></span><span class="d">${chg(pct(cur.p ? cur.s / cur.p : 0, pre.p ? pre.s / pre.p : 0))} <span class="muted">이전 ${fmt(pre.p ? pre.s / pre.p : 0)}원</span></span></button>
+    <button class="tile tbtn" data-cmp="q"><span class="lb">판매수량<span class="go">비교 ›</span></span><span class="v big${String(fmt(cur.q)).length>9?' long':''}">${fmt(cur.q)}<small>개</small></span><span class="d">${chg(pct(cur.q, pre.q))} <span class="muted">이전 ${fmt(pre.q)}개</span></span></button>
   </div>
+  <div class="muted" style="font-size:12px;margin-top:-6px">비교 기간: ${esc(cr.label)} · 칸을 누르면 두 기간을 날짜별로 비교합니다</div>
   ${multi ? storeCompare(per, sum, stores) : ''}
   ${len === 1 && unit !== 'ip' ? `<div class="note" style="font-size:12.5px">${md(a)}(${wd(a)}) 하루 매출입니다. 아래 그래프는 흐름을 보기 위해 그날까지 최근 14일을 보여 줍니다.</div>` : ''}
   ${unit === 'ip' ? ipBlock(per, sum) : seriesBlock(len === 1 && unit === 'day' ? aggregate(stores, addDays(a, -13), a) : per, sum, stores, unit)}
@@ -1644,12 +1695,15 @@ function openProduct(pid) { S.ui.drawer = () => productDrawer(pid); render(); re
 function bind() {
   const app = $('#app');
   app.onclick = async ev => {
-    const t = ev.target.closest('button,[data-pid],label,input'); if (!t) return;
+    const t = ev.target.closest('button,[data-pid],[data-cmpk],label,input'); if (!t) return;
     const d = t.dataset;
     if (d.install != null) { doInstall(); return; }
     if (d.openext != null) { openExternal(); return; }
     if (d.copylink != null) { copyLink(); return; }
     if (t.closest && t.closest('#navBack')) { try { history.back(); } catch (e) { goBack(); } return; }
+    if (d.cmp) { S.ui.cmp = { ...S.ui.cmpCtx, metric: d.cmp, mode: S.ui.cmpMode || 'auto' }; S.ui.drawer = cmpDrawer; render(); return; }
+    if (d.cmpk) { S.ui.cmp.metric = d.cmpk; render(); return; }
+    if (d.cmpm) { S.ui.cmp.mode = d.cmpm; S.ui.cmpMode = d.cmpm; render(); return; }
     if (t.id === 'noticeBtn') { S.ui.drawer = noticeDrawer; render(); return; }
     if (t.id === 'ntSave' && isOwner()) { const v = (document.getElementById('ntText') || {}).value || ''; S.ui.drawer = null; await saveNotice(v); toast(v.trim() ? '공지를 올렸습니다' : '공지를 내렸습니다'); return; }
     if (t.id === 'ntClear' && isOwner()) { S.ui.drawer = null; await saveNotice(''); toast('공지를 내렸습니다'); return; }

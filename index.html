@@ -179,6 +179,26 @@ body:not(.in-app) .kclock{display:none!important}
   .frn{grid-column:1/-1}
   .fri .k{display:block;margin:0}
 }
+.chg{font-weight:700;white-space:nowrap}
+.chg.up{color:#E5353C}
+.chg.dn{color:#2F6FDB}
+.chg.flat{color:var(--muted)}
+:root[data-theme="dark"] .chg.dn{color:#6FA8FF}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]) .chg.dn{color:#6FA8FF}}
+.tbtn{text-align:left;font:inherit;color:inherit;cursor:pointer;width:100%}
+.tbtn:hover{border-color:var(--red)}
+.tbtn .lb{display:flex;align-items:center;gap:6px}
+.tbtn .go{margin-left:auto;font-size:11.5px;color:var(--muted);font-weight:600}
+.cmp-p{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:14px}
+.cmp-p .pl{font-size:11.5px;font-weight:800;padding:2px 8px;border-radius:10px;color:#fff}
+.cmp-p .pl.cur{background:var(--red)}
+.cmp-p .pl.pre{background:var(--muted)}
+.cmp-t tr.sel td{background:var(--sel,var(--surface-2))}
+.cmp-t tr[data-cmpk]{cursor:pointer}
+.cmp-t td:first-child{white-space:nowrap}
+.lg{display:inline-block;width:14px;height:3px;border-radius:2px;vertical-align:middle;margin:0 4px 0 10px}
+.lg.cur{background:var(--red)}
+.lg.pre{background:var(--muted)}
 .srow input{width:18px;height:18px;accent-color:var(--red)}
 .pop .foot{display:flex;gap:8px;justify-content:flex-end;margin-top:8px;padding-top:8px;border-top:1px solid var(--line-2)}
 .scrim{position:fixed;inset:0;z-index:65;background:transparent}
@@ -362,7 +382,7 @@ tr.flag td{background:var(--warn-bg)}
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 <script src="config.js"></script>
 <script src="firebase.js?v=26"></script>
-<script src="app.js?v=41"></script>
+<script src="app.js?v=42"></script>
 <script>if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});</script>
 
 </body></html>
