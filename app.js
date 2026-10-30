@@ -459,7 +459,7 @@ function readTable(rows, qtyPref) {
     const name = g('name'), bc = g('barcode'), sku = g('sku');
     if (!name && !bc && !sku) continue;
     if (/^(합계|총계|소계|total)/i.test(name) && !bc && !sku) continue;
-    const num = v => { const n = Number(String(v).replace(/[,원\s]/g, '')); return isNaN(n) ? null : n; };
+    const num = v => { const t = String(v ?? '').replace(/[,원\s]/g, ''); if (t === '') return null; const n = Number(t); return isNaN(n) ? null : n; };
     let cand = bc ? findProduct(bc) : []; if (!cand.length && sku) cand = findProduct(sku); if (!cand.length && name) cand = S.byName[norm(name)] || [];
     out.push({ line: i + 1, name, bc, sku, qty: num(g('qty')), price: num(g('price')), ip: g('ip'), pid: cand.length === 1 ? cand[0].id : '', multi: cand.length > 1 });
   }
@@ -769,6 +769,41 @@ async function readLink(url) {
 }
 
 /* ───────── 실사 ───────── */
+const QTY_COUNT = ['실사수량', '실재고', '실수량', '실제수량', '센수량', '확인수량', '재고수량', '현재고', '수량', '재고', 'qty', '개수'];
+function countApply(rows, src) {
+  const st = S.stores[0]; const c = S.ui.counts[st] ||= {};
+  const t = readTable(rows, QTY_COUNT);
+  if (t.err) { S.ui.cntMsg = { bad: true, html: '🔺 ' + esc(t.err) }; render(); return; }
+  const add = {}, notFound = [], noQty = [], multi = [], notInStore = []; let used = 0;
+  for (const r of t.rows) {
+    if (r.qty == null) { noQty.push(r.name || r.bc || r.sku); continue; }
+    if (r.multi) { multi.push(r.name); continue; }
+    if (!r.pid) { notFound.push(r.name || r.bc || r.sku); continue; }
+    if ((S.stock[st] || {})[r.pid] == null) notInStore.push(S.P[r.pid].name);
+    add[r.pid] = (add[r.pid] || 0) + Math.max(0, r.qty); used++;
+  }
+  const dup = used - Object.keys(add).length;
+  for (const [pid, q] of Object.entries(add)) c[pid] = q;
+  const list = (a, n = 5) => esc(a.slice(0, n).join(', ')) + (a.length > n ? ` 외 ${a.length - n}개` : '');
+  S.ui.cntMsg = { html: `✔ ${esc(src)}: <b>${Object.keys(add).length}종</b> 실사 수량을 넣었습니다. 아래 표에서 차이를 확인하고 [재고에 반영]을 눌러 주세요.`
+    + (dup > 0 ? `<br>🔸 같은 상품이 여러 줄에 있어 수량을 합친 경우 ${dup}건` : '')
+    + (notFound.length ? `<br>🔺 등록된 상품에 없는 줄 ${notFound.length}개: ${list(notFound)}` : '')
+    + (multi.length ? `<br>🔸 같은 이름 상품이 여러 개라 건너뛴 줄 ${multi.length}개 (바코드를 적어 주세요): ${list(multi)}` : '')
+    + (noQty.length ? `<br>🔸 수량이 비어 건너뛴 줄 ${noQty.length}개` : '')
+    + (notInStore.length ? `<br>🔸 이 매장 재고에 없던 상품 ${notInStore.length}종 — 반영하면 새로 생깁니다: ${list(notInStore)}` : '') };
+  render();
+}
+function countTemplate() {
+  const st = S.stores[0];
+  const ps = S.products.filter(p => (S.stock[st] || {})[p.id] != null).sort((a, b) => a.ip.localeCompare(b.ip, 'ko') || a.name.localeCompare(b.name, 'ko'));
+  const aoa = [['IP', '바코드', '품번', '상품명', '실사 수량', '메모']].concat(ps.map(p => [p.ip, p.barcode, p.sku, p.name, '', '']));
+  const ws = XLSX.utils.aoa_to_sheet(aoa); ws['!cols'] = [{ wch: 18 }, { wch: 16 }, { wch: 14 }, { wch: 46 }, { wch: 10 }, { wch: 16 }];
+  for (let i = 2; i <= aoa.length; i++) { const cell = ws['B' + i]; if (cell) { cell.t = 's'; } }
+  const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, '실사');
+  const name = `${storeName(st)}_실사양식_${today()}.xlsx`;
+  if (S.mode === 'demo') { alertBox('미리보기 화면에서는 파일을 내려받을 수 없습니다. 실제 앱에서는 이 매장 상품 목록이 담긴 엑셀이 바로 받아집니다.'); return; }
+  XLSX.writeFile(wb, name);
+}
 function countView() {
   const st = S.stores[0]; const c = S.ui.counts[st] ||= {};
   const q = norm(S.ui.countQ);
@@ -782,6 +817,11 @@ function countView() {
   <div class="tiles"><div class="tile"><span class="lb">입력한 상품</span><span class="v big">${done.length}<small>종</small></span></div>
     <div class="tile ${diffs.length ? 'alert' : ''}"><span class="lb">장부와 다른 상품</span><span class="v big">${diffs.length}<small>종</small></span><span class="d">${diffs.length ? '🔸 반영 전에 확인' : ''}</span></div>
     <div class="tile"><span class="lb">차이 합계</span><span class="v big${String(fmt(diffs.reduce((a, pid) => a + c[pid] - stockOf(st, pid), 0))).length>9?' long':''}">${fmt(diffs.reduce((a, pid) => a + c[pid] - stockOf(st, pid), 0))}<small>개</small></span></div></div>
+  <div class="card" style="display:flex;flex-direction:column;gap:10px"><h2>엑셀로 실사 수량 올리기</h2>
+    <span class="muted" style="font-size:12.5px">매장에서 엑셀에 적어 둔 실사 수량을 올리면 아래 표에 한꺼번에 들어갑니다. "실사 수량" 칸을 먼저 찾고, 없으면 "수량"·"재고" 칸을 씁니다. 바코드·품번·상품명 중 하나로 상품을 찾습니다.</span>
+    <div class="row"><button class="btn" id="cntTpl">실사 양식 받기 (이 매장 상품 목록)</button><button class="btn pri" id="cntFile">실사 엑셀 올리기</button><input class="inp" id="cntLink" placeholder="또는 구글시트 링크" style="flex:1;min-width:200px"><button class="btn" id="cntLinkGo">링크 열기</button></div>
+    ${S.ui.cntMsg ? `<div class="note ${S.ui.cntMsg.bad ? 'bad' : ''}">${S.ui.cntMsg.html}</div>` : ''}
+  </div>
   <div class="card" style="display:flex;flex-direction:column;gap:10px">
     <div class="row"><div class="search">${ic('search')}<input class="inp" id="cq" type="search" placeholder="상품명·바코드·품번" value="${esc(S.ui.countQ)}" autocomplete="off"></div>
     <select class="inp" id="cip" style="width:auto;min-width:160px" aria-label="IP"><option value="">IP 전체</option>${ips.map(i => `<option ${S.ui.countIp === i ? 'selected' : ''}>${esc(i)}</option>`).join('')}</select></div>
@@ -1407,7 +1447,10 @@ function bind() {
     if (t.id === 'linkGo') { readLink($('#linkIn').value.trim()); return; }
     if (t.id === 'impCancel') { S.ui.imp = null; render(); return; }
     if (t.id === 'impUse') { for (const r of S.ui.imp.rows) if (r.pid && r.qty > 0) addLine(r.pid, r.qty, r.dup ? `파일 ${r.dup}줄과 같은 상품 — 수량 합침` : null); S.ui.imp = null; S.ui.entry.mode = 'hand'; render(); return; }
-    if (t.id === 'cSave') { await saveCount(); return; }
+    if (t.id === 'cSave') { await saveCount(); S.ui.cntMsg = null; return; }
+    if (t.id === 'cntTpl') { countTemplate(); return; }
+    if (t.id === 'cntFile') { pickFile('.xlsx,.xls,.csv', f => fileRows(f).then(x => countApply(x.rows, x.src)).catch(e => { S.ui.cntMsg = { bad: true, html: '🔺 ' + esc(e.message) }; render(); })); return; }
+    if (t.id === 'cntLinkGo') { linkRows($('#cntLink').value.trim()).then(x => countApply(x.rows, x.src)).catch(e => { S.ui.cntMsg = { bad: true, html: '🔺 ' + esc(e.message) }; render(); }); return; }
     if (t.id === 'cReset') { S.ui.counts[S.stores[0]] = {}; render(); return; }
     if (d.recv) { await receive(d.recv); return; }
     if (d.rt != null) { S.ui.recType = d.rt; render(); return; }
