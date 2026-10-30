@@ -37,7 +37,7 @@ const PERM_DEF = [
 ];
 
 const DEFAULT_ORDER = STORES.map(s => s.id);
-const APP_VERSION = '2026-10-30 23:40';   // 앱 화면을 마지막으로 고친 시각 (한국 시간)
+const APP_VERSION = '2026-10-30 23:50';   // 앱 화면을 마지막으로 고친 시각 (한국 시간)
 /* ───────── 작은 도구 ───────── */
 const $ = (s, el = document) => el.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -1454,7 +1454,8 @@ function bind() {
     if (t.id === 'smAll') { S.stores = [...myStores()]; S.sumStores = null; S.ui.range = null; S.ui.storeMenu = false; render(); return; }
     if (d.sg) { S.stores = [d.sg]; S.sumStores = null; S.ui.storeMenu = false; S.ui.range = null; render(); goTop(); return; }
     if (d.nav) { if (d.nav === 'more' && S.view === 'more') return; S.view = d.nav; S.ui.drawer = null; render(); goTop(); return; }
-    if (d.tz) { applyTextSize(parseFloat(d.tz)); render(); return; }
+    if (d.tzt) { S.ui.tzOpen = !S.ui.tzOpen; render(); return; }
+    if (d.tz) { applyTextSize(parseFloat(d.tz)); S.ui.tzOpen = false; render(); toast('글자 크기: ' + (TEXT_SIZES.find(x => x[1] === parseFloat(d.tz)) || [''])[0]); return; }
     if (d.al != null) { const a = alerts(S.stores)[+d.al]; if (a && a.go) { a.go(); render(); } return; }
     if (d.pid && ev.target.tagName !== 'INPUT') { openProduct(d.pid); return; }
     if (d.close != null) { if (S.ui.stopScan) S.ui.stopScan(); S.ui.drawer = null; S.ui.posPreview = null; render(); return; }
@@ -1612,7 +1613,11 @@ function goTop() { resetZoom(); window.scrollTo(0, 0); }
 const TEXT_SIZES = [['아주 작게', 0.82], ['작게', 0.9], ['보통', 1], ['크게', 1.12], ['아주 크게', 1.25]];
 function applyTextSize(z) { S.ui.textZoom = z; document.documentElement.style.zoom = z === 1 ? '' : String(z); try { localStorage.setItem('smg-text-zoom', String(z)); } catch (e) { } }
 try { const z = parseFloat(localStorage.getItem('smg-text-zoom') || '1'); if (z && z !== 1) applyTextSize(z); } catch (e) { }
-function textSizeBox() { const z = S.ui.textZoom || 1; return `<div class="field"><label>글자 크기 (이 기기만)</label><div class="seg">${TEXT_SIZES.map(([t, v]) => `<button class="${z === v ? 'on' : ''}" data-tz="${v}">${t}</button>`).join('')}</div></div>`; }
+function textSizeBox() {
+  const z = S.ui.textZoom || 1, cur = (TEXT_SIZES.find(x => x[1] === z) || TEXT_SIZES[2])[0];
+  return `<div class="tzbox"><button class="btn tzbtn" data-tzt="1" aria-expanded="${!!S.ui.tzOpen}"><span>글자 크기</span><b>${cur}</b><span class="car${S.ui.tzOpen ? ' up' : ''}"></span></button>
+    ${S.ui.tzOpen ? `<div class="tzlist" role="listbox" aria-label="글자 크기">${TEXT_SIZES.map(([t, v]) => `<button role="option" aria-selected="${z === v}" class="${z === v ? 'on' : ''}" data-tz="${v}" style="font-size:${Math.round(14 * v)}px">${t}${z === v ? ' ✓' : ''}</button>`).join('')}</div>` : ''}</div>`;
+}
 function setUser(u) {
   S.user = u;
   let ord = u && u.storeOrder; try { ord = ord || JSON.parse(localStorage.getItem('smg-store-order:' + (u ? u.uid : '')) || 'null'); } catch (e) { }
