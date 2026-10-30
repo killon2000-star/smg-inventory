@@ -37,7 +37,7 @@ const PERM_DEF = [
 ];
 
 const DEFAULT_ORDER = STORES.map(s => s.id);
-const APP_VERSION = '2026-10-31 00:45';   // 앱 화면을 마지막으로 고친 시각 (한국 시간)
+const APP_VERSION = '2026-10-31 00:50';   // 앱 화면을 마지막으로 고친 시각 (한국 시간)
 /* ───────── 작은 도구 ───────── */
 const $ = (s, el = document) => el.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -206,6 +206,24 @@ let inChange = false, ptrDown = false, renderPending = false;
 document.addEventListener('pointerdown', () => { ptrDown = true; }, true);
 const ptrUp = () => setTimeout(() => { ptrDown = false; if (renderPending) { renderPending = false; render(); } }, 0);
 document.addEventListener('pointerup', ptrUp, true); document.addEventListener('pointercancel', ptrUp, true);
+// 이전 화면으로: 화면이 바뀔 때마다 직전 화면을 기억 (휴대폰 뒤로가기 버튼과도 연결)
+const navStack = []; let navLast = null, navBackNow = false;
+const navSnap = () => ({ view: S.view, adminTab: S.ui.adminTab, ib: S.ui.ib, ipF: S.ui.ipF });
+const navKey = x => x ? [x.view, x.view === 'admin' ? x.adminTab : '', x.view === 'inbound' ? (x.ib || '') : ''].join('|') : '';
+function trackNav() {
+  const cur = navSnap();
+  if (navLast && !navBackNow && navKey(cur) !== navKey(navLast)) {
+    navStack.push(navLast); if (navStack.length > 30) navStack.shift();
+    try { history.pushState({ smgNav: navStack.length }, ''); } catch (e) { }
+  }
+  navLast = cur; navBackNow = false;
+}
+function goBack() {
+  const x = navStack.pop(); if (!x) return;
+  navBackNow = true; S.view = x.view; S.ui.adminTab = x.adminTab; S.ui.ib = x.ib; S.ui.ipF = x.ipF;
+  S.ui.drawer = null; S.ui.storeMenu = false; render(); goTop();
+}
+addEventListener('popstate', () => { if (navStack.length) goBack(); });
 function render() {
   if (inChange && ptrDown) { renderPending = true; return; }
   renderPending = false;
@@ -215,6 +233,7 @@ function render() {
   if (!S.user || S.ui.showApply) { app.innerHTML = loginView(); bindLogin(); return; }
   const nav = NAV.filter(n => n.show());
   if (S.view !== 'more' && !nav.find(n => n.id === S.view)) S.view = 'home';
+  trackNav();
   const pendingN = S.users.filter(u => u.status === 'pending').length;
   const sv = S.stores.length === 1 ? storeName(S.stores[0]) : `${S.stores.length}개 매장 함께 보기`;
   app.innerHTML = `
@@ -224,6 +243,7 @@ function render() {
       <span class="nm">${esc(sv)}</span><span class="car"></span>
     </button>
     <span class="sp"></span>
+    ${navStack.length ? `<button class="back-btn" id="navBack" aria-label="이전 화면으로"><span class="ar"></span>이전</button>` : ''}
     ${S.mode === 'demo' ? '' : `<div class="who"><span class="nmx">${esc(S.user.name)} · ${esc(S.user.position)}</span><button class="btn sm" id="logout">로그아웃</button></div>`}
   </header>
   ${S.mode === 'demo' ? `<div class="demobar"><span class="demo-tag">미리보기</span><label for="roleSel">권한별로 보기</label><select id="roleSel">${DEMO_ROLES.map(r => `<option value="${r.uid}" ${S.user.uid === r.uid ? 'selected' : ''}>${esc(r.label)}</option>`).join('')}</select><span class="muted hide-s">수원 실제 자료 · 저장한 내용은 새로고침하면 처음 상태로 돌아갑니다</span></div>` : ''}
@@ -1584,6 +1604,7 @@ function bind() {
     if (d.install != null) { doInstall(); return; }
     if (d.openext != null) { openExternal(); return; }
     if (d.copylink != null) { copyLink(); return; }
+    if (t.closest && t.closest('#navBack')) { try { history.back(); } catch (e) { goBack(); } return; }
     if (t.id === 'logoHome') { S.view = 'home'; S.ui.drawer = null; S.ui.storeMenu = false; S.ui.ib = null; render(); goTop(); return; }
     if (t.id === 'storeBtn2') { S.ui.storeMenu = true; render(); return; }
     if (t.id === 'storeBtn') { S.ui.storeMenu = !S.ui.storeMenu; render(); return; }

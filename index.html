@@ -155,6 +155,9 @@ body:not(.in-app) .kclock{display:none!important}
 .ipstrip .lb{font-size:11.5px;font-weight:700;color:var(--red)}
 .ipstrip .it{display:inline-flex;align-items:center;gap:5px;white-space:nowrap}
 .ipstrip .go{margin-left:auto;color:var(--muted);font-size:12px}
+.back-btn{display:inline-flex;align-items:center;gap:6px;height:34px;padding:0 14px 0 10px;margin-right:8px;border-radius:17px;border:1px solid rgba(255,255,255,.35);background:rgba(255,255,255,.08);color:#fff;font-weight:700;font-size:14px;flex:none}
+.back-btn:hover{background:rgba(255,255,255,.16)}
+.back-btn .ar{width:8px;height:8px;border-left:2px solid currentColor;border-bottom:2px solid currentColor;transform:rotate(45deg);margin-left:4px}
 .srow input{width:18px;height:18px;accent-color:var(--red)}
 .pop .foot{display:flex;gap:8px;justify-content:flex-end;margin-top:8px;padding-top:8px;border-top:1px solid var(--line-2)}
 .scrim{position:fixed;inset:0;z-index:65;background:transparent}
@@ -333,7 +336,7 @@ tr.flag td{background:var(--warn-bg)}
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 <script src="config.js"></script>
 <script src="firebase.js?v=24"></script>
-<script src="app.js?v=35"></script>
+<script src="app.js?v=36"></script>
 <script>if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});</script>
 
 </body></html>
