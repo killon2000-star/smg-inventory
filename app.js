@@ -37,7 +37,7 @@ const PERM_DEF = [
 ];
 
 const DEFAULT_ORDER = STORES.map(s => s.id);
-const APP_VERSION = '2026-10-30 22:45';   // 앱 화면을 마지막으로 고친 시각 (한국 시간)
+const APP_VERSION = '2026-10-30 22:55';   // 앱 화면을 마지막으로 고친 시각 (한국 시간)
 /* ───────── 작은 도구 ───────── */
 const $ = (s, el = document) => el.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -66,6 +66,13 @@ const ICON = {
   check: '<path d="M4 5h16v14H4z"/><path d="M8 12l3 3 5-6"/>',
   more: '<circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/>',
   search: '<circle cx="11" cy="11" r="6.5"/><path d="M16 16l4.5 4.5"/>',
+  truck: '<path d="M3 6h11v10H3z"/><path d="M14 9h4l3 3v4h-7"/><circle cx="7" cy="17.5" r="1.8"/><circle cx="17" cy="17.5" r="1.8"/>',
+  swap: '<path d="M4 8h14l-3-3M20 16H6l3 3"/>',
+  list: '<path d="M9 6h11M9 12h11M9 18h11"/><circle cx="4.5" cy="6" r="1"/><circle cx="4.5" cy="12" r="1"/><circle cx="4.5" cy="18" r="1"/>',
+  chart: '<path d="M4 20V4M4 20h16"/><path d="M8 16v-4M12 16V8M16 16v-6"/>',
+  won: '<circle cx="12" cy="12" r="9"/><path d="M7 9l2 6 3-6 3 6 2-6M6.5 12h11"/>',
+  gear: '<circle cx="12" cy="12" r="3"/><path d="M12 3v2.5M12 18.5V21M3 12h2.5M18.5 12H21M5.6 5.6l1.8 1.8M16.6 16.6l1.8 1.8M5.6 18.4l1.8-1.8M16.6 7.4l1.8-1.8"/>',
+  user: '<circle cx="12" cy="8" r="3.5"/><path d="M5 20c1-4 4-6 7-6s6 2 7 6"/>',
   scan: '<path d="M4 8V5a1 1 0 0 1 1-1h3M16 4h3a1 1 0 0 1 1 1v3M20 16v3a1 1 0 0 1-1 1h-3M8 20H5a1 1 0 0 1-1-1v-3"/><path d="M7 9v6M10 9v6M13 9v6M17 9v6"/>',
 };
 const ic = (n, s = 18) => `<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${ICON[n]}</svg>`;
@@ -224,15 +231,16 @@ function render() {
   ${S.ui.toast ? `<div class="toast" role="status">${esc(S.ui.toast)}</div>` : ''}`;
   bind(); pinTabbar();
 }
+// 아래 메뉴: 권한 있는 메뉴를 모두 보여 줌 (6개 넘으면 두 줄)
+const TAB = { home: ['홈', 'home'], products: ['상품', 'box'], entry: ['입출고', 'plus'], count: ['실사', 'check'], inbound: ['입고확인', 'truck'], transfer: ['매장이동', 'swap'], records: ['기록', 'list'], sales: ['매출', 'chart'], settle: ['정산', 'won'], admin: ['관리', 'user'], more: ['설정', 'gear'] };
 function tabbar(nav) {
-  const main = [{ id: 'home', t: '홈', i: 'home' }, { id: 'products', t: '상품', i: 'box' }];
-  if (can('move')) main.push({ id: 'entry', t: '등록', i: 'plus' });
-  if (can('count')) main.push({ id: 'count', t: '실사', i: 'check' });
-  const rest = nav.filter(n => !main.find(m => m.id === n.id));
-  const out = main.slice(0, 4);
-  if (rest.length) out.push({ id: 'more', t: '더보기', i: 'more' });
-  while (out.length < 5) out.push(null);
-  return out.map(n => n ? `<button data-nav="${n.id}" class="${S.view === n.id || (n.id === 'more' && rest.find(r => r.id === S.view)) ? 'on' : ''}">${ic(n.i, 22)}<span>${n.t}</span></button>` : '<span></span>').join('');
+  const pendingN = can('approve') ? S.users.filter(u => u.status === 'pending').length : 0;
+  const out = [...nav.map(n => n.id), 'more'];
+  const cols = out.length <= 5 ? out.length : Math.ceil(out.length / 2);
+  return `<div class="tabgrid${out.length > 5 ? ' two' : ''}" style="grid-template-columns:repeat(${cols},1fr)">` + out.map(id => {
+    const [t, i] = TAB[id] || [id, 'more'];
+    return `<button data-nav="${id}" class="${S.view === id ? 'on' : ''}">${ic(i, 20)}<span>${t}</span>${id === 'admin' && pendingN ? `<b class="tcnt">${pendingN}</b>` : ''}</button>`;
+  }).join('') + '</div>';
 }
 function applyStoreOrder(order) {
   if (!Array.isArray(order) || !order.length) return;
@@ -1311,8 +1319,7 @@ function seedView() {
   <p class="muted" style="font-size:12.5px;margin:8px 0 0">매출이 빠진 날이 있을 때는 <b>[매출·정산만 다시 넣기]</b>를 쓰세요. 한 달씩 넣고, 앱에서 이미 올린 날짜(예: 10/30)는 지우지 않습니다. 실패한 달이 있으면 아래에 이유가 나옵니다.</p><div class="muted" style="margin-top:8px;font-weight:600">${esc(S.ui.seedMsg || '')}</div></div>`;
 }
 function moreView() {
-  const nav = NAV.filter(n => n.show() && !['home', 'products', 'entry', 'count'].includes(n.id));
-  return `${head('더보기', `앱 업데이트 ${APP_VERSION}`)}<div class="card">${textSizeBox()}</div><div class="card" style="padding:6px">${nav.map(n => `<button class="btn" style="width:100%;justify-content:flex-start;border:0;min-height:48px" data-nav="${n.id}">${esc(n.t)}</button>`).join('')}</div>`;
+  return `${head('설정', `앱 업데이트 ${APP_VERSION}`)}<div class="card">${textSizeBox()}</div>`;
 }
 
 /* ───────── 로그인·신청 ───────── */
@@ -1592,6 +1599,7 @@ function resetZoom() {
 // 손가락으로 확대해도 아래 메뉴는 화면 아래에 같은 크기로 붙어 있게
 function pinTabbar() {
   const vv = window.visualViewport, bar = document.querySelector('.tabbar');
+  if (bar && bar.offsetHeight) document.documentElement.style.setProperty('--tabh', bar.offsetHeight + 'px');
   if (!vv || !bar) return;
   if (vv.scale <= 1.01) { bar.style.transform = ''; return; }
   const layoutH = document.documentElement.clientHeight;
