@@ -56,6 +56,9 @@ const daysBetween = (a, b) => Math.round((Date.parse(b) - Date.parse(a)) / 864e5
 const norm = s => String(s || '').toLowerCase().replace(/^에바30주년팝업_/, '').replace(/[\s\[\]()!_\-.,~·&]/g, '');
 const storeName = id => (STORES.find(s => s.id === id) || {}).name || id;
 const storeColor = id => `var(--s-${id})`;
+const SHORT = { suwon: '수원', boxcafe: 'BOX CAFE', museum: 'MUSEUM 홍대', omake: '오마케', limission: '리밋션 홍대' };
+const shortName = id => SHORT[id] || storeName(id);
+const sdot = id => `<span class="dot" style="background:${storeColor(id)};display:inline-block;margin-right:4px;vertical-align:1px"></span>`;
 const ICON = {
   home: '<path d="M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/>',
   box: '<path d="M3 7l9-4 9 4-9 4-9-4z"/><path d="M3 7v10l9 4 9-4V7"/><path d="M12 11v10"/>',
@@ -195,7 +198,7 @@ function render() {
   const nav = NAV.filter(n => n.show());
   if (S.view !== 'more' && !nav.find(n => n.id === S.view)) S.view = 'home';
   const pendingN = S.users.filter(u => u.status === 'pending').length;
-  const sv = S.stores.length === 1 ? storeName(S.stores[0]) : `${S.stores.length}개 매장`;
+  const sv = S.stores.length === 1 ? storeName(S.stores[0]) : `${S.stores.length}개 매장 함께 보기`;
   app.innerHTML = `
   <header class="top">
     <button class="store-btn" id="storeBtn" aria-haspopup="true" aria-expanded="${S.ui.storeMenu}">
@@ -205,6 +208,7 @@ function render() {
     ${S.mode === 'demo' ? '' : `<div class="who"><span class="nmx">${esc(S.user.name)} · ${esc(S.user.position)}</span><button class="btn sm" id="logout">로그아웃</button></div>`}
   </header>
   ${S.mode === 'demo' ? `<div class="demobar"><span class="demo-tag">미리보기</span><label for="roleSel">권한별로 보기</label><select id="roleSel">${DEMO_ROLES.map(r => `<option value="${r.uid}" ${S.user.uid === r.uid ? 'selected' : ''}>${esc(r.label)}</option>`).join('')}</select><span class="muted hide-s">수원 실제 자료 · 저장한 내용은 새로고침하면 처음 상태로 돌아갑니다</span></div>` : ''}
+  ${S.stores.length > 1 ? `<div class="storebar" aria-label="보고 있는 매장"><span class="lb">보고 있는 매장</span>${S.stores.map(id => `<button class="schip" data-sg="${id}" title="${esc(storeName(id))}만 보기"><span class="dot" style="background:${storeColor(id)}"></span>${esc(storeName(id))}</button>`).join('')}<button class="schip more" id="storeBtn2">바꾸기</button></div>` : ''}
   ${S.ui.storeMenu ? storeMenu() : ''}
   <div class="shell">
     <nav class="side" aria-label="메뉴">
@@ -382,7 +386,7 @@ function productsView() {
     <div class="chips">${[['all', '재고 등록 상품'], ['in', '재고 있음'], ['out', '품절'], ['neg', '마이너스']].map(([k, t]) => `<button class="chip ${S.ui.f === k ? 'on' : ''}" data-pf="${k}">${t}</button>`).join('')}</div>
   </div>
   <div class="card" style="padding:8px 12px">
-    ${rows.length ? `<div class="tw"><table><thead><tr><th>상품명</th><th class="hide-s">IP</th><th class="hide-s">바코드·품번</th>${multi ? st.map(s => `<th class="n">${esc(storeName(s))}</th>`).join('') : ''}<th class="n">${multi ? '합계' : '재고'}</th><th class="hide-s">상태</th></tr></thead><tbody>
+    ${rows.length ? `<div class="tw"><table><thead><tr><th>상품명</th><th class="hide-s">IP</th><th class="hide-s">바코드·품번</th>${multi ? st.map(s => `<th class="n">${sdot(s)}${esc(shortName(s))}</th>`).join('') : ''}<th class="n">${multi ? '합계' : '재고'}</th><th class="hide-s">상태</th></tr></thead><tbody>
       ${shown.map(r => `<tr class="click" data-pid="${esc(r.p.id)}"><td class="nm">${esc(r.p.name)}</td><td class="hide-s nowrap">${esc(r.p.ip)}</td><td class="code hide-s">${esc(r.p.barcode || r.p.sku)}</td>
         ${multi ? r.per.map(x => `<td class="n ${x < 0 ? 'qty-neg' : x === 0 ? 'qty-zero' : ''}">${fmt(x)}</td>`).join('') : ''}<td class="n big ${r.t < 0 ? 'qty-neg' : r.t === 0 ? 'qty-zero' : ''}" style="font-size:16px">${fmt(r.t)}</td><td class="hide-s">${statusPill(r.t)}</td></tr>`).join('')}
     </tbody></table></div>${rows.length > 300 ? `<p class="muted" style="font-size:13px">앞 300종만 보여 줍니다. 검색으로 좁혀 주세요.</p>` : ''}` : '<div class="empty">찾는 상품이 없습니다</div>'}
@@ -402,7 +406,7 @@ function productDrawer(pid) {
 function movesTable(list, withName = true, compact = false) {
   if (!list.length) return '<div class="empty">기록이 없습니다</div>';
   return `<div class="tw"><table><thead><tr><th>날짜</th>${S.stores.length > 1 || compact ? '<th>매장</th>' : ''}<th>구분</th>${withName ? '<th>상품명</th>' : ''}<th class="n">수량</th><th class="hide-s">메모</th></tr></thead><tbody>
-  ${list.map(m => `<tr><td class="nowrap num" style="text-align:left">${md(m.date)}</td>${S.stores.length > 1 || compact ? `<td class="nowrap">${esc(storeName(m.store).replace('SMG STORE_', '').replace('SMG MUSEUM_', ''))}</td>` : ''}<td>${typePill(m.type)}</td>${withName ? `<td class="nm">${esc((S.P[m.pid] || {}).name || m.pid)}</td>` : ''}<td class="n ${m.qty < 0 ? 'qty-neg' : ''}" style="font-weight:600">${m.qty > 0 ? '+' : ''}${fmt(m.qty)}</td><td class="hide-s muted" style="font-size:12px">${esc(m.memo || '')}${m.by && !/claude/i.test(m.by) ? ` · ${esc(m.by)}` : ''}</td></tr>`).join('')}
+  ${list.map(m => `<tr><td class="nowrap num" style="text-align:left">${md(m.date)}</td>${S.stores.length > 1 || compact ? `<td class="nowrap">${sdot(m.store)}${esc(shortName(m.store))}</td>` : ''}<td>${typePill(m.type)}</td>${withName ? `<td class="nm">${esc((S.P[m.pid] || {}).name || m.pid)}</td>` : ''}<td class="n ${m.qty < 0 ? 'qty-neg' : ''}" style="font-weight:600">${m.qty > 0 ? '+' : ''}${fmt(m.qty)}</td><td class="hide-s muted" style="font-size:12px">${esc(m.memo || '')}${m.by && !/claude/i.test(m.by) ? ` · ${esc(m.by)}` : ''}</td></tr>`).join('')}
   </tbody></table></div>`;
 }
 function typePill(t) { const pos = ['입고', '창고에서 가져옴', '매장 이동(받음)']; return `<span class="pill ${t === COUNT_TYPE ? 'p-info' : pos.includes(t) ? 'p-ok' : t === '판매' ? 'p-mute' : 'p-warn'}">${esc(t)}</span>`; }
@@ -1266,6 +1270,7 @@ function bind() {
     if (d.install != null) { doInstall(); return; }
     if (d.openext != null) { openExternal(); return; }
     if (d.copylink != null) { copyLink(); return; }
+    if (t.id === 'storeBtn2') { S.ui.storeMenu = true; render(); return; }
     if (t.id === 'storeBtn') { S.ui.storeMenu = !S.ui.storeMenu; render(); return; }
     if (t.id === 'scrim' || t.id === 'smClose') { if (S.ui.storeEdit) await saveStoreOrder(); S.ui.storeEdit = false; S.ui.storeMenu = false; render(); return; }
     if (t.id === 'smOrder') { S.ui.storeEdit = true; render(); return; }

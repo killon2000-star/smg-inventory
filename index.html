@@ -64,6 +64,10 @@ button{cursor:pointer}
 .demobar select{border:1px solid var(--line);background:var(--surface);border-radius:6px;padding:4px 8px;font-weight:600}
 .demo-tag{background:var(--red);color:#fff;font-size:11px;font-weight:700;letter-spacing:.06em;padding:2px 6px;border-radius:4px}
 
+.storebar{display:flex;flex-wrap:wrap;gap:6px;align-items:center;background:var(--surface);border-bottom:1px solid var(--line);padding-block:8px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+.storebar .lb{font-size:12px;color:var(--muted);font-weight:600;margin-right:2px;white-space:nowrap}
+.schip{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);background:var(--surface);border-radius:16px;padding:3px 10px;font-size:13px;font-weight:700;color:var(--ink);white-space:nowrap}
+.schip.more{color:var(--muted);font-weight:600}
 /* store menu */
 .pop{position:fixed;z-index:70;top:calc(env(safe-area-inset-top,0px) + 58px);left:max(8px,env(safe-area-inset-left,0px));width:min(360px,calc(100vw - 16px));
   background:var(--surface);color:var(--ink);border:1px solid var(--line);border-radius:10px;box-shadow:var(--shadow);padding:10px}
@@ -245,7 +249,7 @@ tr.flag td{background:var(--warn-bg)}
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 <script src="config.js"></script>
 <script src="firebase.js?v=14"></script>
-<script src="app.js?v=17"></script>
+<script src="app.js?v=18"></script>
 <script>if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});</script>
 
 </body></html>
