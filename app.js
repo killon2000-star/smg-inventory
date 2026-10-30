@@ -37,7 +37,7 @@ const PERM_DEF = [
 ];
 
 const DEFAULT_ORDER = STORES.map(s => s.id);
-const APP_VERSION = '2026-10-30 08:38';   // 앱 화면을 마지막으로 고친 시각 (한국 시간)
+const APP_VERSION = '2026-10-30 22:45';   // 앱 화면을 마지막으로 고친 시각 (한국 시간)
 /* ───────── 작은 도구 ───────── */
 const $ = (s, el = document) => el.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -246,6 +246,61 @@ function moveStore(id, dir) {
   [STORES[i], STORES[j]] = [STORES[j], STORES[i]];
   S.stores = STORES.map(x => x.id).filter(x => S.stores.includes(x));
 }
+// 아이폰 즐겨찾기처럼 ≡ 를 끌어서 매장 순서 바꾸기 (줄 전체를 길게 눌러도 됨)
+let ordDrag = null;
+function ordStart(row, y, pid) {
+  const list = row.parentElement, rows = [...list.children];
+  const h = rows.length > 1 ? rows[1].getBoundingClientRect().top - rows[0].getBoundingClientRect().top : row.getBoundingClientRect().height;
+  ordDrag = { row, list, rows, from: rows.indexOf(row), to: rows.indexOf(row), y0: y, h, pid };
+  row.classList.add('dragging');
+  try { navigator.vibrate && navigator.vibrate(10); } catch (e) { }
+}
+function ordMove(y) {
+  const d = ordDrag; if (!d) return;
+  const dy = y - d.y0, n = d.rows.length;
+  const to = Math.max(0, Math.min(n - 1, d.from + Math.round(dy / d.h)));
+  d.to = to;
+  d.row.style.transform = `translateY(${dy}px)`;
+  d.rows.forEach((r, i) => {
+    if (r === d.row) return;
+    let sh = 0;
+    if (d.from < to && i > d.from && i <= to) sh = -d.h;
+    if (d.from > to && i < d.from && i >= to) sh = d.h;
+    r.style.transform = sh ? `translateY(${sh}px)` : '';
+  });
+}
+function ordEnd() {
+  const d = ordDrag; if (!d) return; ordDrag = null;
+  if (d.to !== d.from) {
+    const [m] = STORES.splice(d.from, 1); STORES.splice(d.to, 0, m);
+    S.stores = STORES.map(x => x.id).filter(x => S.stores.includes(x));
+  }
+  render();
+}
+(function ordInit() {
+  let press = null;
+  document.addEventListener('pointerdown', e => {
+    const row = e.target.closest && e.target.closest('.ordrow'); if (!row) return;
+    if (e.target.closest('.grip')) { e.preventDefault(); ordStart(row, e.clientY, e.pointerId); return; }
+    const y = e.clientY;   // 줄을 길게 누르면 끌기 시작
+    press = { t: setTimeout(() => { press = null; ordStart(row, y, e.pointerId); }, 350), y };
+  });
+  document.addEventListener('pointermove', e => {
+    if (press && Math.abs(e.clientY - press.y) > 8) { clearTimeout(press.t); press = null; }
+    if (ordDrag) { e.preventDefault(); ordMove(e.clientY); }
+  }, { passive: false });
+  const up = () => { if (press) { clearTimeout(press.t); press = null; } if (ordDrag) ordEnd(); };
+  document.addEventListener('pointerup', up); document.addEventListener('pointercancel', up);
+  // 끄는 중 화면이 스크롤되지 않게
+  document.addEventListener('touchmove', e => { if (ordDrag) e.preventDefault(); }, { passive: false });
+  // 키보드: ≡ 에서 위·아래 화살표
+  document.addEventListener('keydown', e => {
+    const g = e.target.closest && e.target.closest('.grip'); if (!g) return;
+    if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
+    e.preventDefault(); const id = g.dataset.grip; moveStore(id, e.key === 'ArrowUp' ? -1 : 1); render();
+    const ng = document.querySelector(`.grip[data-grip="${id}"]`); ng && ng.focus();
+  });
+})();
 async function saveStoreOrder() {
   const order = STORES.map(s => s.id);
   try { localStorage.setItem('smg-store-order:' + (S.user ? S.user.uid : ''), JSON.stringify(order)); } catch (e) { }
@@ -255,9 +310,9 @@ async function saveStoreOrder() {
 function storeMenu() {
   const mine = myStores();
   if (S.ui.storeEdit) return `<div class="scrim" id="scrim"></div><div class="pop" role="dialog" aria-label="매장 순서 바꾸기">
-    <h4>▲ ▼ 로 내 화면의 매장 순서를 바꿉니다 · 다른 사람에게는 영향 없음</h4>
-    ${STORES.map((s, i) => `<div class="srow"><span class="num muted" style="width:18px;text-align:right">${i + 1}</span><span class="go" style="cursor:default"><span class="dot" style="background:${storeColor(s.id)}"></span>${esc(s.name)}</span>
-      <button class="btn sm" data-mv="${s.id}:-1" ${i === 0 ? 'disabled' : ''} aria-label="${esc(s.name)} 위로">▲</button><button class="btn sm" data-mv="${s.id}:1" ${i === STORES.length - 1 ? 'disabled' : ''} aria-label="${esc(s.name)} 아래로">▼</button></div>`).join('')}
+    <h4>오른쪽 ≡ 를 누른 채 위아래로 끌어서 순서를 바꿉니다 · 다른 사람에게는 영향 없음</h4>
+    <div class="ordlist" id="ordList">${STORES.map((s, i) => `<div class="srow ordrow" data-ord="${s.id}"><span class="num muted ordn" style="width:18px;text-align:right">${i + 1}</span><span class="go" style="cursor:default"><span class="dot" style="background:${storeColor(s.id)}"></span>${esc(s.name)}</span>
+      <span class="grip" role="button" tabindex="0" data-grip="${s.id}" aria-label="${esc(s.name)} 끌어서 순서 바꾸기 (키보드: 위·아래 화살표)">≡</span></div>`).join('')}</div>
     <div class="foot"><button class="btn sm pri" id="smOrderDone">순서 저장</button></div></div>`;
   return `<div class="scrim" id="scrim"></div><div class="pop" role="dialog" aria-label="매장 선택">
     <h4>매장 이름을 누르면 그 매장으로 이동 · 체크하면 여러 매장 함께 보기</h4>

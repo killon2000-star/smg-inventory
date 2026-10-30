@@ -80,6 +80,11 @@ button{cursor:pointer}
 .srow:hover{background:var(--surface-2)}
 .srow .go{flex:1;text-align:left;background:none;border:0;padding:0;font-weight:600;display:flex;align-items:center;gap:8px;min-width:0}
 .dot{width:10px;height:10px;border-radius:50%;flex:none}
+.ordlist{position:relative;touch-action:pan-y}
+.ordrow{background:var(--surface);transition:transform .18s ease;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}
+.ordrow.dragging{transition:none;position:relative;z-index:2;box-shadow:0 6px 18px rgba(0,0,0,.18);background:var(--surface)}
+.grip{display:inline-flex;align-items:center;justify-content:center;width:40px;height:36px;font-size:22px;color:var(--muted);cursor:grab;touch-action:none;border-radius:8px}
+.grip:focus-visible{outline:2px solid var(--red)}
 .srow input{width:18px;height:18px;accent-color:var(--red)}
 .pop .foot{display:flex;gap:8px;justify-content:flex-end;margin-top:8px;padding-top:8px;border-top:1px solid var(--line-2)}
 .scrim{position:fixed;inset:0;z-index:65;background:transparent}
@@ -253,7 +258,7 @@ tr.flag td{background:var(--warn-bg)}
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 <script src="config.js"></script>
 <script src="firebase.js?v=23"></script>
-<script src="app.js?v=24"></script>
+<script src="app.js?v=25"></script>
 <script>if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});</script>
 
 </body></html>
