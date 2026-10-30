@@ -37,7 +37,7 @@ const PERM_DEF = [
 ];
 
 const DEFAULT_ORDER = STORES.map(s => s.id);
-const APP_VERSION = '2026-10-31 00:50';   // 앱 화면을 마지막으로 고친 시각 (한국 시간)
+const APP_VERSION = '2026-10-31 00:55';   // 앱 화면을 마지막으로 고친 시각 (한국 시간)
 /* ───────── 작은 도구 ───────── */
 const $ = (s, el = document) => el.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -243,7 +243,6 @@ function render() {
       <span class="nm">${esc(sv)}</span><span class="car"></span>
     </button>
     <span class="sp"></span>
-    ${navStack.length ? `<button class="back-btn" id="navBack" aria-label="이전 화면으로"><span class="ar"></span>이전</button>` : ''}
     ${S.mode === 'demo' ? '' : `<div class="who"><span class="nmx">${esc(S.user.name)} · ${esc(S.user.position)}</span><button class="btn sm" id="logout">로그아웃</button></div>`}
   </header>
   ${S.mode === 'demo' ? `<div class="demobar"><span class="demo-tag">미리보기</span><label for="roleSel">권한별로 보기</label><select id="roleSel">${DEMO_ROLES.map(r => `<option value="${r.uid}" ${S.user.uid === r.uid ? 'selected' : ''}>${esc(r.label)}</option>`).join('')}</select><span class="muted hide-s">수원 실제 자료 · 저장한 내용은 새로고침하면 처음 상태로 돌아갑니다</span></div>` : ''}
@@ -261,6 +260,8 @@ function render() {
   ${S.ui.drawer ? `<div class="ov" id="ov"><div class="dr" role="dialog" aria-modal="true">${S.ui.drawer()}</div></div>` : ''}
   ${S.ui.toast ? `<div class="toast" role="status">${esc(S.ui.toast)}</div>` : ''}`;
   bind(); pinTabbar();
+  // [이전] 버튼: 화면 제목 줄 오른쪽 끝
+  if (navStack.length) { const ph = document.querySelector('#page .ph'); if (ph) ph.insertAdjacentHTML('beforeend', '<button class="back-btn" id="navBack" aria-label="이전 화면으로"><span class="ar"></span>이전</button>'); }
   const tw = document.querySelector('.tlwrap'), tt = tw && tw.querySelector('.tltoday');
   if (tw && tt && tw.scrollWidth > tw.clientWidth && !tw.dataset.sc) { tw.scrollLeft = Math.max(0, tt.offsetLeft - 108 - tw.clientWidth * 0.2); tw.dataset.sc = 1; }
 }
