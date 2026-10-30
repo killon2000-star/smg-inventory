@@ -37,7 +37,7 @@ const PERM_DEF = [
 ];
 
 const DEFAULT_ORDER = STORES.map(s => s.id);
-const APP_VERSION = '2026-10-31 00:30';   // 앱 화면을 마지막으로 고친 시각 (한국 시간)
+const APP_VERSION = '2026-10-31 00:40';   // 앱 화면을 마지막으로 고친 시각 (한국 시간)
 /* ───────── 작은 도구 ───────── */
 const $ = (s, el = document) => el.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -1756,10 +1756,21 @@ function pinTabbar() {
   bar.style.transform = `translate(${x}px, ${y}px) scale(${1 / vv.scale})`;
 }
 if (window.visualViewport) { visualViewport.addEventListener('resize', pinTabbar); visualViewport.addEventListener('scroll', pinTabbar); }
+// 대한민국 공휴일 (대체공휴일 포함) — 해마다 추가
+const KR_HOLIDAYS = {
+  '2026-01-01': '신정', '2026-02-16': '설날 연휴', '2026-02-17': '설날', '2026-02-18': '설날 연휴', '2026-03-01': '삼일절', '2026-03-02': '대체공휴일(삼일절)',
+  '2026-05-01': '노동절', '2026-05-05': '어린이날', '2026-05-24': '부처님오신날', '2026-05-25': '대체공휴일(부처님오신날)', '2026-06-03': '지방선거일', '2026-06-06': '현충일',
+  '2026-07-17': '제헌절', '2026-08-15': '광복절', '2026-08-17': '대체공휴일(광복절)', '2026-09-24': '추석 연휴', '2026-09-25': '추석', '2026-09-26': '추석 연휴',
+  '2026-10-03': '개천절', '2026-10-05': '대체공휴일(개천절)', '2026-10-09': '한글날', '2026-12-25': '성탄절',
+  '2027-01-01': '신정', '2027-02-06': '설날 연휴', '2027-02-07': '설날', '2027-02-08': '설날 연휴', '2027-02-09': '대체공휴일(설날)', '2027-03-01': '삼일절',
+  '2027-05-01': '노동절', '2027-05-03': '대체공휴일(노동절)', '2027-05-05': '어린이날', '2027-05-13': '부처님오신날', '2027-06-06': '현충일',
+  '2027-07-17': '제헌절', '2027-07-19': '대체공휴일(제헌절)', '2027-08-15': '광복절', '2027-08-16': '대체공휴일(광복절)', '2027-09-14': '추석 연휴', '2027-09-15': '추석', '2027-09-16': '추석 연휴',
+  '2027-10-03': '개천절', '2027-10-04': '대체공휴일(개천절)', '2027-10-09': '한글날', '2027-10-11': '대체공휴일(한글날)', '2027-12-25': '성탄절', '2027-12-27': '대체공휴일(성탄절)',
+};
 // 왼쪽 아래 시계 — 쓰는 기기의 시스템 시간 (해외에서는 현지 시간 + 한국 시간 함께). 상자 너비에 맞춰 글씨 크기를 채움
 (function kclock() {
   const el = document.createElement('div'); el.className = 'kclock'; el.setAttribute('aria-label', '현재 시간');
-  el.innerHTML = '<div class="kr1"><span class="kd"></span><b class="kw"></b></div><div class="kt"><span></span></div><div class="kr2"><span class="kz"></span><span class="kk"></span></div>';
+  el.innerHTML = '<div class="kr1"><span class="kd"></span><b class="kw"></b></div><div class="kh"></div><div class="kt"><span></span></div><div class="kr2"><span class="kz"></span><span class="kk"></span></div>';
   const q = c => el.querySelector(c), W = ['일요일', '월요일', '화요일', '수요일', '목요일', '금요일', '토요일'], p2 = n => String(n).padStart(2, '0');
   const kF = new Intl.DateTimeFormat('ko-KR', { timeZone: 'Asia/Seoul', month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false });
   const kst2 = d => { const o = Object.fromEntries(kF.formatToParts(d).map(x => [x.type, x.value])); return `${o.month}/${o.day} ${o.hour}:${o.minute}`; };
@@ -1774,6 +1785,8 @@ if (window.visualViewport) { visualViewport.addEventListener('resize', pinTabbar
     const d = new Date(), abroad = d.getTimezoneOffset() !== -540;
     q('.kd').textContent = `${d.getFullYear()}.${p2(d.getMonth() + 1)}.${p2(d.getDate())}`;
     q('.kw').textContent = W[d.getDay()];
+    const hol = KR_HOLIDAYS[`${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())}`] || '';
+    q('.kh').textContent = hol; el.classList.toggle('hol', !!hol); el.classList.toggle('sun', d.getDay() === 0); el.classList.toggle('sat', d.getDay() === 6 && !hol);
     q('.kt span').textContent = `${p2(d.getHours())}:${p2(d.getMinutes())}:${p2(d.getSeconds())}`;
     el.classList.toggle('abroad', abroad); q('.kt').dataset.k = abroad ? '한국 ' + kst2(d).split(' ')[1] : '';
     if (abroad) { q('.kz').textContent = (zone || '현지') + ' 시간'; q('.kk').textContent = '한국 ' + kst2(d); }
