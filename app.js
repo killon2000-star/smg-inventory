@@ -37,7 +37,7 @@ const PERM_DEF = [
 ];
 
 const DEFAULT_ORDER = STORES.map(s => s.id);
-const APP_VERSION = '2026-10-31 01:20';   // 앱 화면을 마지막으로 고친 시각 (한국 시간)
+const APP_VERSION = '2026-10-31 07:35';   // 앱 화면을 마지막으로 고친 시각 (한국 시간)
 /* ───────── 작은 도구 ───────── */
 const $ = (s, el = document) => el.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -1288,7 +1288,7 @@ function posDrawer() {
   ${pv ? pv.err ? `<div class="note bad">🔺 ${esc(pv.err)}</div>` : `<div class="card"><h2>확인 · ${esc(storeName(pv.store))}</h2>
     <div class="alerts">${pv.days.map(d => `<div class="al"><span class="ic">${d.ok ? '✔' : '🔺'}</span><span class="tx"><b>${d.date}(${wd(d.date)})</b> 매출 ${won(d.s)} · ${fmt(d.p)}건 · 상품 ${d.items}종 ${fmt(d.q)}개${d.ok ? ' — 결제 합계와 상품 합계 일치' : ` — 🔺 결제 ${won(d.s)} ≠ 상품 ${won(d.si)}`}${d.exists ? '<br>🔸 이미 올린 날짜입니다. 저장하면 덮어씁니다.' : ''}</span></div>`).join('')}
     ${pv.match ? `<div class="al"><span class="ic">${pv.unmatched.length ? '🔸' : '✔'}</span><span class="tx">재고 차감: 상품 ${pv.match.length}종 찾음${pv.unmatched.length ? ` · 못 찾은 ${pv.unmatched.length}종 (${esc(pv.unmatched.slice(0, 3).join(', '))}${pv.unmatched.length > 3 ? ' 외' : ''}) — 재고에 없는 상품은 차감하지 않습니다` : ''}</span></div>` : ''}</div>
-    <label class="ck"><input type="checkbox" id="posDeduct" ${pv.days.some(d => d.exists) ? '' : 'checked'}><span><span class="t">판매 수량을 재고에서 빼기</span><span class="s" style="display:block">${pv.days.some(d => d.exists) ? '🔸 이미 올린 날짜가 있어 꺼 두었습니다. 그날 재고를 이미 뺐다면 다시 빼면 두 번 빠집니다.' : "찾은 상품만 '판매'로 기록합니다"}</span></span></label>
+    <label class="ck"><input type="checkbox" id="posDeduct" ${pv.newDays && pv.newDays.length ? 'checked' : ''} ${pv.newDays && pv.newDays.length ? '' : 'disabled'}><span><span class="t">판매 수량을 재고에서 빼기${pv.newDays && pv.newDays.length ? ` — ${pv.newDays.length === 1 ? md(pv.newDays[0]) : md(pv.newDays[0]) + '~' + md(pv.newDays[pv.newDays.length - 1])} ${pv.newDays.length}일치만` : ''}</span><span class="s" style="display:block">${pv.lastPos ? `${md(pv.lastPos)}까지는 이미 재고에서 뺐습니다. ${pv.newDays.length ? '그 뒤 날짜만 빼서 두 번 빠지지 않습니다.' : '새로 뺄 날짜가 없습니다 (매출만 저장).'}` : "찾은 상품만 '판매'로 재고에서 뺍니다."}</span></span></label>
     <div class="row" style="justify-content:flex-end;margin-top:10px"><button class="btn pri" id="posSave" ${pv.days.every(d => d.ok) ? '' : 'disabled'}>매출 저장</button></div></div>` : ''}`;
 }
 async function readPos(f, store) {
@@ -1317,7 +1317,10 @@ async function readPos(f, store) {
       for (const x of L) { const c = S.byName[norm(x.name)]; if (c && c.length === 1 && (S.stock[store] || {})[c[0].id] != null) match.push({ date: d.date, pid: c[0].id, q: x.q }); else unmatched.add(x.name); }
     }
     if (!days.length) throw new Error('결제 합계에 날짜 줄이 없습니다.');
-    S.ui.posPreview = { store, days, match, unmatched: [...unmatched], file: f.name };
+    // 재고는 '마지막으로 POS 판매를 뺀 날짜' 다음 날부터만 뺌 (한 달치 파일을 다시 올려도 두 번 빠지지 않게)
+    const lastPos = S.moves.filter(m => m.store === store && m.type === '판매' && m.by === '자동(POS)').reduce((a, m) => (m.date > a ? m.date : a), '');
+    const newDays = days.map(d => d.date).filter(d => d > lastPos);
+    S.ui.posPreview = { store, days, match, unmatched: [...unmatched], file: f.name, lastPos, newDays };
   } catch (err) {
     S.ui.posPreview = { store, err: /password|encrypted|Wrong/i.test(String(err && err.message)) ? `zip 비밀번호가 맞지 않습니다. 관리 › 파일 비밀번호에서 ${storeName(store)} 비밀번호를 확인해 주세요.` : String(err.message || err) };
   }
@@ -1332,7 +1335,7 @@ async function savePos() {
     ((S.sales[st] ||= {})[d.date.slice(0, 7)] ||= { days: {} }).days[d.date.slice(8)] = rec;
   }
   if ($('#posDeduct') && $('#posDeduct').checked && pv.match.length) {
-    const list = pv.match.map((m, i) => ({ id: 'p' + Date.now().toString(36) + i, date: m.date, store: st, type: '판매', pid: m.pid, qty: -m.q, memo: 'POS 판매', by: '자동(POS)', at: new Date().toISOString() }));
+    const list = pv.match.filter(m => !pv.lastPos || m.date > pv.lastPos).map((m, i) => ({ id: 'p' + Date.now().toString(36) + i, date: m.date, store: st, type: '판매', pid: m.pid, qty: -m.q, memo: 'POS 판매', by: '자동(POS)', at: new Date().toISOString() }));
     await DB.saveMoves(list); for (const m of list) { S.moves.push(m); S.stock[st][m.pid] = stockOf(st, m.pid) + m.qty; }
   }
   S.ui.posPreview = null; S.ui.drawer = null; toast(`매출 ${pv.days.length}일치를 저장했습니다`);
