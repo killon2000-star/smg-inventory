@@ -842,7 +842,7 @@ function firstSalesDate(stores) {
 }
 function defaultRange(unit, last) {
   if (!last) last = today();
-  if (unit === 'day') return [addDays(last, -13), last];
+  if (unit === 'day') return [last, last];   // 기본: 마지막으로 올린 날 하루
   if (unit === 'week') return [addDays(last, -7 * 8 + 1), last];
   if (unit === 'month') return [addDays(last, -365).slice(0, 7) + '-01', last];
   if (unit === 'year') return [firstSalesDate(S.stores) || last.slice(0, 4) + '-01-01', last];
@@ -883,14 +883,16 @@ function salesView() {
   const [a, b] = S.ui.range.ab;
   const sum = (S.sumStores || stores).filter(s => stores.includes(s));
   const per = aggregate(stores, a, b);
-  const len = daysBetween(a, b) + 1; const pa = addDays(a, -len), pb = addDays(a, -1);
+  const len = daysBetween(a, b) + 1; let pa = addDays(a, -len), pb = addDays(a, -1);
+  if (len === 1) { pa = pb = addDays(a, -7); }   // 하루만 볼 때는 지난주 같은 요일과 비교
+  const cmpLabel = len === 1 ? `지난주 ${wd(a)}요일(${md(pa)}) 대비` : `이전 ${len}일 대비`;
   const prev = aggregate(stores, pa, pb);
   const T = (o, ks) => ks.reduce((x, k) => ({ s: x.s + o[k].s, p: x.p + o[k].p, q: x.q + o[k].q }), { s: 0, p: 0, q: 0 });
   const cur = T(per, sum), pre = T(prev, sum);
   const multi = stores.length > 1;
   const ch = pct(cur.s, pre.s);
   const units = [['day', '일별'], ['week', '주별'], ['month', '월별'], ['year', '연도별'], ['ip', 'IP별']];
-  const quick = [['이번 주', () => { const k = periodKey(last, 'week'); return [k, last]; }], ['지난주', () => { const k = addDays(periodKey(last, 'week'), -7); return [k, addDays(k, 6)]; }], ['이번 달', () => [last.slice(0, 7) + '-01', last]], ['지난달', () => { const f = addDays(last.slice(0, 7) + '-01', -1); return [f.slice(0, 7) + '-01', f]; }], ['올해', () => [last.slice(0, 4) + '-01-01', last]], ['전체', () => [firstSalesDate(stores), last]]];
+  const quick = [['최근 올린 날', () => [last, last]], ['최근 14일', () => [addDays(last, -13), last]], ['이번 주', () => { const k = periodKey(last, 'week'); return [k, last]; }], ['지난주', () => { const k = addDays(periodKey(last, 'week'), -7); return [k, addDays(k, 6)]; }], ['이번 달', () => [last.slice(0, 7) + '-01', last]], ['지난달', () => { const f = addDays(last.slice(0, 7) + '-01', -1); return [f.slice(0, 7) + '-01', f]; }], ['올해', () => [last.slice(0, 4) + '-01-01', last]], ['전체', () => [firstSalesDate(stores), last]]];
   S._quick = quick;
   const noData = stores.filter(s => !per[s].days);
   const su = salesUpdated(stores);
@@ -903,13 +905,14 @@ function salesView() {
   </div>
   ${noData.length ? `<div class="note">${noData.map(s => esc(storeName(s))).join(', ')} — 이 기간 매출 자료가 없습니다. [토스포스 파일 올리기]로 넣어 주세요.</div>` : ''}
   <div class="tiles">
-    <div class="tile"><span class="lb">매출${multi ? ` · 합산 ${sum.length}곳` : ''}</span><span class="v big${String(fmt(cur.s)).length>9?' long':''}">${fmt(cur.s)}<small>원</small></span><span class="d">${ch == null ? '<span class="muted">이전 기간 자료 없음</span>' : `${ch >= 0 ? '✔ +' : '🔺 '}${ch.toFixed(1)}% <span class="muted">이전 ${len}일 대비</span>`}</span></div>
+    <div class="tile"><span class="lb">매출${multi ? ` · 합산 ${sum.length}곳` : ''}</span><span class="v big${String(fmt(cur.s)).length>9?' long':''}">${fmt(cur.s)}<small>원</small></span><span class="d">${ch == null ? '<span class="muted">이전 기간 자료 없음</span>' : `${ch >= 0 ? '✔ +' : '🔺 '}${ch.toFixed(1)}% <span class="muted">${cmpLabel}</span>`}</span></div>
     <div class="tile"><span class="lb">결제건수</span><span class="v big${String(fmt(cur.p)).length>9?' long':''}">${fmt(cur.p)}<small>건</small></span><span class="d muted">이전 ${fmt(pre.p)}건</span></div>
     <div class="tile"><span class="lb">객단가</span><span class="v big${String(fmt(cur.p ? cur.s / cur.p : 0)).length>9?' long':''}">${fmt(cur.p ? cur.s / cur.p : 0)}<small>원</small></span><span class="d muted">이전 ${fmt(pre.p ? pre.s / pre.p : 0)}원</span></div>
     <div class="tile"><span class="lb">판매수량</span><span class="v big${String(fmt(cur.q)).length>9?' long':''}">${fmt(cur.q)}<small>개</small></span><span class="d muted">${a.slice(2).replace(/-/g, '.')} ~ ${b.slice(2).replace(/-/g, '.')}</span></div>
   </div>
   ${multi ? storeCompare(per, sum, stores) : ''}
-  ${unit === 'ip' ? ipBlock(per, sum) : seriesBlock(per, sum, stores, unit)}
+  ${len === 1 && unit !== 'ip' ? `<div class="note" style="font-size:12.5px">${md(a)}(${wd(a)}) 하루 매출입니다. 아래 그래프는 흐름을 보기 위해 그날까지 최근 14일을 보여 줍니다.</div>` : ''}
+  ${unit === 'ip' ? ipBlock(per, sum) : seriesBlock(len === 1 && unit === 'day' ? aggregate(stores, addDays(a, -13), a) : per, sum, stores, unit)}
   ${unit !== 'ip' ? ipBlock(per, sum, 10) : ''}
   ${productTop(per, sum)}`;
 }
@@ -1066,12 +1069,13 @@ function settleView() {
 /* ───────── 관리 ───────── */
 function adminView() {
   const tabs = [['pending', '승인 대기'], ['users', '직원'], ['stores', '매장·회사'], ['pw', '파일 비밀번호'], ['products', '상품 목록']].filter(([k]) => can('approve') || k === 'products');
+  if (isOwner()) tabs.push(['check', '자료 점검']);
   if (isOwner() && S.mode === 'live') tabs.push(['seed', '처음 자료 넣기']);
   const t = S.ui.adminTab;
   const pendingN = S.users.filter(u => u.status === 'pending').length;
   return `${head('관리', '승인권자: 유명훈 본부장 · 사용자 승인 권한이 있는 사람만 볼 수 있습니다', S.mode === 'demo' ? '<button class="btn" id="showApply">직원 신청 화면 보기</button>' : '')}
   <div class="seg">${tabs.map(([k, n]) => `<button class="${t === k ? 'on' : ''}" data-at="${k}">${n}${k === 'pending' && pendingN ? ` (${pendingN})` : ''}</button>`).join('')}</div>
-  ${t === 'seed' ? seedView() : t === 'pending' ? pendingView() : t === 'users' ? usersView() : t === 'stores' ? storesAdmin() : t === 'pw' ? pwView() : productsAdmin()}`;
+  ${t === 'check' ? checkView() : t === 'seed' ? seedView() : t === 'pending' ? pendingView() : t === 'users' ? usersView() : t === 'stores' ? storesAdmin() : t === 'pw' ? pwView() : productsAdmin()}`;
 }
 function recPerms(u) {
   const lim = u.company === '기타(직접 입력)';
@@ -1139,6 +1143,19 @@ function productsAdmin() {
     <p class="muted" style="margin:0 0 10px;font-size:13px">새 상품은 엑셀로 한꺼번에 등록하거나 한 개씩 추가합니다. 같은 바코드는 두 번 등록되지 않습니다.</p>
     ${dupBar.length || dupName.length ? `<div class="alerts">${dupBar.map(([k, v]) => `<div class="al"><span class="ic">🔺</span><span class="tx"><b>바코드·품번 중복</b> ${esc(k)} — ${v.map(p => esc(p.name)).join(' / ')}</span></div>`).join('')}
     ${dupName.map(v => `<div class="al"><span class="ic">🔸</span><span class="tx"><b>같은 이름, 다른 품번</b> ${esc(v[0].name)} — ${v.map(p => `${esc(p.barcode || p.sku)}${p.price ? ` (${fmt(p.price)}원)` : ''}`).join(' / ')}</span></div>`).join('')}</div>` : '<div class="empty">✔ 중복 없음</div>'}</div>`;
+}
+function checkView() {
+  const rows = [];
+  for (const st of STORES.map(s => s.id)) for (const [ym, m] of Object.entries(S.sales[st] || {}).sort()) {
+    const days = Object.keys(m.days || {}).sort(); const dim = new Date(Date.UTC(+ym.slice(0, 4), +ym.slice(5, 7), 0)).getUTCDate();
+    const lastD = days[days.length - 1]; const want = ym === (latestSalesDate([st]) || '').slice(0, 7) ? +lastD - +(days[0] || 1) + 1 : dim;
+    const miss = []; if (days.length) for (let i = +days[0]; i <= +lastD; i++) if (!days.includes(String(i).padStart(2, '0'))) miss.push(i);
+    rows.push({ st, ym, n: days.length, first: days[0], last: lastD, s: days.reduce((a, d) => a + (m.days[d].s || 0), 0), miss });
+  }
+  return `<div class="card"><h2>매출 자료 점검 (대표만)</h2><p class="muted" style="margin:0 0 10px;font-size:13px">월마다 들어 있는 날짜 수와 빠진 날짜를 보여 줍니다. 빠진 날이 있으면 그날 토스포스 파일을 다시 올리면 됩니다.</p>
+  <div class="tw"><table><thead><tr><th>매장</th><th>월</th><th class="n">날짜 수</th><th>처음~마지막</th><th class="n">매출 합계</th><th>자료 없는 날</th></tr></thead><tbody>
+  ${rows.reverse().map(r => `<tr class="${r.miss.length ? 'flag' : ''}"><td class="nowrap">${sdot(r.st)}${esc(shortName(r.st))}</td><td class="nowrap num" style="text-align:left">${r.ym}</td><td class="n">${r.n}</td><td class="nowrap">${r.first || '-'}일 ~ ${r.last || '-'}일</td><td class="n">${fmt(r.s)}</td><td>${r.miss.length ? `🔸 ${r.miss.join(', ')}일 (휴무일이 아니면 파일 다시 올리기)` : '✔'}</td></tr>`).join('') || '<tr><td colspan="6" class="empty">매출 자료가 없습니다</td></tr>'}
+  </tbody></table></div></div>`;
 }
 function seedView() {
   return `<div class="card"><h2>처음 자료 넣기 (대표만, 한 번만)</h2><p style="margin:0 0 10px;font-size:13px"><b>smg-seed-수원.json</b> 파일을 고르면 수원 상품·재고·입출고 기록·매출·정산 자료를 한 번에 넣습니다. 이미 넣었다면 다시 하지 마세요 (같은 내용으로 덮어씁니다).</p>
