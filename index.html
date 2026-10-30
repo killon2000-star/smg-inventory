@@ -94,18 +94,24 @@ button{cursor:pointer}
 .tzlist button{background:none;border:0;border-top:1px solid var(--line-2);text-align:left;padding:0 14px;min-height:44px;color:var(--ink,inherit)}
 .tzlist button:first-child{border-top:0}
 .tzlist button.on{color:var(--red);font-weight:700;background:var(--surface-2)}
-.kclock{position:fixed;z-index:56;left:max(10px,env(safe-area-inset-left,0px));bottom:10px;width:190px;box-sizing:border-box;display:grid;grid-template-columns:1fr auto;align-items:baseline;gap:2px 8px;padding:10px 14px;border-radius:10px;background:var(--black,#111);color:#fff;font-variant-numeric:tabular-nums;box-shadow:0 4px 14px rgba(0,0,0,.18);pointer-events:none;line-height:1.25}
-.kclock .kd{grid-column:1/-1;font-size:12.5px;color:#d6d6db}
-.kclock .kd b{color:#fff;font-weight:700}
-.kclock .kz{font-size:11px;color:#9a9aa2;margin-left:4px}
-.kclock .kt{font-size:24px;font-weight:700;letter-spacing:.02em}
-.kclock .kk{font-size:11.5px;color:#d6d6db;white-space:nowrap}
-.side{padding-bottom:96px}
+.kclock{position:fixed;z-index:56;left:max(10px,env(safe-area-inset-left,0px));bottom:10px;width:190px;box-sizing:border-box;display:flex;flex-direction:column;gap:2px;padding:12px 14px 12px;border-radius:10px;background:var(--black,#111);color:#fff;font-variant-numeric:tabular-nums;box-shadow:0 4px 14px rgba(0,0,0,.18);pointer-events:none;line-height:1.2}
+.kclock .kr1,.kclock .kr2{display:flex;justify-content:space-between;align-items:baseline;gap:6px;white-space:nowrap}
+.kclock .kd{font-size:16px;font-weight:600;color:#e6e6ea}
+.kclock .kw{font-size:16px;font-weight:700;color:#fff}
+.kclock .kt{line-height:1.05}
+.kclock .kt span{display:inline-block;font-size:38px;font-weight:800;letter-spacing:.01em;white-space:nowrap}
+.kclock .kr2{display:none;font-size:11px;color:#bdbdc4;border-top:1px solid #2c2c31;padding-top:5px;margin-top:3px}
+.kclock.abroad .kr2{display:flex}
+.kclock .kk{color:#fff;font-weight:700}
+.side{padding-bottom:110px}
 @media (max-width: 900px){
-  .kclock{left:0;right:0;width:auto;bottom:var(--tabh,64px);border-radius:0;box-shadow:none;padding:5px max(14px,env(safe-area-inset-left,0px));grid-template-columns:auto 1fr auto;gap:10px;align-items:center}
-  .kclock .kd{grid-column:auto;font-size:12px}
-  .kclock .kt{font-size:15px;text-align:right}
-  .kclock .kk{font-size:11px}
+  .kclock{left:0;right:0;width:auto;bottom:var(--tabh,64px);border-radius:0;box-shadow:none;flex-direction:row;align-items:center;gap:12px;padding:6px max(16px,env(safe-area-inset-left,0px))}
+  .kclock .kr1{gap:8px}
+  .kclock .kd,.kclock .kw{font-size:15px}
+  .kclock .kt{margin-left:auto}
+  .kclock .kt span{font-size:24px}
+  .kclock .kr2{display:none!important}
+  .kclock.abroad .kt::after{content:attr(data-k);font-size:11px;color:#bdbdc4;margin-left:6px;font-weight:600}
   main{padding-bottom:calc(var(--tabh,64px) + 56px)}
 }
 .ipgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px}
@@ -321,7 +327,7 @@ tr.flag td{background:var(--warn-bg)}
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 <script src="config.js"></script>
 <script src="firebase.js?v=24"></script>
-<script src="app.js?v=31"></script>
+<script src="app.js?v=32"></script>
 <script>if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});</script>
 
 </body></html>

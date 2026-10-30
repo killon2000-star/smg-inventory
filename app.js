@@ -37,7 +37,7 @@ const PERM_DEF = [
 ];
 
 const DEFAULT_ORDER = STORES.map(s => s.id);
-const APP_VERSION = '2026-10-31 00:25';   // 앱 화면을 마지막으로 고친 시각 (한국 시간)
+const APP_VERSION = '2026-10-31 00:30';   // 앱 화면을 마지막으로 고친 시각 (한국 시간)
 /* ───────── 작은 도구 ───────── */
 const $ = (s, el = document) => el.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -1756,18 +1756,31 @@ function pinTabbar() {
   bar.style.transform = `translate(${x}px, ${y}px) scale(${1 / vv.scale})`;
 }
 if (window.visualViewport) { visualViewport.addEventListener('resize', pinTabbar); visualViewport.addEventListener('scroll', pinTabbar); }
-// 왼쪽 아래 시계 — 쓰는 기기의 시스템 시간 (해외에서는 현지 시간 + 한국 시간 함께)
+// 왼쪽 아래 시계 — 쓰는 기기의 시스템 시간 (해외에서는 현지 시간 + 한국 시간 함께). 상자 너비에 맞춰 글씨 크기를 채움
 (function kclock() {
   const el = document.createElement('div'); el.className = 'kclock'; el.setAttribute('aria-label', '현재 시간');
-  const W = '일월화수목금토', p2 = n => String(n).padStart(2, '0');
-  const kF = new Intl.DateTimeFormat('ko-KR', { timeZone: 'Asia/Seoul', hour: '2-digit', minute: '2-digit', hour12: false });
+  el.innerHTML = '<div class="kr1"><span class="kd"></span><b class="kw"></b></div><div class="kt"><span></span></div><div class="kr2"><span class="kz"></span><span class="kk"></span></div>';
+  const q = c => el.querySelector(c), W = ['일요일', '월요일', '화요일', '수요일', '목요일', '금요일', '토요일'], p2 = n => String(n).padStart(2, '0');
+  const kF = new Intl.DateTimeFormat('ko-KR', { timeZone: 'Asia/Seoul', month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false });
+  const kst2 = d => { const o = Object.fromEntries(kF.formatToParts(d).map(x => [x.type, x.value])); return `${o.month}/${o.day} ${o.hour}:${o.minute}`; };
+  let zone = ''; try { zone = Intl.DateTimeFormat().resolvedOptions().timeZone.split('/').pop().replace(/_/g, ' '); } catch (e) { }
+  const fit = () => {   // 컴퓨터: 시간 글씨가 상자 가로를 꽉 채우게
+    const sp = q('.kt span'), box = q('.kt');
+    if (!matchMedia('(min-width: 901px)').matches) { sp.style.fontSize = ''; return; }
+    sp.style.fontSize = '40px'; const w = sp.getBoundingClientRect().width, tw = box.clientWidth;
+    if (w && tw) sp.style.fontSize = Math.min(64, 40 * tw / w * 0.99).toFixed(1) + 'px';
+  };
   const tick = () => {
     const d = new Date(), abroad = d.getTimezoneOffset() !== -540;
-    let zone = ''; try { zone = Intl.DateTimeFormat().resolvedOptions().timeZone.split('/').pop().replace(/_/g, ' '); } catch (e) { }
-    el.innerHTML = `<span class="kd">${d.getFullYear()}.${p2(d.getMonth() + 1)}.${p2(d.getDate())} <b>(${W[d.getDay()]})</b>${abroad ? ` <span class="kz">${zone || '현지'}</span>` : ''}</span><span class="kt">${p2(d.getHours())}:${p2(d.getMinutes())}:${p2(d.getSeconds())}</span>${abroad ? `<span class="kk">한국 ${kF.format(d)}</span>` : ''}`;
+    q('.kd').textContent = `${d.getFullYear()}.${p2(d.getMonth() + 1)}.${p2(d.getDate())}`;
+    q('.kw').textContent = W[d.getDay()];
+    q('.kt span').textContent = `${p2(d.getHours())}:${p2(d.getMinutes())}:${p2(d.getSeconds())}`;
+    el.classList.toggle('abroad', abroad); q('.kt').dataset.k = abroad ? '한국 ' + kst2(d).split(' ')[1] : '';
+    if (abroad) { q('.kz').textContent = (zone || '현지') + ' 시간'; q('.kk').textContent = '한국 ' + kst2(d); }
     el.style.display = S.user && !S.ui.showApply ? '' : 'none';
+    if (!el._fit && el.offsetWidth) { el._fit = 1; fit(); }
   };
-  const start = () => { document.body.appendChild(el); tick(); setInterval(tick, 1000); };
+  const start = () => { document.body.appendChild(el); tick(); setInterval(tick, 1000); addEventListener('resize', fit); document.fonts && document.fonts.ready.then(fit); setTimeout(fit, 1500); };
   document.body ? start() : document.addEventListener('DOMContentLoaded', start);
 })();
 function goTop() { resetZoom(); window.scrollTo(0, 0); }
