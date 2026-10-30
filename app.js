@@ -37,7 +37,7 @@ const PERM_DEF = [
 ];
 
 const DEFAULT_ORDER = STORES.map(s => s.id);
-const APP_VERSION = '2026-10-30 23:50';   // 앱 화면을 마지막으로 고친 시각 (한국 시간)
+const APP_VERSION = '2026-10-30 23:55';   // 앱 화면을 마지막으로 고친 시각 (한국 시간)
 /* ───────── 작은 도구 ───────── */
 const $ = (s, el = document) => el.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -1609,6 +1609,19 @@ function pinTabbar() {
   bar.style.transform = `translate(${x}px, ${y}px) scale(${1 / vv.scale})`;
 }
 if (window.visualViewport) { visualViewport.addEventListener('resize', pinTabbar); visualViewport.addEventListener('scroll', pinTabbar); }
+// 왼쪽 아래 시계 (대한민국 시간, 요일 포함)
+(function kclock() {
+  const el = document.createElement('div'); el.className = 'kclock'; el.setAttribute('aria-label', '한국 시간');
+  const dF = new Intl.DateTimeFormat('ko-KR', { timeZone: 'Asia/Seoul', year: 'numeric', month: 'long', day: 'numeric', weekday: 'short' });
+  const tF = new Intl.DateTimeFormat('ko-KR', { timeZone: 'Asia/Seoul', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
+  const tick = () => {
+    const now = new Date(), p = Object.fromEntries(dF.formatToParts(now).map(x => [x.type, x.value]));
+    el.innerHTML = `<span class="kd">${p.year}.${String(p.month).replace('월', '').padStart(2, '0')}.${String(p.day).padStart(2, '0')} <b>(${p.weekday})</b></span><span class="kt">${tF.format(now)}</span>`;
+    el.style.display = S.user && !S.ui.showApply ? '' : 'none';
+  };
+  const start = () => { document.body.appendChild(el); tick(); setInterval(tick, 1000); };
+  document.body ? start() : document.addEventListener('DOMContentLoaded', start);
+})();
 function goTop() { resetZoom(); window.scrollTo(0, 0); }
 const TEXT_SIZES = [['아주 작게', 0.82], ['작게', 0.9], ['보통', 1], ['크게', 1.12], ['아주 크게', 1.25]];
 function applyTextSize(z) { S.ui.textZoom = z; document.documentElement.style.zoom = z === 1 ? '' : String(z); try { localStorage.setItem('smg-text-zoom', String(z)); } catch (e) { } }
