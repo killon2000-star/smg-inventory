@@ -37,7 +37,7 @@ const PERM_DEF = [
 ];
 
 const DEFAULT_ORDER = STORES.map(s => s.id);
-const APP_VERSION = '2026-10-30 22:55';   // 앱 화면을 마지막으로 고친 시각 (한국 시간)
+const APP_VERSION = '2026-10-30 23:40';   // 앱 화면을 마지막으로 고친 시각 (한국 시간)
 /* ───────── 작은 도구 ───────── */
 const $ = (s, el = document) => el.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -1609,7 +1609,7 @@ function pinTabbar() {
 }
 if (window.visualViewport) { visualViewport.addEventListener('resize', pinTabbar); visualViewport.addEventListener('scroll', pinTabbar); }
 function goTop() { resetZoom(); window.scrollTo(0, 0); }
-const TEXT_SIZES = [['보통', 1], ['크게', 1.12], ['아주 크게', 1.25]];
+const TEXT_SIZES = [['아주 작게', 0.82], ['작게', 0.9], ['보통', 1], ['크게', 1.12], ['아주 크게', 1.25]];
 function applyTextSize(z) { S.ui.textZoom = z; document.documentElement.style.zoom = z === 1 ? '' : String(z); try { localStorage.setItem('smg-text-zoom', String(z)); } catch (e) { } }
 try { const z = parseFloat(localStorage.getItem('smg-text-zoom') || '1'); if (z && z !== 1) applyTextSize(z); } catch (e) { }
 function textSizeBox() { const z = S.ui.textZoom || 1; return `<div class="field"><label>글자 크기 (이 기기만)</label><div class="seg">${TEXT_SIZES.map(([t, v]) => `<button class="${z === v ? 'on' : ''}" data-tz="${v}">${t}</button>`).join('')}</div></div>`; }
