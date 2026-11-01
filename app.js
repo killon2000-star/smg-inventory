@@ -40,7 +40,7 @@ const PERM_DEF = [
 ];
 
 const DEFAULT_ORDER = STORES.map(s => s.id);
-const APP_VERSION = '2026-11-01 19:55';   // 앱 화면을 마지막으로 고친 시각 (한국 시간)
+const APP_VERSION = '2026-11-01 20:05';   // 앱 화면을 마지막으로 고친 시각 (한국 시간)
 /* ───────── 작은 도구 ───────── */
 const $ = (s, el = document) => el.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -660,7 +660,7 @@ function productsView() {
   const rows = productRows(); const st = S.stores; const multi = st.length > 1;
   const ips = [...new Set(S.products.filter(p => st.some(s => (S.stock[s] || {})[p.id] != null)).map(p => p.ip))].sort((a, b) => a.localeCompare(b, 'ko'));
   const shown = rows.slice(0, 300);
-  return `${head('상품·재고', `${fmt(rows.length)}종 · ${freshLine(st) || '이름·바코드·품번·IP로 찾기'}`, `<button class="btn" id="scanBtn">${ic('scan')} 바코드 스캔</button>`)}${freshTable(st, { sales: false })}
+  return `${head('상품·재고', `${fmt(rows.length)}종 · ${freshLine(st) || '이름·바코드·품번·IP로 찾기'}`, `<button class="btn" id="scanBtn">${ic('scan')} 바코드 스캔</button><button class="btn" id="stockXls">엑셀로 받기</button><button class="btn" id="stockPrint">인쇄 · PDF</button>`)}${freshTable(st, { sales: false })}
   <div class="card" style="display:flex;flex-direction:column;gap:10px">
     <div class="row"><div class="search">${ic('search')}<input class="inp" id="pq" type="search" placeholder="상품명, 바코드, 품번, IP" value="${esc(S.ui.q)}" autocomplete="off"></div>
       <select class="inp" id="pip" style="width:auto;min-width:160px" aria-label="IP"><option value="">IP 전체</option>${ips.map(i => `<option ${S.ui.ip === i ? 'selected' : ''}>${esc(i)}</option>`).join('')}</select></div>
@@ -672,6 +672,51 @@ function productsView() {
         ${multi ? r.per.map(x => `<td class="n ${x < 0 ? 'qty-neg' : x === 0 ? 'qty-zero' : ''}">${fmt(x)}</td>`).join('') : ''}<td class="n big ${r.t < 0 ? 'qty-neg' : r.t === 0 ? 'qty-zero' : ''}" style="font-size:16px">${fmt(r.t)}</td><td class="hide-s">${statusPill(r.t)}</td></tr>`).join('')}
     </tbody></table></div>${rows.length > 300 ? `<p class="muted" style="font-size:13px">앞 300종만 보여 줍니다. 검색으로 좁혀 주세요.</p>` : ''}` : '<div class="empty">찾는 상품이 없습니다</div>'}
   </div>`;
+}
+// 재고 현황 문서: 지금 화면의 조건(매장·검색·IP·필터) 그대로 전체 종류를 엑셀 또는 인쇄·PDF로
+function stockDocMeta() {
+  const st = S.stores, f = { all: '재고 등록 상품', in: '재고 있음', out: '품절', neg: '마이너스' }[S.ui.f] || '재고 등록 상품';
+  const cond = [f, S.ui.ip ? 'IP ' + S.ui.ip : '', S.ui.q ? `검색 "${S.ui.q}"` : ''].filter(Boolean).join(' · ');
+  const lm = lastMove(st);
+  return { st, cond, title: `재고 현황 · ${st.length > 1 ? st.map(shortName).join(', ') : storeName(st[0])}`, made: kst(new Date().toISOString()), who: whoText(S.user.name, userCo(S.user)), base: lm ? `재고 마지막 반영 ${kst(lm.at)}` : '' };
+}
+function exportStock() {
+  const rows = productRows(), M = stockDocMeta(), multi = M.st.length > 1;
+  const head = ['IP', '상품명', '바코드', '품번', '판매가', ...(multi ? M.st.map(storeName) : []), multi ? '합계' : '재고', '재고 금액', '상태'];
+  const body = rows.map(r => [r.p.ip, r.p.name, r.p.barcode || '', r.p.sku || '', r.p.price || '', ...(multi ? r.per : []), r.t, (r.p.price || 0) * Math.max(0, r.t), r.t < 0 ? '마이너스' : r.t === 0 ? '품절' : r.t <= 3 ? '3개 이하' : '정상']);
+  const tq = rows.reduce((a, r) => a + r.t, 0), tm = rows.reduce((a, r) => a + (r.p.price || 0) * Math.max(0, r.t), 0);
+  const aoa = [[M.title], [`조건: ${M.cond} · ${rows.length}종`], [`${M.base} · 출력 ${M.made} · ${M.who}`], [], head, ...body, [], ['합계', `${rows.length}종`, '', '', '', ...(multi ? M.st.map((s, i) => rows.reduce((a, r) => a + r.per[i], 0)) : []), tq, tm, '']];
+  const ws = XLSX.utils.aoa_to_sheet(aoa);
+  ws['!cols'] = [{ wch: 18 }, { wch: 44 }, { wch: 16 }, { wch: 14 }, { wch: 10 }, ...(multi ? M.st.map(() => ({ wch: 10 })) : []), { wch: 10 }, { wch: 14 }, { wch: 10 }];
+  const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, '재고현황');
+  XLSX.writeFile(wb, `재고현황_${M.st.map(shortName).join('_').replace(/\s/g, '')}_${today().replace(/-/g, '')}.xlsx`);
+  toast(`엑셀로 받았습니다 · ${rows.length}종`);
+}
+function printStock() {
+  const rows = productRows(), M = stockDocMeta(), multi = M.st.length > 1;
+  const e = v => String(v ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  const tq = rows.reduce((a, r) => a + r.t, 0), tm = rows.reduce((a, r) => a + (r.p.price || 0) * Math.max(0, r.t), 0);
+  const html = `<!doctype html><html lang="ko"><head><meta charset="utf-8"><title>${e(M.title)}</title><style>
+    @page{size:A4;margin:12mm}body{font-family:"Noto Sans KR","Malgun Gothic","Apple SD Gothic Neo",sans-serif;color:#111;font-size:10.5px;margin:0}
+    .hd{display:flex;justify-content:space-between;align-items:flex-end;border-bottom:3px solid #D32229;padding-bottom:6px;margin-bottom:8px}
+    h1{font-size:17px;margin:0}.meta{font-size:10px;color:#555;text-align:right;line-height:1.5}
+    .sum{display:flex;gap:18px;margin:6px 0 10px;font-size:11px}.sum b{font-size:13px}
+    table{width:100%;border-collapse:collapse}th{background:#111;color:#fff;font-weight:700;padding:5px 4px;text-align:left;font-size:10px}
+    td{border-bottom:1px solid #ddd;padding:3px 4px;vertical-align:top;font-size:9.5px;line-height:1.35}td.n,th.n{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+    tr:nth-child(even) td{background:#f6f6f7}.neg{color:#D32229;font-weight:700}.zero{color:#999}
+    tfoot{display:table-row-group}tfoot td{font-weight:800;border-top:2px solid #111;background:#fff!important;font-size:10.5px}thead{display:table-header-group}table{table-layout:fixed}tr{page-break-inside:avoid}
+  </style></head><body>
+  <div class="hd"><div><h1>${e(M.title)}</h1><div style="font-size:10.5px;color:#444;margin-top:2px">조건: ${e(M.cond)}</div></div><div class="meta">${e(M.base)}<br>출력 ${e(M.made)} · ${e(M.who)}</div></div>
+  <div class="sum"><span>상품 <b>${rows.length.toLocaleString()}</b>종</span><span>재고 <b>${tq.toLocaleString()}</b>개</span><span>재고 금액(판매가) <b>${tm.toLocaleString()}</b>원</span><span>품절 <b>${rows.filter(r => r.t === 0).length}</b>종</span><span>마이너스 <b>${rows.filter(r => r.t < 0).length}</b>종</span></div>
+  <table><thead><tr><th style="width:5%">No</th><th style="width:16%">IP</th><th>상품명</th><th style="width:15%">바코드·품번</th>${multi ? M.st.map(s => `<th class="n">${e(shortName(s))}</th>`).join('') : ''}<th class="n" style="width:8%">${multi ? '합계' : '재고'}</th><th class="n" style="width:9%">판매가</th></tr></thead><tbody>
+  ${rows.map((r, i) => `<tr><td>${i + 1}</td><td>${e(r.p.ip)}</td><td>${e(r.p.name)}</td><td>${e(r.p.barcode || r.p.sku)}</td>${multi ? r.per.map(x => `<td class="n ${x < 0 ? 'neg' : x === 0 ? 'zero' : ''}">${x.toLocaleString()}</td>`).join('') : ''}<td class="n ${r.t < 0 ? 'neg' : r.t === 0 ? 'zero' : ''}"><b>${r.t.toLocaleString()}</b></td><td class="n">${r.p.price ? r.p.price.toLocaleString() : ''}</td></tr>`).join('')}
+  </tbody><tfoot><tr><td colspan="4">합계 ${rows.length.toLocaleString()}종</td>${multi ? M.st.map((s, i) => `<td class="n">${rows.reduce((a, r) => a + r.per[i], 0).toLocaleString()}</td>`).join('') : ''}<td class="n">${tq.toLocaleString()}</td><td class="n"></td></tr></tfoot></table>
+  </body></html>`;
+  let fr = document.getElementById('printFrame'); if (fr) fr.remove();
+  fr = document.createElement('iframe'); fr.id = 'printFrame'; fr.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0;visibility:hidden';
+  document.body.appendChild(fr);
+  fr.contentDocument.open(); fr.contentDocument.write(html); fr.contentDocument.close();
+  setTimeout(() => { try { fr.contentWindow.focus(); fr.contentWindow.print(); } catch (err) { toast('인쇄 창을 열지 못했습니다'); } }, 300);
 }
 function statusPill(t) { return t < 0 ? '<span class="pill p-bad">🔺 마이너스</span>' : t === 0 ? '<span class="pill p-mute">품절</span>' : t <= 3 ? '<span class="pill p-warn">🔸 3개 이하</span>' : '<span class="pill p-ok">정상</span>'; }
 function productDrawer(pid) {
@@ -1905,6 +1950,8 @@ function bind() {
     if (d.cmp) { S.ui.cmp = { ...S.ui.cmpCtx, metric: d.cmp, mode: S.ui.cmpMode || 'auto' }; S.ui.drawer = cmpDrawer; render(); return; }
     if (d.cmpk) { S.ui.cmp.metric = d.cmpk; render(); return; }
     if (d.cmpm) { S.ui.cmp.mode = d.cmpm; S.ui.cmpMode = d.cmpm; render(); return; }
+    if (t.id === 'stockXls') { exportStock(); return; }
+    if (t.id === 'stockPrint') { printStock(); return; }
     if (t.id === 'noticeBtn') { S.ui.drawer = noticeDrawer; render(); return; }
     if (t.id === 'ntSave' && isOwner()) { const v = (document.getElementById('ntText') || {}).value || ''; S.ui.drawer = null; await saveNotice(v); toast(v.trim() ? '공지를 올렸습니다' : '공지를 내렸습니다'); return; }
     if (t.id === 'ntClear' && isOwner()) { S.ui.drawer = null; await saveNotice(''); toast('공지를 내렸습니다'); return; }
