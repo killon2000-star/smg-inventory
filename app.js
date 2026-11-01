@@ -37,7 +37,7 @@ const PERM_DEF = [
 ];
 
 const DEFAULT_ORDER = STORES.map(s => s.id);
-const APP_VERSION = '2026-10-31 07:45';   // 앱 화면을 마지막으로 고친 시각 (한국 시간)
+const APP_VERSION = '2026-11-01 11:00';   // 앱 화면을 마지막으로 고친 시각 (한국 시간)
 /* ───────── 작은 도구 ───────── */
 const $ = (s, el = document) => el.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -114,6 +114,7 @@ const DemoBackend = {
   },
   async saveMoves(list) { /* 미리보기: 화면 안에서만 반영 */ return true; },
   async saveSalesDay() { return true; },
+  async saveMachMonth() { return true; },
   async saveUser() { return true; },
 };
 function demoUsers() {
@@ -139,6 +140,10 @@ const DEMO_ROLES = [
   { uid: 'u-ext', label: '기타 소속 (수량만)' },
 ];
 let DB = DemoBackend;
+// 누가 올렸는지: 모든 기록에 이름(by)과 회사(co)를 함께 남김 (대표 지시 2026-11-01: 매출·재고 파일 모두 회사와 이름 확인)
+const userCo = u => !u ? '' : (u.company === '기타(직접 입력)' ? (u.companyOther || '기타') : (u.company || (u.owner ? '온인터내셔널' : '')));
+const whoText = (by, co) => by ? `${by}${co ? ` (${co})` : ''}` : '';
+function stampMoves(list, file) { for (const m of list) { if (!m.co) m.co = userCo(S.user); if (m.by === '자동(POS)') m.upBy = S.user ? S.user.name : ''; if (file && !m.file) m.file = file; } return list; }
 
 /* ───────── 색인 ───────── */
 function indexProducts() {
@@ -391,7 +396,7 @@ function toast(t) { S.ui.toast = t; render(); clearTimeout(toast._t); toast._t =
 function lastMove(stores) { let b = null; for (const m of S.moves) if (stores.includes(m.store) && (!b || (m.at || '') > (b.at || ''))) b = m; return b; }
 function salesUpdated(stores) {
   let last = '', up = null;
-  for (const st of stores) for (const [ym, m] of Object.entries(S.sales[st] || {})) for (const [dd, r] of Object.entries(m.days)) { const d = ym + '-' + dd; if (d > last) last = d; if (r.up && (!up || r.up.at > up.at)) up = r.up; }
+  for (const st of stores) for (const [ym, m] of Object.entries(S.sales[st] || {})) for (const [dd, r] of Object.entries(m.days || {})) { const d = ym + '-' + dd; if (d > last) last = d; if (r.up && (!up || r.up.at > up.at)) up = r.up; }
   return { last, up };
 }
 // 여러 매장을 함께 볼 때: 매장마다 마지막 반영 시각이 다를 수 있으니 매장별로 따로 보여 줌
@@ -406,15 +411,15 @@ function freshTable(stores, opt = {}) {
   ${rows.map(r => {
     const late = showSales && r.su && maxSale && r.su.last && r.su.last < maxSale ? dDiff(r.su.last, maxSale) : 0;
     return `<div class="frrow"><span class="frn"><span class="dot" style="background:${storeColor(r.st)}"></span>${esc(shortName(r.st))}</span>
-      <span class="fri"><span class="k">재고</span>${r.lm ? `<b>${kst(r.lm.at)}</b> <span class="muted">${esc(r.lm.type)}${r.lm.by && !/claude/i.test(r.lm.by) ? ' · ' + esc(r.lm.by) : ''}</span>` : '<span class="muted">아직 없음</span>'}</span>
-      ${showSales ? `<span class="fri"><span class="k">매출</span>${r.su && r.su.last ? `<b>${md(r.su.last)}</b>까지${r.su.up ? ` <span class="muted">(${kst(r.su.up.at)} 올림)</span>` : ''}${late ? ` <span class="pill p-warn">🔸 ${late}일 늦음</span>` : ''}` : '<span class="pill p-warn">🔸 자료 없음</span>'}</span>` : ''}</div>`;
+      <span class="fri"><span class="k">재고</span>${r.lm ? `<b>${kst(r.lm.at)}</b> <span class="muted">${esc(r.lm.type)}${r.lm.by && !/claude/i.test(r.lm.by) ? ' · ' + esc(r.lm.by === '자동(POS)' && r.lm.upBy ? whoText(r.lm.upBy, r.lm.co) : whoText(r.lm.by, r.lm.co)) : ''}</span>` : '<span class="muted">아직 없음</span>'}</span>
+      ${showSales ? `<span class="fri"><span class="k">매출</span>${r.su && r.su.last ? `<b>${md(r.su.last)}</b>까지${r.su.up ? ` <span class="muted">(${kst(r.su.up.at)} ${esc(whoText(r.su.up.by, r.su.up.co))} 올림)</span>` : ''}${late ? ` <span class="pill p-warn">🔸 ${late}일 늦음</span>` : ''}` : '<span class="pill p-warn">🔸 자료 없음</span>'}</span>` : ''}</div>`;
   }).join('')}</div></div>`;
 }
 function freshLine(stores) {
   if (stores.length > 1) return `${stores.length}개 매장 · 매장마다 반영 시각이 다릅니다 (아래 표)`;
   const lm = lastMove(stores); const parts = [];
-  if (lm) parts.push(`재고 마지막 반영 <b>${kst(lm.at)}</b> (${esc(lm.type)}${lm.by && !/claude/i.test(lm.by) ? ' · ' + esc(lm.by) : ''})`);
-  if (can('sales')) { const su = salesUpdated(stores); if (su.last) parts.push(`매출 <b>${md(su.last)} 마감</b>까지${su.up ? ` (${kst(su.up.at)} ${esc(su.up.by)} 올림)` : ''}`); }
+  if (lm) parts.push(`재고 마지막 반영 <b>${kst(lm.at)}</b> (${esc(lm.type)}${lm.by && !/claude/i.test(lm.by) ? ' · ' + esc(lm.by === '자동(POS)' && lm.upBy ? whoText(lm.upBy, lm.co) : whoText(lm.by, lm.co)) : ''})`);
+  if (can('sales')) { const su = salesUpdated(stores); if (su.last) parts.push(`매출 <b>${md(su.last)} 마감</b>까지${su.up ? ` (${kst(su.up.at)} ${esc(whoText(su.up.by, su.up.co))} 올림)` : ''}`); }
   return parts.join(' · ');
 }
 
@@ -673,7 +678,7 @@ function productDrawer(pid) {
 function movesTable(list, withName = true, compact = false) {
   if (!list.length) return '<div class="empty">기록이 없습니다</div>';
   return `<div class="tw"><table><thead><tr><th>날짜</th>${S.stores.length > 1 || compact ? '<th>매장</th>' : ''}<th>구분</th>${withName ? '<th>상품명</th>' : ''}<th class="n">수량</th><th class="hide-s">메모</th></tr></thead><tbody>
-  ${list.map(m => `<tr><td class="nowrap num" style="text-align:left">${md(m.date)}</td>${S.stores.length > 1 || compact ? `<td class="nowrap">${sdot(m.store)}${esc(shortName(m.store))}</td>` : ''}<td>${typePill(m.type)}</td>${withName ? `<td class="nm">${esc((S.P[m.pid] || {}).name || m.pid)}</td>` : ''}<td class="n ${m.qty < 0 ? 'qty-neg' : ''}" style="font-weight:600">${m.qty > 0 ? '+' : ''}${fmt(m.qty)}</td><td class="hide-s muted" style="font-size:12px">${esc(m.memo || '')}${m.by && !/claude/i.test(m.by) ? ` · ${esc(m.by)}` : ''}</td></tr>`).join('')}
+  ${list.map(m => `<tr><td class="nowrap num" style="text-align:left">${md(m.date)}</td>${S.stores.length > 1 || compact ? `<td class="nowrap">${sdot(m.store)}${esc(shortName(m.store))}</td>` : ''}<td>${typePill(m.type)}</td>${withName ? `<td class="nm">${esc((S.P[m.pid] || {}).name || m.pid)}</td>` : ''}<td class="n ${m.qty < 0 ? 'qty-neg' : ''}" style="font-weight:600">${m.qty > 0 ? '+' : ''}${fmt(m.qty)}</td><td class="hide-s muted" style="font-size:12px">${esc(m.memo || '')}${m.by && !/claude/i.test(m.by) ? ` · ${esc(m.by === '자동(POS)' ? (m.upBy ? `POS 파일 · ${whoText(m.upBy, m.co)}` : '자동(POS)') : whoText(m.by, m.co))}` : ''}${m.file ? `<br><span style="font-size:11px">📎 ${esc(m.file)}</span>` : ''}</td></tr>`).join('')}
   </tbody></table></div>`;
 }
 function typePill(t) { const pos = ['입고', '창고에서 가져옴', '매장 이동(받음)']; return `<span class="pill ${t === COUNT_TYPE ? 'p-info' : pos.includes(t) ? 'p-ok' : t === '판매' ? 'p-mute' : 'p-warn'}">${esc(t)}</span>`; }
@@ -800,7 +805,8 @@ function ibDetailView(ib) {
     <div class="tile"><span class="lb">실제 입고</span><span class="v big">${st.done ? fmt(st.act) : '-'}<small>개</small></span><span class="d muted">확인 ${st.done}종 · 남은 ${st.left}종</span></div>
     <div class="tile ${st.diff ? 'alert' : ''}"><span class="lb">차이</span><span class="v big">${st.done ? (st.act - st.plan > 0 ? '+' : '') + fmt(st.act - st.plan) : '-'}<small>개</small></span><span class="d">${st.diff ? `🔸 다른 상품 ${st.diff}종` : st.done ? '✔ 차이 없음' : ''}</span></div>
   </div>
-  ${done ? `<div class="note">✔ ${esc(ib.receivedAt || '')} ${esc(ib.receivedBy || '')} 입고 확정 — 실제 수량으로 재고에 더했습니다.</div>` : `<div class="card" style="display:flex;flex-direction:column;gap:10px"><h2>실제 입고 수량 넣기</h2>
+  <div class="note" style="font-size:12.5px">📎 예정 리스트: ${esc(ib.src || ib.title)} · ${esc(whoText(ib.by, ib.co) || '-')} 올림${ib.at ? ' ' + kst(ib.at) : ''}${ib.actSrc ? `<br>📎 실제 입고: ${esc(ib.actSrc)} · ${esc(whoText(ib.actBy, ib.actCo))} 올림` : ''}</div>
+  ${done ? `<div class="note">✔ ${esc(ib.receivedAt || '')} ${esc(whoText(ib.receivedBy || '', ib.receivedCo))} 입고 확정 — 실제 수량으로 재고에 더했습니다.</div>` : `<div class="card" style="display:flex;flex-direction:column;gap:10px"><h2>실제 입고 수량 넣기</h2>
     <div class="row"><button class="btn" id="ibActFile">실제 입고 파일 고르기</button><input class="inp" id="ibActLink" placeholder="또는 구글시트 링크 (직원 입력 시트 등)" style="flex:1;min-width:200px"><button class="btn" id="ibActLinkGo">링크 열기</button><button class="btn" id="scanBtn">${ic('scan')} 스캔</button></div>
     <span class="muted" style="font-size:12px">파일의 "실제 수량" 칸을 먼저 찾고, 없으면 "수량" 칸을 씁니다. 아래 표에서 직접 고쳐도 됩니다. 스캔하면 그 상품 실제 수량이 1씩 올라갑니다.</span>
     ${S.ui.ibMsg ? `<div class="note ${S.ui.ibMsg.bad ? 'bad' : ''}">${esc(S.ui.ibMsg.t)}</div>` : ''}</div>`}
@@ -817,6 +823,7 @@ function ibDetailView(ib) {
   </div>`;
 }
 function ibApplyActual(ib, rows, src) {
+  ib.actSrc = src; ib.actBy = S.user ? S.user.name : ''; ib.actCo = userCo(S.user);
   const byKey = {}; ib.items.forEach((x, i) => { byKey[x.key] = i; });
   let matched = 0, extra = 0;
   const add = {}; for (const r of rows) { if (!(r.qty >= 0) || r.qty === null) continue; const k = itemKey(r); add[k] = (add[k] || { r, q: 0 }); add[k].q += r.qty; }
@@ -833,7 +840,7 @@ function ibActLoaded(ib, x) { const t = readTable(x.rows, QTY_ACTUAL); if (t.err
 async function ibCreate() {
   const f = S.ui.ibForm; const items = {};
   for (const r of f.parsed) { if (!(r.qty > 0)) continue; const k = itemKey(r); const x = items[k] ||= { key: k, pid: r.pid, name: r.pid ? S.P[r.pid].name : r.name, code: r.bc || r.sku || (r.pid ? (S.P[r.pid].barcode || S.P[r.pid].sku) : ''), bc: r.bc, sku: r.sku, plan: 0, price: r.price || (r.pid ? S.P[r.pid].price : null) || null, ip: r.ip || f.ip || '', actual: null }; x.plan += r.qty; }
-  const ib = { id: 'IB-' + f.date.replace(/-/g, '').slice(2) + '-' + Math.random().toString(36).slice(2, 6).toUpperCase(), store: f.store, date: f.date, title: f.title.trim() || f.src, ip: f.ip.trim(), from: f.from.trim(), status: 'planned', items: Object.values(items), extra: [], by: S.user.name, at: new Date().toISOString() };
+  const ib = { id: 'IB-' + f.date.replace(/-/g, '').slice(2) + '-' + Math.random().toString(36).slice(2, 6).toUpperCase(), store: f.store, date: f.date, title: f.title.trim() || f.src, ip: f.ip.trim(), from: f.from.trim(), status: 'planned', items: Object.values(items), extra: [], by: S.user.name, co: userCo(S.user), src: f.src, at: new Date().toISOString() };
   if (DB.saveInbound) await DB.saveInbound(ib);
   S.inbounds.push(ib); S.ui.ibForm = null; S.ui.ib = ib.id; toast(`입고 예정 ${ib.items.length}종을 등록했습니다`);
 }
@@ -847,10 +854,10 @@ async function ibConfirm(ib) {
   indexProducts();
   const at = new Date().toISOString();
   const moves = lines.filter(l => l.q > 0).map((l, i) => ({ id: 'ib' + Date.now().toString(36) + i, date: today(), store: ib.store, type: '입고', pid: l.pid, qty: l.q, memo: `${ib.title} · 예정 ${fmt(l.plan)}${l.q !== l.plan ? ` · 차이 ${l.q - l.plan > 0 ? '+' : ''}${fmt(l.q - l.plan)}` : ''}`, by: S.user.name, at }));
-  await DB.saveMoves(moves);
+  await DB.saveMoves(stampMoves(moves, ib.actSrc || ib.src || ib.title));
   for (const m of moves) { S.moves.push(m); (S.stock[m.store] ||= {})[m.pid] = stockOf(m.store, m.pid) + m.qty; }
   ib.items.forEach(x => { if (x.actual == null) x.actual = 0; if (!x.pid) { const l = lines.find(y => y.key === x.key); if (l) x.pid = l.pid; } });
-  ib.status = 'received'; ib.receivedAt = today(); ib.receivedBy = S.user.name;
+  ib.status = 'received'; ib.receivedAt = today(); ib.receivedBy = S.user.name; ib.receivedCo = userCo(S.user);
   if (DB.saveInbound) await DB.saveInbound(ib);
   toast(`입고 확정: ${moves.length}종 ${fmt(moves.reduce((a, b) => a + b.qty, 0))}개를 재고에 더했습니다`);
 }
@@ -918,7 +925,7 @@ async function saveEntry() {
     const m = { id: 'n' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), date: e.date, store: e.store, type: e.type, pid: l.pid, qty: q, memo: [e.to ? `→ ${e.to === '__custom' ? placeLabel(placeById(e.place)) : storeName(e.to)}` : '', T.from ? `← ${placeLabel(placeById(e.from))}` : '', e.partner, e.memo].filter(Boolean).join(' · '), place: (e.to === '__custom' && e.place) || (T.from && e.from) || null, by, at };
     list.push(m);
   }
-  await DB.saveMoves(list);
+  await DB.saveMoves(stampMoves(list, e.file));
   for (const m of list) {
     S.moves.push(m); (S.stock[m.store] ||= {})[m.pid] = stockOf(m.store, m.pid) + m.qty;
     if (m.type === '창고 보관') S.warehouse[m.pid] = (S.warehouse[m.pid] || 0) - m.qty;
@@ -1037,6 +1044,7 @@ async function readLink(url) {
 /* ───────── 실사 ───────── */
 const QTY_COUNT = ['실사수량', '실재고', '실수량', '실제수량', '센수량', '확인수량', '재고수량', '현재고', '수량', '재고', 'qty', '개수'];
 function countApply(rows, src) {
+  S.ui.cntSrc = src;
   const st = S.stores[0]; const c = S.ui.counts[st] ||= {};
   const t = readTable(rows, QTY_COUNT);
   if (t.err) { S.ui.cntMsg = { bad: true, html: '🔺 ' + esc(t.err) }; render(); return; }
@@ -1100,9 +1108,9 @@ function countView() {
 async function saveCount() {
   const st = S.stores[0]; const c = S.ui.counts[st]; const at = new Date().toISOString();
   const list = Object.keys(c).filter(pid => c[pid] !== stockOf(st, pid)).map(pid => ({ id: 'c' + Date.now().toString(36) + pid, date: today(), store: st, type: COUNT_TYPE, pid, qty: c[pid] - stockOf(st, pid), memo: `실사 ${fmt(c[pid])}개 (장부 ${fmt(stockOf(st, pid))})`, by: S.user.name, at }));
-  await DB.saveMoves(list);
+  await DB.saveMoves(stampMoves(list, S.ui.cntSrc));
   for (const m of list) { S.moves.push(m); S.stock[st][m.pid] = stockOf(st, m.pid) + m.qty; }
-  S.ui.counts[st] = {}; toast(`실사 차이 ${list.length}종을 반영했습니다`);
+  S.ui.counts[st] = {}; S.ui.cntSrc = null; toast(`실사 차이 ${list.length}종을 반영했습니다`);
 }
 
 /* ───────── 매장 이동 ───────── */
@@ -1117,7 +1125,7 @@ function transferView() {
 async function receive(id) {
   const t = S.transfers.find(x => x.id === id); if (!t) return;
   const m = { id: 'r' + Date.now().toString(36), date: today(), store: t.to, type: '매장 이동(받음)', pid: t.pid, qty: t.qty, memo: `← ${storeName(t.from)}`, by: S.user.name, at: new Date().toISOString(), tid: t.id };
-  await DB.saveMoves([m]); S.moves.push(m); (S.stock[t.to] ||= {})[t.pid] = stockOf(t.to, t.pid) + t.qty;
+  await DB.saveMoves(stampMoves([m])); S.moves.push(m); (S.stock[t.to] ||= {})[t.pid] = stockOf(t.to, t.pid) + t.qty;
   t.status = 'received'; t.recvDate = m.date; toast('받기 확인했습니다');
 }
 
@@ -1135,15 +1143,15 @@ function recordsView() {
 }
 
 /* ───────── 매출 ───────── */
-function dayRec(st, d) { const m = (S.sales[st] || {})[d.slice(0, 7)]; return m && m.days[d.slice(8)] || null; }
+function dayRec(st, d) { const m = (S.sales[st] || {})[d.slice(0, 7)]; return m && m.days && m.days[d.slice(8)] || null; }
 function latestSalesDate(stores) {
   let best = '';
-  for (const st of stores) for (const [ym, m] of Object.entries(S.sales[st] || {})) for (const dd of Object.keys(m.days)) { const d = ym + '-' + dd; if (d > best) best = d; }
+  for (const st of stores) for (const [ym, m] of Object.entries(S.sales[st] || {})) for (const dd of Object.keys(m.days || {})) { const d = ym + '-' + dd; if (d > best) best = d; }
   return best;
 }
 function firstSalesDate(stores) {
   let best = '9999';
-  for (const st of stores) for (const [ym, m] of Object.entries(S.sales[st] || {})) for (const dd of Object.keys(m.days)) { const d = ym + '-' + dd; if (d < best) best = d; }
+  for (const st of stores) for (const [ym, m] of Object.entries(S.sales[st] || {})) for (const dd of Object.keys(m.days || {})) { const d = ym + '-' + dd; if (d < best) best = d; }
   return best === '9999' ? '' : best;
 }
 function defaultRange(unit, last) {
@@ -1232,6 +1240,164 @@ function cmpDrawer() {
     ${Array.from({ length: n }, (_, i) => { const x = C[i], y = P[i]; return `<tr><td class="nowrap">${x ? `${md(x.d)}(${wd(x.d)})` : ''}</td><td class="n">${x ? (x.has ? `<b>${fmt(x[m])}</b>` : '<span class="muted">-</span>') : ''}</td><td class="nowrap muted">${y ? `${md(y.d)}(${wd(y.d)})` : ''}</td><td class="n">${y ? (y.has ? fmt(y[m]) : '<span class="muted">-</span>') : ''}</td><td class="n">${x && y && x.has && y.has ? chg(pct(x[m], y[m]), 0) : ''}</td></tr>`; }).join('')}
   </tbody></table></div></div>`;
 }
+/* ───────── 자판기·기계 매출 (POS 밖 매출: 카드 단말기 PDF·엑셀) ───────── */
+// 단말기 번호 → 이름. 처음 보는 단말기는 '기계 번호'로 넣고, 올릴 때 이름을 바꿀 수 있음
+const MACHINES = { '8353980': '자판기 8353980', '8354753': '자판기 8354753', '2000119281': '하이큐 증명사진·학생수첩' };
+const MACH_RATE_DEFAULT = 0.2;   // 대표 확인 2026-11-01: 자판기 2대·하이큐 증명사진 모두 카드 순매출의 20% (부가세 포함)
+const machName = no => (S.machNames && S.machNames[no]) || MACHINES[no] || `기계 ${no}`;
+const normDate = v => {
+  if (v instanceof Date && !isNaN(v)) return new Date(v.getTime() + 9 * 3600e3).toISOString().slice(0, 10);
+  const t = String(v ?? '').trim(); let m = t.match(/(20\d\d)[-./년\s]*(\d{1,2})[-./월\s]*(\d{1,2})/);
+  if (m) return `${m[1]}-${m[2].padStart(2, '0')}-${m[3].padStart(2, '0')}`;
+  m = t.match(/^(20\d\d)(\d\d)(\d\d)/); return m ? `${m[1]}-${m[2]}-${m[3]}` : '';
+};
+const numOf = v => { const t = String(v ?? '').replace(/[,원\s]/g, '').match(/^-?\d+(\.\d+)?/); return t ? Number(t[0]) : null; };
+// 결과: [{no, date, s, n}] (s = 순매출, n = 순건수: 승인 +1, 취소 −1)
+function machFromTokens(tokens, fileName) {
+  // PDF 신용거래내역조회: 한 거래가 [거래일시 … 카드번호 … 금액] 다음 [승인|취소 … 단말기번호] 순서로 나옴
+  const all = tokens.join(' ');
+  const head = all.match(/단말기명\s*:\s*(\d{5,})/) || String(fileName || '').match(/(\d{7,})/);
+  const out = []; let cur = null;
+  for (let i = 0; i < tokens.length; i++) {
+    const t = tokens[i];
+    const dm = t.match(/^(20\d\d-\d\d-\d\d)(?:\s+\d\d:\d\d:\d\d)?$/);
+    if (dm) { if (/^\d\d:\d\d:\d\d$/.test(tokens[i + 1] || '') || t.length > 10) { cur = { date: dm[1], s: null, st: null, no: head ? head[1] : '' }; continue; } }
+    if (!cur) continue;
+    if (cur.s == null && /^\d{1,3}(,\d{3})+$|^\d{3,}$/.test(t) && !/^\d{7,}$/.test(t)) { cur.s = Number(t.replace(/,/g, '')); continue; }
+    if (cur.s != null && (t === '승인' || t === '취소')) { cur.st = t; }
+    if (cur.st && /^\d{6,}$/.test(t) && head && t === head[1]) cur.no = t;
+    if (cur.st && cur.s != null) { out.push({ no: cur.no || (head ? head[1] : ''), date: cur.date, s: cur.st === '취소' ? -cur.s : cur.s, n: cur.st === '취소' ? -1 : 1 }); cur = null; }
+  }
+  return out;
+}
+function machFromRows(rows, fileName) {
+  // 엑셀: ① 거래 한 줄씩 (승인구분·거래일시·단말기번호·금액) ② 단말기 일별 집계 (거래일·단말기번호·결제액-취소액·결제건+취소건)
+  const txt = rows.flat().map(v => String(v ?? '')).join(' ');
+  const head = txt.match(/단말기명\s*:\s*(\d{5,})/) || String(fileName || '').match(/(\d{7,})/);
+  let hr = rows.findIndex(r => r.some(v => /^(거래일|거래일자|거래일시|결제일|결제일자|승인일|승인일자|승인일시|날짜)$/.test(String(v ?? '').replace(/\s/g, ''))));
+  if (hr < 0) return [];
+  const H = rows[hr].map((v, i) => `${String(v ?? '')} ${String((rows[hr + 1] || [])[i] ?? '')}`.replace(/\s+/g, ' ').trim());
+  const col = (re, not) => H.findIndex(h => re.test(h) && !(not && not.test(h)));
+  const cD = col(/거래일|결제일|승인일/), cT = col(/단말기번호|단말기\s*ID|TID|단말기명/), cSt = col(/승인구분|거래구분|^구분/);
+  let cA = col(/결제액\s*-\s*취소액|순매출|순금액/); if (cA < 0) cA = H.findLastIndex ? H.findLastIndex(h => /금액|매출액/.test(h) && !/공급|부가|봉사|수수료/.test(h)) : col(/금액/);
+  let cN = col(/결제건\s*\+\s*취소건/); if (cN < 0) cN = H.findLastIndex ? H.findLastIndex(h => /건수/.test(h)) : -1;
+  const out = [];
+  for (const r of rows.slice(hr + 1)) {
+    if (r.some(v => /소계|합계|총계/.test(String(v ?? '')))) continue;   // 소계·합계 줄은 건너뜀
+    const raw = r[cD]; const date = raw instanceof Date || typeof raw === 'number' || /^\s*20\d\d/.test(String(raw ?? '')) ? normDate(typeof raw === 'number' ? new Date(Math.round((raw - 25569) * 864e5) - 9 * 3600e3) : raw) : ''; if (!date) continue;
+    let s = numOf(r[cA]); if (s == null) continue;
+    const st = cSt >= 0 ? String(r[cSt] ?? '') : '';
+    let n = cN >= 0 ? numOf(r[cN]) : null; if (n == null) n = 1;
+    if (/취소/.test(st)) { s = -Math.abs(s); n = -Math.abs(n); }
+    const no = (cT >= 0 && String(r[cT] ?? '').replace(/\D/g, '')) || (head ? head[1] : '');
+    out.push({ no, date, s, n });
+  }
+  return out;
+}
+async function pdfTokens(f) {
+  if (!window.pdfjsLib) await new Promise((ok, bad) => { const s = document.createElement('script'); s.src = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js'; s.onload = ok; s.onerror = () => bad(new Error('PDF 읽기 도구를 불러오지 못했습니다. 인터넷 연결을 확인해 주세요.')); document.head.appendChild(s); });
+  pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+  const doc = await pdfjsLib.getDocument({ data: new Uint8Array(await f.arrayBuffer()) }).promise;
+  const tokens = [];
+  for (let p = 1; p <= doc.numPages; p++) {
+    const c = await (await doc.getPage(p)).getTextContent();
+    // 글자가 한 자씩 나오는 PDF도 있어서, 같은 줄에서 가까운 글자끼리 붙이고 칸 사이가 넓으면 나눔
+    const it = c.items.filter(x => String(x.str).trim()).map(x => ({ s: String(x.str), x: x.transform[4], w: x.width || 0, y: x.transform[5], h: Math.abs(x.transform[3]) || 8 }));
+    it.sort((a, b) => b.y - a.y || a.x - b.x);
+    const lines = []; for (const x of it) { const L = lines[lines.length - 1]; if (L && Math.abs(L.y - x.y) <= 2) L.it.push(x); else lines.push({ y: x.y, it: [x] }); }
+    for (const L of lines) {
+      L.it.sort((a, b) => a.x - b.x); let cur = '', end = null;
+      for (const x of L.it) {
+        const gap = end == null ? 0 : x.x - end;
+        if (end != null && gap > x.h * 1.2) { if (cur.trim()) tokens.push(cur.trim()); cur = ''; }
+        else if (end != null && gap > x.h * 0.25) cur += ' ';
+        cur += x.s; end = x.x + x.w;
+      }
+      if (cur.trim()) tokens.push(cur.trim());
+    }
+  }
+  if (!tokens.length) throw new Error('이 PDF에서 글자를 찾지 못했습니다. 스캔한 사진 PDF는 읽을 수 없으니, 카드사·VAN 사이트에서 받은 원본 PDF나 엑셀을 올려 주세요.');
+  return tokens;
+}
+
+// 기계 매출 읽기: PDF(글자 있는 원본) 또는 엑셀·CSV 여러 개를 한 번에
+async function readMachFiles(files, store) {
+  const all = [], errs = [], names = [];
+  for (const f of files) {
+    try {
+      let r;
+      if (/\.pdf$/i.test(f.name)) r = machFromTokens(await pdfTokens(f), f.name);
+      else if (/\.(xlsx|xls|csv)$/i.test(f.name)) { const wb = await readBook(f); r = []; for (const n of wb.SheetNames) { const rows = XLSX.utils.sheet_to_json(wb.Sheets[n], { header: 1, defval: '', raw: true }); r.push(...machFromRows(rows, f.name)); } }
+      else throw new Error('PDF나 엑셀(xlsx·xls·csv)만 올릴 수 있습니다');
+      if (!r.length) throw new Error('매출 줄을 찾지 못했습니다 (거래일·금액 칸이 있는 단말기 매출 자료인지 확인해 주세요)');
+      r.forEach(x => { x.file = f.name; if (!x.no) x.no = '미확인'; }); all.push(...r); names.push(f.name);
+    } catch (e) { errs.push(`${f.name}: ${e.message || e}`); }
+  }
+  const by = {};
+  for (const x of all) {
+    const o = by[x.no] ||= { no: x.no, name: machName(x.no), days: {}, files: new Set() };
+    const d = o.days[x.date] ||= [0, 0]; d[0] += x.s; d[1] += x.n; o.files.add(x.file);
+  }
+  const mach = Object.values(by).map(o => {
+    const ds = Object.keys(o.days).sort(); const ex = ds.filter(d => { const m = (S.sales[store] || {})[d.slice(0, 7)]; return m && m.mach && m.mach['m' + o.no] && m.mach['m' + o.no].days && m.mach['m' + o.no].days[d.slice(8)]; });
+    return { ...o, files: [...o.files], from: ds[0], to: ds[ds.length - 1], s: ds.reduce((a, d) => a + o.days[d][0], 0), n: ds.reduce((a, d) => a + o.days[d][1], 0), exists: ex.length };
+  });
+  S.ui.machPv = { store, mach, errs, files: names };
+  render();
+}
+function machDrawer() {
+  const pv = S.ui.machPv; const st = (pv && pv.store) || S.ui.machStore || S.stores[0];
+  return `<div class="hd"><h3>자판기·기계 매출 올리기</h3><button class="x" data-close aria-label="닫기">×</button></div>
+  <div class="card" style="display:flex;flex-direction:column;gap:12px">
+    <div class="field"><label for="machStore">매장</label><select class="inp" id="machStore">${myStores().map(s => `<option value="${s}" ${st === s ? 'selected' : ''}>${esc(storeName(s))}</option>`).join('')}</select></div>
+    <div class="drop"><div style="font-weight:700">카드 단말기 매출 PDF 또는 엑셀 (여러 개 한 번에 가능)</div><div class="muted" style="font-size:13px;margin:4px 0 10px">카드사·VAN 사이트에서 받은 <b>신용거래내역조회 PDF</b>, <b>단말기 일별 매출 엑셀</b> 등 · 승인은 더하고 취소는 뺍니다</div><button class="btn" id="machFileBtn">파일 고르기</button></div>
+  </div>
+  ${pv ? `${pv.errs.length ? `<div class="note bad">🔺 ${pv.errs.map(esc).join('<br>🔺 ')}</div>` : ''}
+  ${pv.mach.length ? `<div class="card"><h2>확인 · ${esc(storeName(pv.store))}</h2>
+    <div class="tw"><table><thead><tr><th>기계 (단말기)</th><th>기간</th><th class="n">매출</th><th class="n">건수</th></tr></thead><tbody>
+    ${pv.mach.map((m, i) => `<tr><td><input class="inp" data-mname="${i}" value="${esc(m.name)}" style="min-width:150px"><div class="muted" style="font-size:11.5px">단말기 ${esc(m.no)} · ${esc(m.files.join(', '))}</div></td><td class="nowrap">${md(m.from)}~${md(m.to)} <span class="muted">${Object.keys(m.days).length}일</span>${m.exists ? `<div style="font-size:11.5px;color:var(--warn)">🔸 이미 올린 ${m.exists}일은 새 값으로 바뀝니다</div>` : ''}</td><td class="n" style="font-weight:700">${fmt(m.s)}</td><td class="n">${fmt(m.n)}</td></tr>`).join('')}
+    <tr class="tot"><td>합계</td><td></td><td class="n">${fmt(pv.mach.reduce((a, m) => a + m.s, 0))}</td><td class="n">${fmt(pv.mach.reduce((a, m) => a + m.n, 0))}</td></tr></tbody></table></div>
+    <div class="muted" style="font-size:12px;margin-top:6px">올린 사람으로 <b>${esc(whoText(S.user.name, userCo(S.user)))}</b>이 함께 저장됩니다. 기계 이름은 위 칸에서 바꿀 수 있습니다.</div>
+    <div class="row" style="justify-content:flex-end;margin-top:10px"><button class="btn pri" id="machSave">기계 매출 저장</button></div></div>` : ''}` : ''}`;
+}
+async function saveMach() {
+  const pv = S.ui.machPv; const st = pv.store; const up = { at: new Date().toISOString(), by: S.user.name, co: userCo(S.user), file: pv.files.join(', ') };
+  for (const m of pv.mach) {
+    const id = 'm' + m.no.replace(/\W/g, ''); const byM = {};
+    for (const [d, v] of Object.entries(m.days)) (byM[d.slice(0, 7)] ||= {})[d.slice(8)] = v;
+    for (const [ym, days] of Object.entries(byM)) {
+      const rec = { name: m.name.trim() || machName(m.no), no: m.no, days, up: { ...up, file: m.files.join(', ') } };
+      await DB.saveMachMonth(st, ym, id, rec);
+      const mon = ((S.sales[st] ||= {})[ym] ||= { days: {} }); const cur = (mon.mach ||= {})[id] ||= { days: {} };
+      Object.assign(cur.days, days); cur.name = rec.name; cur.no = m.no; cur.up = rec.up;
+    }
+  }
+  S.ui.machPv = null; S.ui.drawer = null; toast(`기계 매출 ${pv.mach.length}대를 저장했습니다`);
+}
+// 기간 안의 기계 매출: [{id, name, no, s, n, days, up}]
+function machAgg(stores, a, b) {
+  const per = {};
+  for (const st of stores) for (const [ym, mon] of Object.entries(S.sales[st] || {})) {
+    if (!mon.mach) continue;
+    for (const [id, m] of Object.entries(mon.mach)) for (const [dd, v] of Object.entries(m.days || {})) {
+      const d = ym + '-' + dd; if (d < a || d > b) continue;
+      const k = st + '|' + id; const o = per[k] ||= { st, id, name: m.name, no: m.no, s: 0, n: 0, days: 0, last: '', up: null };
+      o.s += v[0]; o.n += v[1]; o.days++; if (d > o.last) o.last = d; if (m.up && (!o.up || m.up.at > o.up.at)) o.up = m.up;
+    }
+  }
+  return Object.values(per).sort((x, y) => y.s - x.s);
+}
+function machBlock(stores, a, b, posTotal) {
+  const L = machAgg(stores, a, b);
+  const tot = L.reduce((x, m) => x + m.s, 0);
+  return `<div class="card"><h2>자판기·기계 매출 <span class="r">POS 밖 카드 단말기 · ${md(a)}~${md(b)}</span></h2>
+  ${L.length ? `<div class="tw"><table><thead><tr><th>기계</th>${stores.length > 1 ? '<th>매장</th>' : ''}<th class="n">매출</th><th class="n hide-s">건수</th><th class="hide-s">마지막 거래</th><th class="hide-s">올린 사람</th></tr></thead><tbody>
+  ${L.map(m => `<tr><td class="nm">${esc(m.name)}<div class="muted" style="font-size:11px">단말기 ${esc(m.no || '')}</div></td>${stores.length > 1 ? `<td class="nowrap">${sdot(m.st)}${esc(shortName(m.st))}</td>` : ''}<td class="n" style="font-weight:700">${fmt(m.s)}</td><td class="n hide-s">${fmt(m.n)}</td><td class="hide-s nowrap">${md(m.last)}</td><td class="hide-s" style="font-size:12px">${m.up ? `${esc(whoText(m.up.by, m.up.co))}<div class="muted">${kst(m.up.at)}${m.up.file ? ' · 📎 ' + esc(m.up.file) : ''}</div>` : '-'}</td></tr>`).join('')}
+  <tr class="tot"><td>기계 합계</td>${stores.length > 1 ? '<td></td>' : ''}<td class="n">${fmt(tot)}</td><td class="n hide-s">${fmt(L.reduce((x, m) => x + m.n, 0))}</td><td class="hide-s"></td><td class="hide-s"></td></tr>
+  <tr><td><b>POS + 기계</b></td>${stores.length > 1 ? '<td></td>' : ''}<td class="n" style="font-weight:800">${fmt(posTotal + tot)}</td><td class="hide-s" colspan="3"><span class="muted">POS ${fmt(posTotal)} + 기계 ${fmt(tot)}</span></td></tr></tbody></table></div>`
+  : `<div class="empty">이 기간 기계 매출 자료가 없습니다. [자판기·기계 매출 올리기]로 PDF나 엑셀을 넣어 주세요.</div>`}</div>`;
+}
+
 function salesView() {
   const stores = S.stores; const last = latestSalesDate(stores);
   const unit = S.ui.salesUnit;
@@ -1252,7 +1418,7 @@ function salesView() {
   S._quick = quick;
   const noData = stores.filter(s => !per[s].days);
   const su = salesUpdated(stores);
-  return `${head('매출', `토스포스 매출리포트 기준 · ${S.stores.length > 1 ? '매장마다 마감일이 다릅니다 (아래 표)' : `${last ? `<b>${last} 마감</b>까지` : '아직 자료 없음'}${su.up ? ` · 마지막 올림 ${kst(su.up.at)} ${esc(su.up.by)}` : ''}`}`, `<button class="btn" id="posBtn">토스포스 파일 올리기</button>`)}${freshTable(S.stores)}
+  return `${head('매출', `토스포스 매출리포트 기준 · ${S.stores.length > 1 ? '매장마다 마감일이 다릅니다 (아래 표)' : `${last ? `<b>${last} 마감</b>까지` : '아직 자료 없음'}${su.up ? ` · 마지막 올림 ${kst(su.up.at)} ${esc(whoText(su.up.by, su.up.co))}` : ''}`}`, `<button class="btn" id="posBtn">토스포스 파일 올리기</button><button class="btn" id="machBtn">자판기·기계 매출 올리기</button>`)}${freshTable(S.stores)}
   <div class="card" style="display:flex;flex-direction:column;gap:12px">
     <div class="seg">${units.map(([k, t]) => `<button class="${unit === k ? 'on' : ''}" data-su="${k}">${t}</button>`).join('')}</div>
     <div class="row"><div class="field"><label for="ra">시작일</label>${dateSel('ra', a)}</div><div class="field"><label for="rb">종료일</label>${dateSel('rb', b)}</div>
@@ -1267,6 +1433,7 @@ function salesView() {
     <button class="tile tbtn" data-cmp="q"><span class="lb">판매수량<span class="go">비교 ›</span></span><span class="v big${String(fmt(cur.q)).length>9?' long':''}">${fmt(cur.q)}<small>개</small></span><span class="d">${chg(pct(cur.q, pre.q))} <span class="muted">이전 ${fmt(pre.q)}개</span></span></button>
   </div>
   <div class="muted" style="font-size:12px;margin-top:-6px">비교 기간: ${esc(cr.label)} · 칸을 누르면 두 기간을 날짜별로 비교합니다</div>
+  ${unit !== 'ip' ? machBlock(sum, a, b, cur.s) : ''}
   ${multi ? storeCompare(per, sum, stores) : ''}
   ${len === 1 && unit !== 'ip' ? `<div class="note" style="font-size:12.5px">${md(a)}(${wd(a)}) 하루 매출입니다. 아래 그래프는 흐름을 보기 위해 그날까지 최근 14일을 보여 줍니다.</div>` : ''}
   ${unit === 'ip' ? ipBlock(per, sum) : seriesBlock(len === 1 && unit === 'day' ? aggregate(stores, addDays(a, -13), a) : per, sum, stores, unit)}
@@ -1381,13 +1548,13 @@ async function savePos() {
   const pv = S.ui.posPreview; const st = pv.store;
   for (const d of pv.days) {
     const ip = {}, pr = {}; for (const x of d.L) { const a = ip[x.ip] ||= [0, 0]; a[0] += x.q; a[1] += x.s; const b = pr[x.name] ||= [0, 0, x.ip]; b[0] += x.q; b[1] += x.s; }
-    const rec = { s: d.s, p: d.p, q: d.q, ip, pr, up: { at: new Date().toISOString(), by: S.user.name, file: pv.file || '' } };
+    const rec = { s: d.s, p: d.p, q: d.q, ip, pr, up: { at: new Date().toISOString(), by: S.user.name, co: userCo(S.user), file: pv.file || '' } };
     await DB.saveSalesDay(st, d.date, rec);
     ((S.sales[st] ||= {})[d.date.slice(0, 7)] ||= { days: {} }).days[d.date.slice(8)] = rec;
   }
   if ($('#posDeduct') && $('#posDeduct').checked && pv.match.length) {
     const list = pv.match.filter(m => !pv.lastPos || m.date > pv.lastPos).map((m, i) => ({ id: 'p' + Date.now().toString(36) + i, date: m.date, store: st, type: '판매', pid: m.pid, qty: -m.q, memo: 'POS 판매', by: '자동(POS)', at: new Date().toISOString() }));
-    await DB.saveMoves(list); for (const m of list) { S.moves.push(m); S.stock[st][m.pid] = stockOf(st, m.pid) + m.qty; }
+    await DB.saveMoves(stampMoves(list, pv.file)); for (const m of list) { S.moves.push(m); S.stock[st][m.pid] = stockOf(st, m.pid) + m.qty; }
   }
   S.ui.posPreview = null; S.ui.drawer = null; toast(`매출 ${pv.days.length}일치를 저장했습니다`);
 }
@@ -1396,12 +1563,12 @@ async function readBook(f) {
   if (/\.csv$/i.test(f.name)) { let t = await f.text(); if (t.includes('\uFFFD')) t = new TextDecoder('euc-kr').decode(await f.arrayBuffer()); return XLSX.read(t.replace(/^\uFEFF/, ''), { type: 'string' }); }
   return XLSX.read(await f.arrayBuffer(), { type: 'array' });
 }
-function pickFile(accept, cb) {
+function pickFile(accept, cb, multi) {
   // 화면이 다시 그려져도 사라지지 않도록 문서 맨 끝에 따로 만든 파일 선택 칸
   let inp = document.getElementById('smgFilePick');
   if (inp) inp.remove();
-  inp = document.createElement('input'); inp.type = 'file'; inp.id = 'smgFilePick'; inp.accept = accept; inp.style.display = 'none';
-  inp.addEventListener('change', () => { const f = inp.files && inp.files[0]; if (f) cb(f); });
+  inp = document.createElement('input'); inp.type = 'file'; inp.id = 'smgFilePick'; inp.accept = accept; inp.style.display = 'none'; if (multi) inp.multiple = true;
+  inp.addEventListener('change', () => { const fs = [...(inp.files || [])]; if (fs.length) multi ? cb(fs) : cb(fs[0]); });
   document.body.appendChild(inp); inp.click();
 }
 function loadScript(src) { return new Promise((ok, no) => { const s = document.createElement('script'); s.src = src; s.onload = ok; s.onerror = () => no(new Error('라이브러리를 불러오지 못했습니다')); document.head.appendChild(s); }); }
@@ -1422,6 +1589,7 @@ function settleRate(R, key, month) {
 function computeSettle(store = 'suwon') {
   const R = S.settleRules; if (!R) return null;
   const out = []; const months = Object.keys(S.sales[store] || {}).filter(m => m >= R.from && !R.confirmed.includes(m)).sort();
+  const machRate = name => { const v = R.machineRates && R.machineRates[name]; return v == null ? MACH_RATE_DEFAULT : v; };
   for (const m of months) {
     const g = {}; let lastD = '';
     for (const [dd, rec] of Object.entries(S.sales[store][m].days || {})) {
@@ -1436,6 +1604,12 @@ function computeSettle(store = 'suwon') {
       const onin = rate == null ? '' : Math.round(x.sales * rate);
       const cre = sup === '크리에이티브 위탁' ? Math.round(x.gel * R.gelCreRate + (x.sales - x.gel) * R.creRate) : 0;
       out.push({ month: m, ip: k, supplier: sup, sales: x.sales, rate: rate == null ? '' : rate, onin, creative: cre, net: rate == null ? '' : onin - cre, status: '예상', last_date: `${m}-${lastD}`, kind: 'ip' });
+    }
+    for (const [, mm] of Object.entries(S.sales[store][m].mach || {})) {
+      const ds = Object.entries(mm.days || {}); if (!ds.length) continue;
+      const sales = ds.reduce((a, [, v]) => a + v[0], 0), rate = machRate(mm.name), onin = Math.round(sales * rate);
+      const ld = ds.reduce((a, [d]) => (d > a ? d : a), ''); if (ld > lastD) lastD = ld;
+      out.push({ month: m, ip: mm.name, supplier: '자판기·기계', sales, rate, onin, creative: 0, net: onin, status: '예상', last_date: `${m}-${ld}`, kind: 'machine' });
     }
     out.push({ month: m, ip: '시공비 (월 차감)', supplier: '차감', sales: 0, rate: '', onin: -R.construction, creative: 0, net: -R.construction, status: '예상', last_date: `${m}-${lastD}`, kind: 'deduct' });
   }
@@ -1455,18 +1629,19 @@ function settleView() {
   const m = S.ui.settleMonth || months[0];
   const rows = ALL.filter(r => r.month === m);
   const lastDate = rows.reduce((a, r) => (r.last_date > a ? r.last_date : a), '');
-  const unknown = rows.filter(r => r.kind === 'ip' && r.rate === '');
-  const ipRows = rows.filter(r => r.kind === 'ip').sort((a, b) => b.net - a.net); const ded = rows.filter(r => r.kind !== 'ip');
+  const unknown = rows.filter(r => (r.kind === 'ip' || r.kind === 'machine') && r.rate === '');
+  const ipRows = rows.filter(r => r.kind === 'ip' || r.kind === 'machine').sort((a, b) => (a.kind === 'machine') - (b.kind === 'machine') || b.net - a.net); const ded = rows.filter(r => r.kind === 'deduct');
+  const machSales = rows.filter(r => r.kind === 'machine').reduce((a, r) => a + r.sales, 0);
   const T = k => rows.reduce((a, r) => a + (+r[k] || 0), 0);
   const st = rows[0] ? rows[0].status : '';
-  return `${head('정산', '대표와 대표가 허용한 정산 담당자만 보입니다 · POS 매출 × 홀딩스 정산서 요율', `<select class="inp" id="setM" style="width:auto">${months.map(x => `<option ${x === m ? 'selected' : ''}>${x}</option>`).join('')}</select>`)}
-  <div class="tiles"><div class="tile"><span class="lb">판매 금액</span><span class="v big${String(fmt(ipRows.reduce((a, r) => a + r.sales, 0))).length>9?' long':''}">${fmt(ipRows.reduce((a, r) => a + r.sales, 0))}<small>원</small></span></div>
+  return `${head('정산', '대표만 보입니다 · POS 매출 × 홀딩스 정산서 요율 + 자판기·기계 매출 × 20%', `<select class="inp" id="setM" style="width:auto">${months.map(x => `<option ${x === m ? 'selected' : ''}>${x}</option>`).join('')}</select>`)}
+  <div class="tiles"><div class="tile"><span class="lb">판매 금액${machSales ? ' (POS + 기계)' : ''}</span><span class="v big${String(fmt(ipRows.reduce((a, r) => a + r.sales, 0))).length>9?' long':''}">${fmt(ipRows.reduce((a, r) => a + r.sales, 0))}<small>원</small></span>${machSales ? `<span class="d muted">기계 ${fmt(machSales)}원 포함</span>` : ''}</div>
     <div class="tile"><span class="lb">온인터 배분</span><span class="v big${String(fmt(T('onin'))).length>9?' long':''}">${fmt(T('onin'))}<small>원</small></span></div>
     <div class="tile"><span class="lb">크리에이티브 지급</span><span class="v big${String(fmt(-T('creative'))).length>9?' long':''}">${fmt(-T('creative'))}<small>원</small></span></div>
     <div class="tile"><span class="lb">순수익 (${/확정/.test(st) ? '✔ 확정' : '🔸 예상'})</span><span class="v big${String(fmt(T('net'))).length>9?' long':''}">${fmt(T('net'))}<small>원</small></span><span class="d muted">시공비 차감 포함</span></div></div>
   <div class="note" style="font-size:12.5px">${/확정/.test(st) ? '✔ 홀딩스 정산서와 맞춘 확정 금액입니다.' : `🔸 예상 금액 · 매출 <b>${esc(lastDate)}</b>까지 반영 · 토스포스 파일을 올리면 바로 다시 계산됩니다.${S.settleRules ? '' : ' (정산 요율이 아직 등록되지 않아 마지막으로 넣은 자료를 보여 줍니다)'}`}</div>
   ${unknown.length ? `<div class="note bad">🔺 요율이 정해지지 않은 IP ${unknown.length}개: ${unknown.map(r => esc(r.ip)).join(', ')} — 순수익 합계에서 빠져 있습니다.</div>` : ''}
-  <div class="card"><h2>IP별</h2><div class="tw"><table><thead><tr><th>IP</th><th class="hide-s">공급</th><th class="n">판매 금액</th><th class="n">요율</th><th class="n">온인터 배분</th><th class="n hide-s">크리에이티브 지급</th><th class="n">순수익</th></tr></thead><tbody>
+  <div class="card"><h2>IP별 · 기계</h2><div class="tw"><table><thead><tr><th>IP</th><th class="hide-s">공급</th><th class="n">판매 금액</th><th class="n">요율</th><th class="n">온인터 배분</th><th class="n hide-s">크리에이티브 지급</th><th class="n">순수익</th></tr></thead><tbody>
   ${ipRows.map(r => `<tr><td class="nm">${esc(r.ip)}</td><td class="hide-s nowrap muted">${esc(r.supplier)}</td><td class="n">${fmt(r.sales)}</td><td class="n">${r.rate === '' ? '-' : Math.round(r.rate * 100) + '%'}</td><td class="n">${fmt(r.onin)}</td><td class="n hide-s">${r.creative ? fmt(-r.creative) : '-'}</td><td class="n" style="font-weight:700">${fmt(r.net)}</td></tr>`).join('')}
   ${ded.map(r => `<tr><td class="nm">${esc(r.ip)}</td><td class="hide-s muted">차감</td><td class="n">-</td><td class="n">-</td><td class="n">${fmt(r.onin)}</td><td class="n hide-s">-</td><td class="n" style="font-weight:700;color:var(--bad)">${fmt(r.net)}</td></tr>`).join('')}
   <tr class="tot"><td>합계</td><td class="hide-s"></td><td class="n">${fmt(ipRows.reduce((a, r) => a + r.sales, 0))}</td><td></td><td class="n">${fmt(T('onin'))}</td><td class="n hide-s">${fmt(-T('creative'))}</td><td class="n">${fmt(T('net'))}</td></tr></tbody></table></div></div>`;
@@ -1778,7 +1953,7 @@ function bind() {
     if (t.id === 'plSave') { await savePlace(); return; }
     if (t.id === 'linkGo') { readLink($('#linkIn').value.trim()); return; }
     if (t.id === 'impCancel') { S.ui.imp = null; render(); return; }
-    if (t.id === 'impUse') { for (const r of S.ui.imp.rows) if (r.pid && r.qty > 0) addLine(r.pid, r.qty, r.dup ? `파일 ${r.dup}줄과 같은 상품 — 수량 합침` : null); S.ui.imp = null; S.ui.entry.mode = 'hand'; render(); return; }
+    if (t.id === 'impUse') { S.ui.entry.file = S.ui.imp.src; for (const r of S.ui.imp.rows) if (r.pid && r.qty > 0) addLine(r.pid, r.qty, r.dup ? `파일 ${r.dup}줄과 같은 상품 — 수량 합침` : null); S.ui.imp = null; S.ui.entry.mode = 'hand'; render(); return; }
     if (t.id === 'cSave') { await saveCount(); S.ui.cntMsg = null; return; }
     if (t.id === 'cntTpl') { countTemplate(); return; }
     if (t.id === 'cntFile') { pickFile('.xlsx,.xls,.csv', f => fileRows(f).then(x => countApply(x.rows, x.src)).catch(e => { S.ui.cntMsg = { bad: true, html: '🔺 ' + esc(e.message) }; render(); })); return; }
@@ -1788,6 +1963,9 @@ function bind() {
     if (d.rt != null) { S.ui.recType = d.rt; render(); return; }
     if (d.su) { S.ui.salesUnit = d.su; S.ui.range = null; render(); return; }
     if (d.qr != null) { S.ui.range = { unit: S.ui.salesUnit, ab: S._quick[+d.qr][1]() }; render(); return; }
+    if (t.id === 'machBtn') { S.ui.machPv = null; S.ui.drawer = machDrawer; render(); return; }
+    if (t.id === 'machFileBtn') { const st = ($('#machStore') || {}).value || S.stores[0]; pickFile('.pdf,.xlsx,.xls,.csv', fs => { S.ui.machStore = st; readMachFiles(fs, st).catch(e => { S.ui.machPv = { store: st, mach: [], errs: [e.message || String(e)], files: [] }; render(); }); }, true); return; }
+    if (t.id === 'machSave') { document.querySelectorAll('[data-mname]').forEach(x => { S.ui.machPv.mach[+x.dataset.mname].name = x.value; }); await saveMach(); return; }
     if (t.id === 'posBtn') { S.ui.posPreview = null; S.ui.drawer = posDrawer; render(); return; }
     if (t.id === 'posSave') { await savePos(); return; }
     if (d.at) { S.ui.adminTab = d.at; render(); return; }
@@ -1825,6 +2003,7 @@ function bind() {
     if (d.iba != null) { const ib = S.inbounds.find(x => x.id === S.ui.ib); ib.items[+d.iba].actual = t.value === '' ? null : Math.max(0, parseInt(t.value, 10)); if (DB.saveInbound) DB.saveInbound(ib); render(); return; }
     if (t.id === 'ePlace') { S.ui.entry.place = t.value; render(); return; }
     if (t.id === 'eFrom') { S.ui.entry.from = t.value; render(); return; }
+    if (t.id === 'machStore') { S.ui.machStore = t.value; S.ui.machPv = null; render(); return; }
     if (t.id === 'ipPast') { S.ui.ipPast = t.checked; render(); return; }
     if (['ipStore', 'ipName', 'ipStart', 'ipEnd', 'ipHost', 'ipNote'].includes(t.id)) { const k = { ipStore: 'store', ipName: 'ip', ipStart: 'start', ipEnd: 'end', ipHost: 'host', ipNote: 'note' }[t.id]; const f = S.ui.ipForm; f[k] = t.value; if (k === 'store') f.kind = STORE_KIND[t.value] || f.kind; if (k === 'start' && (!f.end || f.end < t.value)) f.end = t.value; render(); return; }
     if (['plName', 'plStart', 'plEnd', 'plAddr', 'plPerson', 'plMemo'].includes(t.id)) { const k = { plName: 'name', plStart: 'start', plEnd: 'end', plAddr: 'addr', plPerson: 'person', plMemo: 'memo' }[t.id]; S.ui.placeForm[k] = t.value; if (k === 'start' && (!S.ui.placeForm.end || S.ui.placeForm.end < t.value)) S.ui.placeForm.end = t.value; render(); return; }

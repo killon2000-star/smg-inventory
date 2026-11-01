@@ -108,6 +108,11 @@ window.SMG_FIREBASE = function (S, X) {
       await db.collection('stores').doc(st).collection('sales').doc(date.slice(0, 7)).set({ days: { [date.slice(8)]: rec } }, { merge: true });
       return true;
     },
+    async saveMachMonth(st, ym, id, rec) {
+      // 기계 매출은 같은 달 매출 문서 안 mach 칸에 (보안 규칙 변경 없이 매출 권한으로 저장)
+      await db.collection('stores').doc(st).collection('sales').doc(ym).set({ mach: { [id]: rec } }, { merge: true });
+      return true;
+    },
     async saveUser(u) {
       const { uid, ...d } = u; delete d.sample;
       await db.collection('users').doc(uid).set({ ...d, updatedAt: ts(), updatedBy: S.user.name }, { merge: true });
