@@ -228,7 +228,7 @@ body:not(.in-app) .kclock{display:none!important}
 .side .grp{font-size:11px;color:var(--muted);letter-spacing:.06em;margin:14px 12px 4px}
 .side .cnt{margin-left:auto;background:var(--red);color:#fff;border-radius:10px;font-size:11px;padding:0 6px;font-weight:700}
 main{min-width:0;padding-block:18px 96px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
-.page{max-width:1180px;margin:0 auto;display:flex;flex-direction:column;gap:16px}
+.page{max-width:none;margin:0;display:flex;flex-direction:column;gap:16px}
 .ph{display:flex;align-items:flex-end;gap:12px;flex-wrap:wrap}
 .ph h1{margin:0;font-size:22px;font-weight:700;text-wrap:balance}
 .ph .sub{color:var(--muted);font-size:13px}
@@ -397,7 +397,7 @@ tr.flag td{background:var(--warn-bg)}
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 <script src="config.js"></script>
 <script src="firebase.js?v=27"></script>
-<script src="app.js?v=44"></script>
+<script src="app.js?v=45"></script>
 <script>if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});</script>
 
 </body></html>
