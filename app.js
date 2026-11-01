@@ -37,7 +37,7 @@ const PERM_DEF = [
 ];
 
 const DEFAULT_ORDER = STORES.map(s => s.id);
-const APP_VERSION = '2026-11-01 11:40';   // 앱 화면을 마지막으로 고친 시각 (한국 시간)
+const APP_VERSION = '2026-11-01 11:45';   // 앱 화면을 마지막으로 고친 시각 (한국 시간)
 /* ───────── 작은 도구 ───────── */
 const $ = (s, el = document) => el.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -446,34 +446,34 @@ function storeStats(st) {
 /* ───────── IP 현황 (전 매장 팝업·전시·카페 운영 일정) ───────── */
 const IP_KINDS = ['팝업', '전시', '카페'];
 const STORE_KIND = { suwon: '팝업', limission: '팝업', museum: '전시', boxcafe: '카페', omake: '카페' };
-const STORE_PLACE = { suwon: 'AK PLAZA 수원 5층', limission: '홍대 4층 리밋션샵', museum: '홍대 4층 오뮤지엄', boxcafe: '홍대 AK 3층', omake: '신촌' };
-// 처음 값: SMG 홀딩스 전체 개최 일정(10/20 받은 표) 기준. 관리자가 앱에서 고치면 그 값이 우선합니다.
+const STORE_PLACE = { suwon: 'AK PLAZA 수원 5F', limission: 'AK PLAZA 홍대 4F', museum: 'AK PLAZA 홍대 4F', boxcafe: 'AK PLAZA 홍대 3F', omake: '현대백화점 신촌 B2' };
+// 처음 값: SMG NOW 26년 11월 소식(11/1)으로 진행 중 일정 확정, 그 밖은 SMG 홀딩스 전체 개최 일정(10/20 받은 표) 기준. 관리자가 앱에서 고치면 그 값이 우선합니다.
 const IP_PLAN_DEFAULT = [
   ['suwon', '하이큐!! 쉬는시간', '2026-09-24', '2026-10-13', 'SMG-C', ''],
-  ['suwon', '에반게리온 Light & Shadow', '2026-10-15', '2026-11-10', '홀딩스', '종료일 확인 필요'],
-  ['suwon', '진격의 거인 (MAPPA)', '2026-11-12', '2026-12-01', '홀딩스', '오픈·종료일 확인 필요'],
+  ['suwon', '에반게리온 Light & Shadow', '2026-10-15', '2026-11-24', '홀딩스', ''],
+  ['suwon', '진격의 거인 The Final Season', '2026-11-12', '2026-12-03', '홀딩스', '5F 팝토피아 · 에반게리온과 함께 진행'],
   ['suwon', '주술회전 2 (MAPPA)', '2026-12-05', '2026-12-27', '홀딩스', ''],
   ['suwon', '슈가슈가룬 2', '2026-12-29', '2027-01-26', 'SMG-C', ''],
   ['suwon', '은혼 구작 2', '2027-01-28', '2027-02-24', 'SMG-C', ''],
   ['suwon', '약혼', '2027-02-25', '2027-03-24', '홀딩스', ''],
   ['limission', '다모여', '2026-09-24', '2026-10-14', '홀딩스', ''],
-  ['limission', '쿠로코의 농구', '2026-10-15', '2026-11-11', 'SMG-C', ''],
-  ['limission', '진격의 거인 (MAPPA)', '2026-11-12', '2026-12-02', '홀딩스', ''],
+  ['limission', '쿠로코의 농구', '2026-10-15', '2026-11-10', 'SMG-C', ''],
+  ['limission', '진격의 거인 The Final Season', '2026-11-12', '2026-12-03', '홀딩스', ''],
   ['limission', '주술회전 2 (MAPPA)', '2026-12-03', '2026-12-30', '홀딩스', '슈가슈가룬 2와 기간 겹침'],
   ['limission', '슈가슈가룬 2', '2026-12-24', '2027-01-27', 'SMG-C', ''],
   ['limission', '은혼 구작 2', '2027-01-28', '2027-02-24', 'SMG-C', ''],
   ['limission', '약혼', '2027-02-25', '2027-03-24', '홀딩스', ''],
-  ['museum', '코난 전시', '2026-08-06', '2026-08-19', '', ''],
+  ['museum', '명탐정 코난 TV 애니메이션 방송 30주년 기념전', '2026-08-12', '2026-11-29', '', ''],
   ['museum', '전지적 독자 시점', '2026-12-17', '2027-02-07', '', ''],
   ['museum', '이누야샤', '2027-02-18', '2027-02-24', '', '날짜 미정'],
   ['museum', '은혼 원화전 20주년', '2027-05-27', '2027-08-31', '', ''],
   ['boxcafe', '코난', '2026-08-13', '2026-09-23', '', ''],
-  ['boxcafe', '주술회전 LTR', '2026-09-24', '2026-12-02', '', ''],
+  ['boxcafe', '2026 주술회전 시부야사변 CAFE', '2026-09-23', '2026-12-01', '', ''],
   ['boxcafe', '하이큐 SD', '2026-12-03', '2027-01-13', '', '다른 안: 프리렌'],
   ['boxcafe', '팔재', '2027-01-14', '2027-02-03', '', ''],
   ['boxcafe', '화산귀환', '2027-02-04', '2027-03-03', '', ''],
   ['omake', '에픽 x 카제나', '2026-09-17', '2026-09-30', '', ''],
-  ['omake', '오란고교 사교클럽', '2026-10-01', '2026-12-02', '', '대표 확인 11/1: 진행 중 · 종료일은 신촌카페 표(12/2) 기준'],
+  ['omake', '오란고교 사교클럽 CAFE', '2026-10-02', '2026-11-30', '', ''],
   ['omake', '하이큐', '2026-12-03', '2026-12-09', '', ''],
   ['omake', '하이큐 / 리락쿠마', '2026-12-10', '2027-01-13', '', ''],
   ['omake', '카제나', '2027-01-21', '2027-02-24', '', ''],
@@ -537,7 +537,7 @@ function ipListTable() {
 function ipView() {
   const t = today(), live = STORES.map(s => ipStatus(s.id).now.length).reduce((a, b) => a + b, 0);
   const soon = ipPlan().filter(r => r.start > t && dDiff(t, r.start) <= 14);
-  return `${head('IP 현황', `전 매장 팝업 · 전시 · 카페 운영 IP · 오늘 ${mdw(t)} 기준${S.ipPlanAt ? ' · 일정 수정 ' + esc(S.ipPlanAt) : ' · SMG 홀딩스 개최 일정표(10/20) 기준'}`)}
+  return `${head('IP 현황', `전 매장 팝업 · 전시 · 카페 운영 IP · 오늘 ${mdw(t)} 기준${S.ipPlanAt ? ' · 일정 수정 ' + esc(S.ipPlanAt) : ' · SMG NOW 11월 소식·홀딩스 일정표 기준'}`)}
   <div class="tiles"><div class="tile"><div class="k">지금 운영 중</div><div class="v num">${live}<small>개 IP</small></div></div>
     <div class="tile"><div class="k">2주 안에 시작</div><div class="v num">${soon.length}<small>개</small></div><div class="d">${soon.slice(0, 2).map(r => esc(shortName(r.store) + ' ' + r.ip)).join(' · ') || '없음'}</div></div></div>
   <div class="ipgrid">${STORES.map(s => ipCard(s.id)).join('')}</div>
