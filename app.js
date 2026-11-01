@@ -37,7 +37,7 @@ const PERM_DEF = [
 ];
 
 const DEFAULT_ORDER = STORES.map(s => s.id);
-const APP_VERSION = '2026-11-01 11:50';   // 앱 화면을 마지막으로 고친 시각 (한국 시간)
+const APP_VERSION = '2026-11-01 11:55';   // 앱 화면을 마지막으로 고친 시각 (한국 시간)
 /* ───────── 작은 도구 ───────── */
 const $ = (s, el = document) => el.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -502,7 +502,7 @@ function ipCard(st) {
   }).join('');
   const nx = x.next.map((r, i) => `<div class="ipnext${i ? ' muted' : ''}"><span class="pill ${i ? 'p-mute' : 'p-ok'}">${i ? '그다음' : '다음'}</span><span class="t">${esc(r.ip)}</span><span class="d">${mdw(r.start)}~ · D-${dDiff(t, r.start)}</span></div>`).join('');
   return `<div class="card ipcard" style="--c:${storeColor(st)}">
-    <div class="iphd"><span class="dot" style="background:${storeColor(st)}"></span><b>${esc(storeName(st))}</b><span class="pill p-mute">${kind}</span><span class="sp"></span><span class="muted" style="font-size:12px">${esc(STORE_PLACE[st] || '')}</span></div>
+    <div class="iphd"><div class="iph1"><span class="dot" style="background:${storeColor(st)}"></span><b>${esc(storeName(st))}</b></div><div class="iph2"><span class="pill p-mute">${kind}</span><span class="muted">${esc(STORE_PLACE[st] || '')}</span></div></div>
     ${nowB || `<div class="ipnow empty"><div class="ipname muted">지금 진행 중인 ${kind} 없음</div>${x.last ? `<div class="ipmeta">지난: ${esc(x.last.ip)} (~${mdw(x.last.end)})</div>` : ''}</div>`}
     ${nx || '<div class="ipnext muted">다음 일정 미정</div>'}</div>`;
 }
