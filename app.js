@@ -40,7 +40,7 @@ const PERM_DEF = [
 ];
 
 const DEFAULT_ORDER = STORES.map(s => s.id);
-const APP_VERSION = '2026-11-01 20:30';   // 앱 화면을 마지막으로 고친 시각 (한국 시간)
+const APP_VERSION = '2026-11-02 02:15';   // 앱 화면을 마지막으로 고친 시각 (한국 시간)
 /* ───────── 작은 도구 ───────── */
 const $ = (s, el = document) => el.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -59,7 +59,7 @@ const daysBetween = (a, b) => Math.round((Date.parse(b) - Date.parse(a)) / 864e5
 const norm = s => String(s || '').toLowerCase().replace(/^에바30주년팝업_/, '').replace(/[\s\[\]()!_\-.,~·&]/g, '');
 const storeName = id => (STORES.find(s => s.id === id) || {}).name || id;
 const storeColor = id => `var(--s-${id})`;
-const SHORT = { suwon: '수원', boxcafe: 'BOX CAFE', museum: 'MUSEUM 홍대', omake: '오마케', limission: '리밋션 홍대' };
+const SHORT = { suwon: '수원', boxcafe: 'BOX CAFE', museum: 'MUSEUM 홍대', omake: 'CAFE 오마케', limission: '리밋션 홍대' };   // 오마케는 온라인쇼핑몰과 헷갈리지 않게 항상 'CAFE 오마케' (대표 지시 11/2)
 const shortName = id => SHORT[id] || storeName(id);
 const sdot = id => `<span class="dot" style="background:${storeColor(id)};display:inline-block;margin-right:4px;vertical-align:1px"></span>`;
 const ICON = {
