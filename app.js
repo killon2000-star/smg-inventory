@@ -37,7 +37,7 @@ const PERM_DEF = [
 ];
 
 const DEFAULT_ORDER = STORES.map(s => s.id);
-const APP_VERSION = '2026-11-01 11:45';   // 앱 화면을 마지막으로 고친 시각 (한국 시간)
+const APP_VERSION = '2026-11-01 11:50';   // 앱 화면을 마지막으로 고친 시각 (한국 시간)
 /* ───────── 작은 도구 ───────── */
 const $ = (s, el = document) => el.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -265,6 +265,10 @@ function render() {
   ${S.ui.drawer ? `<div class="ov" id="ov"><div class="dr" role="dialog" aria-modal="true">${S.ui.drawer()}</div></div>` : ''}
   ${S.ui.toast ? `<div class="toast" role="status">${esc(S.ui.toast)}</div>` : ''}`;
   bind(); pinTabbar();
+  // 왼쪽 메뉴 아래가 시계에 가려지지 않게: 시계 높이만큼 아래 여백 (글자 크기 목록은 위로 펼침)
+  const kc = document.querySelector('.kclock'); if (kc && kc.offsetHeight) document.documentElement.style.setProperty('--kch', kc.offsetHeight + 'px');
+  fitSide();
+  if (S.ui.tzOpen) { const bx = document.querySelector('.side .tzbox'); if (bx && bx.offsetParent) bx.scrollIntoView({ block: 'nearest' }); }
   // [이전] 버튼: 화면 제목 줄 오른쪽 끝
   if (navStack.length) { const ph = document.querySelector('#page .ph'); if (ph) ph.insertAdjacentHTML('beforeend', '<button class="back-btn" id="navBack" aria-label="이전 화면으로"><span class="ar"></span>이전</button>'); }
   const tw = document.querySelector('.tlwrap'), tt = tw && tw.querySelector('.tltoday');
@@ -2118,6 +2122,16 @@ const KR_HOLIDAYS = {
   const start = () => { document.body.appendChild(el); tick(); setInterval(tick, 1000); addEventListener('resize', fit); document.fonts && document.fonts.ready.then(fit); setTimeout(fit, 1500); };
   document.body ? start() : document.addEventListener('DOMContentLoaded', start);
 })();
+// 글자 크기·큰 모니터 배율이 걸려도 왼쪽 메뉴가 화면 높이 안에 들어오고 그 안에서 스크롤되게
+function fitSide() {
+  const side = document.querySelector('.side'); if (!side || !side.offsetParent) return;
+  const zw = (parseFloat(document.documentElement.style.zoom) || 1) * (parseFloat(getComputedStyle(document.body).zoom) || 1);
+  const top = document.querySelector('.top'); const th = top ? top.getBoundingClientRect().height / zw : 56;
+  const kc = document.querySelector('.kclock'); const kh = kc && getComputedStyle(kc).display !== 'none' ? (kc.getBoundingClientRect().height + 20) / zw : 0;
+  const st = Math.max(side.getBoundingClientRect().top / zw, th);   // 맨 위에선 미리보기·매장 줄 아래부터, 스크롤하면 머리글 바로 아래
+  side.style.top = th + 'px'; side.style.height = Math.max(160, innerHeight / zw - st - kh) + 'px'; side.style.paddingBottom = '16px';
+}
+addEventListener('resize', fitSide); addEventListener('scroll', () => requestAnimationFrame(fitSide), { passive: true });
 function goTop() { resetZoom(); window.scrollTo(0, 0); }
 const TEXT_SIZES = [['아주 작게', 0.82], ['작게', 0.9], ['보통', 1], ['크게', 1.12], ['아주 크게', 1.25]];
 function applyTextSize(z) { S.ui.textZoom = z; document.documentElement.style.zoom = z === 1 ? '' : String(z); try { localStorage.setItem('smg-text-zoom', String(z)); } catch (e) { } }
