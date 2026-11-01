@@ -40,7 +40,7 @@ const PERM_DEF = [
 ];
 
 const DEFAULT_ORDER = STORES.map(s => s.id);
-const APP_VERSION = '2026-11-01 20:20';   // 앱 화면을 마지막으로 고친 시각 (한국 시간)
+const APP_VERSION = '2026-11-01 20:30';   // 앱 화면을 마지막으로 고친 시각 (한국 시간)
 /* ───────── 작은 도구 ───────── */
 const $ = (s, el = document) => el.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -734,6 +734,9 @@ function printStock(o) {
   const { rows } = stockDocRows(o), M = stockDocMeta(o, rows.length), multi = o.stores.length > 1;
   const e = v => String(v ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
   const tq = rows.reduce((a, r) => a + r.t, 0), tm = rows.reduce((a, r) => a + (r.p.price || 0) * Math.max(0, r.t), 0);
+  // 열 너비: 상품명이 남는 폭을 모두 쓰고, 매장이 4곳 이상이면 바코드 칸은 빼서(엑셀에는 있음) 상품명이 좁아지지 않게
+  const n = multi ? o.stores.length : 0, showBc = n < 4, sw = n > 3 ? 6.5 : 7.5;
+  const fixedW = 4 + 12 + (showBc ? 12 : 0) + n * sw + 7 + 7 + 10, nameW = Math.max(24, 100 - fixedW);
   const html = `<!doctype html><html lang="ko"><head><meta charset="utf-8"><title>${e(M.title)}</title><style>
     @page{size:A4 ${multi && o.stores.length > 3 ? 'landscape' : 'portrait'};margin:12mm}body{font-family:"Noto Sans KR","Malgun Gothic","Apple SD Gothic Neo",sans-serif;color:#111;font-size:10.5px;margin:0}
     .hd{display:flex;justify-content:space-between;align-items:flex-end;border-bottom:3px solid #D32229;padding-bottom:6px;margin-bottom:8px}
@@ -746,9 +749,10 @@ function printStock(o) {
   </style></head><body>
   <div class="hd"><div><h1>${e(M.title)}</h1><div style="font-size:10.5px;color:#444;margin-top:2px">조건: ${e(M.cond)}</div></div><div class="meta">출력 ${e(M.made)}<br>${e(M.who)}</div></div>
   <div class="sum"><span>상품 <b>${rows.length.toLocaleString()}</b>종</span><span>재고 <b>${tq.toLocaleString()}</b>개</span><span>재고 금액(판매가) <b>${tm.toLocaleString()}</b>원</span><span>품절 <b>${rows.filter(r => r.t === 0).length}</b>종</span><span>마이너스 <b>${rows.filter(r => r.t < 0).length}</b>종</span></div>
-  <table><thead><tr><th style="width:5%">No</th><th style="width:15%">IP</th><th>상품명</th><th style="width:14%">바코드·품번</th>${multi ? o.stores.map(s => `<th class="n" style="width:${o.stores.length > 3 ? 7 : 8}%">${e(shortName(s))}</th>`).join('') : ''}<th class="n" style="width:8%">${multi ? '합계' : '재고'}</th><th class="n" style="width:8%">판매가</th></tr></thead><tbody>
-  ${rows.map((r, i) => `<tr><td>${i + 1}</td><td>${e(r.p.ip)}</td><td>${e(r.p.name)}</td><td>${e(r.p.barcode || r.p.sku)}</td>${multi ? r.per.map(x => `<td class="n ${x < 0 ? 'neg' : x === 0 ? 'zero' : ''}">${x.toLocaleString()}</td>`).join('') : ''}<td class="n ${r.t < 0 ? 'neg' : r.t === 0 ? 'zero' : ''}"><b>${r.t.toLocaleString()}</b></td><td class="n">${r.p.price ? r.p.price.toLocaleString() : ''}</td></tr>`).join('')}
-  </tbody><tfoot><tr><td colspan="4">합계 ${rows.length.toLocaleString()}종</td>${multi ? o.stores.map((s, i) => `<td class="n">${rows.reduce((a, r) => a + r.per[i], 0).toLocaleString()}</td>`).join('') : ''}<td class="n">${tq.toLocaleString()}</td><td class="n"></td></tr></tfoot></table>
+  <table><thead><tr><th style="width:4%">No</th><th style="width:12%">IP</th><th style="width:${nameW}%">상품명</th>${showBc ? '<th style="width:12%">바코드·품번</th>' : ''}${multi ? o.stores.map(s => `<th class="n" style="width:${sw}%">${e(shortName(s))}</th>`).join('') : ''}<th class="n" style="width:7%">${multi ? '합계' : '재고'}</th><th class="n" style="width:7%">판매가</th><th class="n" style="width:10%">재고 금액</th></tr></thead><tbody>
+  ${rows.map((r, i) => `<tr><td>${i + 1}</td><td>${e(r.p.ip)}</td><td>${e(r.p.name)}</td>${showBc ? `<td>${e(r.p.barcode || r.p.sku)}</td>` : ''}${multi ? r.per.map(x => `<td class="n ${x < 0 ? 'neg' : x === 0 ? 'zero' : ''}">${x.toLocaleString()}</td>`).join('') : ''}<td class="n ${r.t < 0 ? 'neg' : r.t === 0 ? 'zero' : ''}"><b>${r.t.toLocaleString()}</b></td><td class="n">${r.p.price ? r.p.price.toLocaleString() : ''}</td><td class="n">${r.p.price && r.t > 0 ? (r.p.price * r.t).toLocaleString() : ''}</td></tr>`).join('')}
+  </tbody><tfoot><tr><td colspan="${showBc ? 4 : 3}">합계 ${rows.length.toLocaleString()}종</td>${multi ? o.stores.map((s, i) => `<td class="n">${rows.reduce((a, r) => a + r.per[i], 0).toLocaleString()}</td>`).join('') : ''}<td class="n">${tq.toLocaleString()}</td><td class="n"></td><td class="n">${tm.toLocaleString()}원</td></tr></tfoot></table>
+  <p style="font-size:9px;color:#666;margin-top:6px">재고 금액 = 판매가 × 남은 재고 (마이너스 재고는 0으로 계산)</p>
   </body></html>`;
   let fr = document.getElementById('printFrame'); if (fr) fr.remove();
   fr = document.createElement('iframe'); fr.id = 'printFrame'; fr.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0;visibility:hidden';
