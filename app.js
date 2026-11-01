@@ -37,7 +37,7 @@ const PERM_DEF = [
 ];
 
 const DEFAULT_ORDER = STORES.map(s => s.id);
-const APP_VERSION = '2026-11-01 11:55';   // 앱 화면을 마지막으로 고친 시각 (한국 시간)
+const APP_VERSION = '2026-11-01 15:05';   // 앱 화면을 마지막으로 고친 시각 (한국 시간)
 /* ───────── 작은 도구 ───────── */
 const $ = (s, el = document) => el.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -393,7 +393,7 @@ function pageView() {
   }
   return '';
 }
-function head(t, sub, right = '') { return `<div class="ph"><div><h1>${esc(t)}</h1>${sub ? `<div class="sub">${sub}</div>` : ''}</div><span class="sp"></span>${right}</div>`; }
+function head(t, sub, right = '') { return `<div class="ph"><div class="pht"><h1>${esc(t)}</h1>${sub ? `<div class="sub">${sub}</div>` : ''}</div><span class="sp"></span>${right ? `<div class="pha">${right}</div>` : ''}</div>`; }
 function toast(t) { S.ui.toast = t; render(); clearTimeout(toast._t); toast._t = setTimeout(() => { S.ui.toast = null; render(); }, 2600); }
 
 /* ───────── 언제 반영됐는지 ───────── */
