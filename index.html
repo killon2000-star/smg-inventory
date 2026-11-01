@@ -388,6 +388,11 @@ tr.flag td{background:var(--warn-bg)}
   .who select{max-width:118px}
 }
 @media (prefers-reduced-motion: no-preference){.btn,.chip,.side button{transition:background .12s,border-color .12s}}
+/* 큰 모니터: 글자·칸이 너무 작아지지 않도록 화면 폭에 맞춰 전체 크기를 키움 (글자 크기 설정과 함께 곱해짐) */
+@media (min-width: 2000px){ body{zoom:1.1} }
+@media (min-width: 2400px){ body{zoom:1.25} }
+@media (min-width: 3000px){ body{zoom:1.45} }
+@media (min-width: 3600px){ body{zoom:1.7} }
 @media print{.top,.side,.tabbar{display:none}}
 </style>
 </head><body><div id="app"><div class="login"><div class="brand"><b>SMG 재고관리</b><span>불러오는 중…</span></div></div></div>
@@ -397,7 +402,7 @@ tr.flag td{background:var(--warn-bg)}
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 <script src="config.js"></script>
 <script src="firebase.js?v=27"></script>
-<script src="app.js?v=45"></script>
+<script src="app.js?v=46"></script>
 <script>if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});</script>
 
 </body></html>

@@ -37,7 +37,7 @@ const PERM_DEF = [
 ];
 
 const DEFAULT_ORDER = STORES.map(s => s.id);
-const APP_VERSION = '2026-11-01 11:15';   // 앱 화면을 마지막으로 고친 시각 (한국 시간)
+const APP_VERSION = '2026-11-01 11:25';   // 앱 화면을 마지막으로 고친 시각 (한국 시간)
 /* ───────── 작은 도구 ───────── */
 const $ = (s, el = document) => el.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -1480,7 +1480,10 @@ function seriesBlock(per, sum, stores, unit) {
 }
 function trendSvg(vals, labels) {
   if (vals.length < 2) return '';
-  const W = 640, H = 150, L = 8, R = 8, T = 22, B = 22; const mx = Math.max(...vals, 1);
+  // 화면 폭에 맞춰 그림 비율을 바꿔서, 큰 모니터에서도 그래프 높이가 너무 커지지 않게 (글자는 그대로)
+  const zw = (parseFloat(getComputedStyle(document.body).zoom) || 1) * (parseFloat(document.documentElement.style.zoom) || 1);
+  const avail = Math.round(innerWidth / zw - (innerWidth / zw > 900 ? 270 : 70));
+  const W = Math.max(360, Math.min(2000, avail)), H = W < 640 ? 170 : 190, L = 8, R = 8, T = 22, B = 22; const mx = Math.max(...vals, 1);
   const x = i => L + i * (W - L - R) / (vals.length - 1), y = v => T + (1 - v / mx) * (H - T - B);
   const pts = vals.map((v, i) => `${x(i).toFixed(1)},${y(v).toFixed(1)}`).join(' ');
   const iMax = vals.indexOf(mx), iL = vals.length - 1;
@@ -2073,6 +2076,7 @@ function pinTabbar() {
   bar.style.transformOrigin = 'left bottom';
   bar.style.transform = `translate(${x}px, ${y}px) scale(${1 / vv.scale})`;
 }
+let rsT; addEventListener('resize', () => { clearTimeout(rsT); rsT = setTimeout(() => { if (S.user && !document.querySelector('input:focus,textarea:focus,select:focus')) render(); }, 250); });
 if (window.visualViewport) { visualViewport.addEventListener('resize', pinTabbar); visualViewport.addEventListener('scroll', pinTabbar); }
 // 대한민국 공휴일 (대체공휴일 포함) — 해마다 추가
 const KR_HOLIDAYS = {
