@@ -199,6 +199,21 @@ body:not(.in-app) .kclock{display:none!important}
 .lg{display:inline-block;width:14px;height:3px;border-radius:2px;vertical-align:middle;margin:0 4px 0 10px}
 .lg.cur{background:var(--red)}
 .lg.pre{background:var(--muted)}
+.grand{border:2px solid var(--red);display:flex;flex-direction:column;gap:10px}
+.grand .g-top{display:flex;align-items:flex-end;gap:12px;flex-wrap:wrap}
+.grand .g-top > div:first-child{flex:1;min-width:0}
+.grand .g-lb{font-weight:800;font-size:15px}
+.grand .g-lb span{font-weight:500;font-size:12.5px;color:var(--muted);margin-left:6px}
+.grand .g-v{font-size:36px;font-weight:800;letter-spacing:-.01em;line-height:1.15;font-variant-numeric:tabular-nums}
+.grand .g-v small{font-size:16px;font-weight:600;color:var(--muted);margin-left:3px}
+.grand .g-cmp{text-align:right;font-size:14px}
+.grand .g-cmp .muted{font-size:12px}
+.grand .g-bar{display:flex;height:10px;border-radius:5px;overflow:hidden;background:var(--line-2)}
+.grand .g-bar .pos,.dotc.pos{background:var(--red)}
+.grand .g-bar .mac,.dotc.mac{background:#E0A43C}
+.grand .g-parts{display:flex;flex-wrap:wrap;gap:6px 22px;font-size:13.5px}
+.dotc{display:inline-block;width:9px;height:9px;border-radius:3px;margin-right:6px;vertical-align:middle}
+@media (max-width:900px){.grand .g-v{font-size:28px}.grand .g-cmp{text-align:left}}
 .srow input{width:18px;height:18px;accent-color:var(--red)}
 .pop .foot{display:flex;gap:8px;justify-content:flex-end;margin-top:8px;padding-top:8px;border-top:1px solid var(--line-2)}
 .scrim{position:fixed;inset:0;z-index:65;background:transparent}
@@ -382,7 +397,7 @@ tr.flag td{background:var(--warn-bg)}
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 <script src="config.js"></script>
 <script src="firebase.js?v=27"></script>
-<script src="app.js?v=43"></script>
+<script src="app.js?v=44"></script>
 <script>if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});</script>
 
 </body></html>

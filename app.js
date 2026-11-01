@@ -37,7 +37,7 @@ const PERM_DEF = [
 ];
 
 const DEFAULT_ORDER = STORES.map(s => s.id);
-const APP_VERSION = '2026-11-01 11:00';   // 앱 화면을 마지막으로 고친 시각 (한국 시간)
+const APP_VERSION = '2026-11-01 11:10';   // 앱 화면을 마지막으로 고친 시각 (한국 시간)
 /* ───────── 작은 도구 ───────── */
 const $ = (s, el = document) => el.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -606,7 +606,10 @@ function homeView() {
       const s = d.reduce((a, b) => a + b.s, 0), p = d.reduce((a, b) => a + b.p, 0);
       const wk = st.map(x => dayRec(x, addDays(last, -7))).filter(Boolean).reduce((a, b) => a + b.s, 0);
       const ch = pct(s, wk);
-      salesBlock = `<div class="tile"><span class="lb">매출 · ${md(last)}(${wd(last)})</span><span class="v big${String(fmt(s)).length>9?' long':''}">${fmt(s)}<small>원</small></span><span class="d ${ch == null ? 'muted' : ch >= 0 ? '' : ''}">${ch == null ? '지난주 같은 요일 자료 없음' : `${chg(ch)} 지난주 같은 요일 대비`} · ${fmt(p)}건</span></div>`;
+      const m1 = last.slice(0, 8) + '01'; const posM = st.reduce((a, x) => { let t = 0; for (let d = m1; d <= last; d = addDays(d, 1)) { const r = dayRec(x, d); if (r) t += r.s; } return a + t; }, 0);
+      const mEnd = addDays(addDays(m1, 40).slice(0, 8) + '01', -1); const ML = machAgg(st, m1, mEnd);
+      const macM = ML.reduce((a, m) => a + m.s, 0), machLast = ML.reduce((a, m) => (m.last > a ? m.last : a), '');
+      salesBlock = `<button class="tile tbtn" data-nav="sales"><span class="lb">${+last.slice(5, 7)}월 총매출 <span class="go">매출 ›</span></span><span class="v big${String(fmt(posM + macM)).length > 9 ? ' long' : ''}">${fmt(posM + macM)}<small>원</small></span><span class="d muted">토스포스 ${md(last)}까지 ${man(posM)} + 기계 ${machLast ? md(machLast) + '까지 ' : ''}${man(macM)}</span></button>` + `<div class="tile"><span class="lb">매출 · ${md(last)}(${wd(last)})</span><span class="v big${String(fmt(s)).length>9?' long':''}">${fmt(s)}<small>원</small></span><span class="d ${ch == null ? 'muted' : ch >= 0 ? '' : ''}">${ch == null ? '지난주 같은 요일 자료 없음' : `${chg(ch)} 지난주 같은 요일 대비`} · ${fmt(p)}건</span></div>`;
     }
   }
   return `${head(multi ? `${st.length}개 매장 요약` : storeName(st[0]), `${freshLine(st) || '아직 반영된 자료가 없습니다'}${limited() ? ' · 재고 수량만 볼 수 있는 계정입니다' : ''}`, installBtn('sm'))}
@@ -1398,6 +1401,16 @@ function machBlock(stores, a, b, posTotal) {
   : `<div class="empty">이 기간 기계 매출 자료가 없습니다. [자판기·기계 매출 올리기]로 PDF나 엑셀을 넣어 주세요.</div>`}</div>`;
 }
 
+// 총매출 = 토스포스(POS) + 자판기·기계. 매장 전체 매출로 가장 의미 있는 숫자라 매출 화면 맨 위에 크게
+function grandTotal(stores, a, b, pa, pb, pos, posPrev, cmpLabel) {
+  const mc = machAgg(stores, a, b).reduce((x, m) => x + m.s, 0), mp = machAgg(stores, pa, pb).reduce((x, m) => x + m.s, 0);
+  const tot = pos + mc, prev = posPrev + mp, w = tot ? pos / tot * 100 : 100;
+  return `<div class="card grand"><div class="g-top"><div><div class="g-lb">총매출 <span>토스포스 + 자판기·기계 · ${md(a)}${a !== b ? '~' + md(b) : ''}</span></div>
+    <div class="g-v">${fmt(tot)}<small>원</small></div></div>
+    <div class="g-cmp">${chg(pct(tot, prev))}<div class="muted">${esc(cmpLabel.split(' (')[0])} ${fmt(prev)}원${mc && !mp ? '<br>비교 기간은 기계 자료가 없어 토스포스만' : ''}</div></div></div>
+    <div class="g-bar" role="img" aria-label="토스포스 ${Math.round(w)}%, 기계 ${100 - Math.round(w)}%"><i class="pos" style="width:${w}%"></i><i class="mac" style="width:${100 - w}%"></i></div>
+    <div class="g-parts"><span><i class="dotc pos"></i>토스포스 <b>${fmt(pos)}</b>원 <span class="muted">${tot ? Math.round(w * 10) / 10 : 0}%</span></span><span><i class="dotc mac"></i>자판기·기계 <b>${fmt(mc)}</b>원 <span class="muted">${tot ? Math.round((100 - w) * 10) / 10 : 0}%</span>${mc ? '' : ' <span class="muted">· 자료 없음</span>'}</span></div></div>`;
+}
 function salesView() {
   const stores = S.stores; const last = latestSalesDate(stores);
   const unit = S.ui.salesUnit;
@@ -1419,6 +1432,7 @@ function salesView() {
   const noData = stores.filter(s => !per[s].days);
   const su = salesUpdated(stores);
   return `${head('매출', `토스포스 매출리포트 기준 · ${S.stores.length > 1 ? '매장마다 마감일이 다릅니다 (아래 표)' : `${last ? `<b>${last} 마감</b>까지` : '아직 자료 없음'}${su.up ? ` · 마지막 올림 ${kst(su.up.at)} ${esc(whoText(su.up.by, su.up.co))}` : ''}`}`, `<button class="btn" id="posBtn">토스포스 파일 올리기</button><button class="btn" id="machBtn">자판기·기계 매출 올리기</button>`)}${freshTable(S.stores)}
+  ${grandTotal(sum, a, b, pa, pb, cur.s, pre.s, cr.label)}
   <div class="card" style="display:flex;flex-direction:column;gap:12px">
     <div class="seg">${units.map(([k, t]) => `<button class="${unit === k ? 'on' : ''}" data-su="${k}">${t}</button>`).join('')}</div>
     <div class="row"><div class="field"><label for="ra">시작일</label>${dateSel('ra', a)}</div><div class="field"><label for="rb">종료일</label>${dateSel('rb', b)}</div>
@@ -1427,7 +1441,7 @@ function salesView() {
   </div>
   ${noData.length ? `<div class="note">${noData.map(s => esc(storeName(s))).join(', ')} — 이 기간 매출 자료가 없습니다. [토스포스 파일 올리기]로 넣어 주세요.</div>` : ''}
   <div class="tiles">
-    <button class="tile tbtn" data-cmp="s"><span class="lb">매출${multi ? ` · 합산 ${sum.length}곳` : ''}<span class="go">비교 ›</span></span><span class="v big${String(fmt(cur.s)).length>9?' long':''}">${fmt(cur.s)}<small>원</small></span><span class="d">${ch == null ? '<span class="muted">이전 기간 자료 없음</span>' : `${chg(ch)} <span class="muted">${cmpLabel}</span>`}</span></button>
+    <button class="tile tbtn" data-cmp="s"><span class="lb">토스포스 매출${multi ? ` · 합산 ${sum.length}곳` : ''}<span class="go">비교 ›</span></span><span class="v big${String(fmt(cur.s)).length>9?' long':''}">${fmt(cur.s)}<small>원</small></span><span class="d">${ch == null ? '<span class="muted">이전 기간 자료 없음</span>' : `${chg(ch)} <span class="muted">${cmpLabel}</span>`}</span></button>
     <button class="tile tbtn" data-cmp="p"><span class="lb">결제건수<span class="go">비교 ›</span></span><span class="v big${String(fmt(cur.p)).length>9?' long':''}">${fmt(cur.p)}<small>건</small></span><span class="d">${chg(pct(cur.p, pre.p))} <span class="muted">이전 ${fmt(pre.p)}건</span></span></button>
     <button class="tile tbtn" data-cmp="t"><span class="lb">객단가<span class="go">비교 ›</span></span><span class="v big${String(fmt(cur.p ? cur.s / cur.p : 0)).length>9?' long':''}">${fmt(cur.p ? cur.s / cur.p : 0)}<small>원</small></span><span class="d">${chg(pct(cur.p ? cur.s / cur.p : 0, pre.p ? pre.s / pre.p : 0))} <span class="muted">이전 ${fmt(pre.p ? pre.s / pre.p : 0)}원</span></span></button>
     <button class="tile tbtn" data-cmp="q"><span class="lb">판매수량<span class="go">비교 ›</span></span><span class="v big${String(fmt(cur.q)).length>9?' long':''}">${fmt(cur.q)}<small>개</small></span><span class="d">${chg(pct(cur.q, pre.q))} <span class="muted">이전 ${fmt(pre.q)}개</span></span></button>
