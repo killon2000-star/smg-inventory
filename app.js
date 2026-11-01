@@ -37,7 +37,7 @@ const PERM_DEF = [
 ];
 
 const DEFAULT_ORDER = STORES.map(s => s.id);
-const APP_VERSION = '2026-11-01 11:25';   // 앱 화면을 마지막으로 고친 시각 (한국 시간)
+const APP_VERSION = '2026-11-01 11:35';   // 앱 화면을 마지막으로 고친 시각 (한국 시간)
 /* ───────── 작은 도구 ───────── */
 const $ = (s, el = document) => el.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -1434,9 +1434,11 @@ function salesView() {
   return `${head('매출', `토스포스 매출리포트 기준 · ${S.stores.length > 1 ? '매장마다 마감일이 다릅니다 (아래 표)' : `${last ? `<b>${last} 마감</b>까지` : '아직 자료 없음'}${su.up ? ` · 마지막 올림 ${kst(su.up.at)} ${esc(whoText(su.up.by, su.up.co))}` : ''}`}`, `<button class="btn" id="posBtn">토스포스 파일 올리기</button><button class="btn" id="machBtn">자판기·기계 매출 올리기</button>`)}${freshTable(S.stores)}
   ${grandTotal(sum, a, b, pa, pb, cur.s, pre.s, cr.label)}
   <div class="card" style="display:flex;flex-direction:column;gap:12px">
-    <div class="seg">${units.map(([k, t]) => `<button class="${unit === k ? 'on' : ''}" data-su="${k}">${t}</button>`).join('')}</div>
-    <div class="row"><div class="field"><label for="ra">시작일</label>${dateSel('ra', a)}</div><div class="field"><label for="rb">종료일</label>${dateSel('rb', b)}</div>
-      <div class="chips" style="align-self:flex-end">${quick.map(([t], i) => `<button class="chip" data-qr="${i}">${t}</button>`).join('')}</div></div>
+    <div class="flt">
+      <div class="fg"><div class="fl">보기 단위</div><div class="fseg">${units.map(([k, t]) => `<button class="${unit === k ? 'on' : ''}" data-su="${k}">${t}</button>`).join('')}</div></div>
+      <div class="fg"><div class="fl">기간</div><div class="frange"><div class="fd"><span>시작</span>${dateSel('ra', a)}</div><span class="fsep">~</span><div class="fd"><span>종료</span>${dateSel('rb', b)}</div></div></div>
+      <div class="fg"><div class="fl">빠른 선택</div><div class="fquick">${quick.map(([t, fn], i) => { let on = false; try { const [x, y] = fn(); on = x === a && y === b; } catch (e) { } return `<button class="${on ? 'on' : ''}" data-qr="${i}">${t}</button>`; }).join('')}</div></div>
+    </div>
     ${multi ? `<div class="field"><label>합산에 넣을 매장</label><div class="chips">${stores.map(s => `<label class="chip ${sum.includes(s) ? 'on' : ''}" style="display:inline-flex;gap:6px;align-items:center;cursor:pointer"><input type="checkbox" data-sum="${s}" ${sum.includes(s) ? 'checked' : ''} style="accent-color:var(--red)"><span class="dot" style="background:${storeColor(s)}"></span>${esc(storeName(s))}</label>`).join('')}</div></div>` : ''}
   </div>
   ${noData.length ? `<div class="note">${noData.map(s => esc(storeName(s))).join(', ')} — 이 기간 매출 자료가 없습니다. [토스포스 파일 올리기]로 넣어 주세요.</div>` : ''}

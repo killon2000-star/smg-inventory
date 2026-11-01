@@ -214,6 +214,35 @@ body:not(.in-app) .kclock{display:none!important}
 .grand .g-parts{display:flex;flex-wrap:wrap;gap:6px 22px;font-size:13.5px}
 .dotc{display:inline-block;width:9px;height:9px;border-radius:3px;margin-right:6px;vertical-align:middle}
 @media (max-width:900px){.grand .g-v{font-size:28px}.grand .g-cmp{text-align:left}}
+/* 매출 화면 조건 칸: 같은 높이(40px)·같은 너비, 묶음마다 제목 */
+.flt{display:flex;flex-direction:column;gap:14px}
+.flt .fg{display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+.flt .fl{width:76px;flex:none;font-size:12.5px;font-weight:800;color:var(--muted);letter-spacing:.02em}
+.flt .fseg{display:grid;grid-template-columns:repeat(5,minmax(78px,1fr));border:1px solid var(--line);border-radius:9px;overflow:hidden;background:var(--surface)}
+.flt .fseg button{height:40px;border:0;background:none;font-weight:700;font-size:14px;color:var(--ink-2)}
+.flt .fseg button+button{border-left:1px solid var(--line)}
+.flt .fseg button.on{background:var(--red);color:#fff}
+.flt .frange{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.flt .fd{display:flex;align-items:center;gap:8px}
+.flt .fd > span{font-size:12.5px;font-weight:700;color:var(--muted)}
+.flt .fsep{color:var(--muted);font-weight:700}
+.flt .dsel select.inp{height:40px;min-width:74px;font-weight:600}
+.flt .dsel select.inp:first-of-type{min-width:96px}
+.flt .fquick{display:grid;grid-template-columns:repeat(8,minmax(92px,1fr));gap:8px;flex:1;min-width:0}
+.flt .fquick button{height:40px;border:1px solid var(--line);border-radius:9px;background:var(--surface-2);font-weight:700;font-size:13.5px;color:var(--ink);white-space:nowrap}
+.flt .fquick button:hover{border-color:var(--red)}
+.flt .fquick button.on{background:var(--red);border-color:var(--red);color:#fff}
+@media (max-width: 900px){
+  .flt .fl{width:100%}
+  .flt .fg{gap:8px}
+  .flt .fseg{width:100%;grid-template-columns:repeat(5,1fr)}
+  .flt .fquick{grid-template-columns:repeat(4,1fr)}
+  .flt .fquick button{font-size:13px}
+  .flt .frange{width:100%}
+  .flt .fsep{display:none}
+  .flt .fd{width:100%}
+  .flt .fd .dsel{flex:1}
+}
 .srow input{width:18px;height:18px;accent-color:var(--red)}
 .pop .foot{display:flex;gap:8px;justify-content:flex-end;margin-top:8px;padding-top:8px;border-top:1px solid var(--line-2)}
 .scrim{position:fixed;inset:0;z-index:65;background:transparent}
@@ -403,7 +432,7 @@ tr.flag td{background:var(--warn-bg)}
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 <script src="config.js"></script>
 <script src="firebase.js?v=27"></script>
-<script src="app.js?v=47"></script>
+<script src="app.js?v=48"></script>
 <script>if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});</script>
 
 </body></html>
