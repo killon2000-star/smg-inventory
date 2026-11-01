@@ -40,7 +40,7 @@ const PERM_DEF = [
 ];
 
 const DEFAULT_ORDER = STORES.map(s => s.id);
-const APP_VERSION = '2026-11-01 20:05';   // 앱 화면을 마지막으로 고친 시각 (한국 시간)
+const APP_VERSION = '2026-11-01 20:20';   // 앱 화면을 마지막으로 고친 시각 (한국 시간)
 /* ───────── 작은 도구 ───────── */
 const $ = (s, el = document) => el.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -660,7 +660,7 @@ function productsView() {
   const rows = productRows(); const st = S.stores; const multi = st.length > 1;
   const ips = [...new Set(S.products.filter(p => st.some(s => (S.stock[s] || {})[p.id] != null)).map(p => p.ip))].sort((a, b) => a.localeCompare(b, 'ko'));
   const shown = rows.slice(0, 300);
-  return `${head('상품·재고', `${fmt(rows.length)}종 · ${freshLine(st) || '이름·바코드·품번·IP로 찾기'}`, `<button class="btn" id="scanBtn">${ic('scan')} 바코드 스캔</button><button class="btn" id="stockXls">엑셀로 받기</button><button class="btn" id="stockPrint">인쇄 · PDF</button>`)}${freshTable(st, { sales: false })}
+  return `${head('상품·재고', `${fmt(rows.length)}종 · ${freshLine(st) || '이름·바코드·품번·IP로 찾기'}`, `<button class="btn" id="scanBtn">${ic('scan')} 바코드 스캔</button><button class="btn pri" id="stockDoc">재고 문서 출력</button>`)}${freshTable(st, { sales: false })}
   <div class="card" style="display:flex;flex-direction:column;gap:10px">
     <div class="row"><div class="search">${ic('search')}<input class="inp" id="pq" type="search" placeholder="상품명, 바코드, 품번, IP" value="${esc(S.ui.q)}" autocomplete="off"></div>
       <select class="inp" id="pip" style="width:auto;min-width:160px" aria-label="IP"><option value="">IP 전체</option>${ips.map(i => `<option ${S.ui.ip === i ? 'selected' : ''}>${esc(i)}</option>`).join('')}</select></div>
@@ -673,44 +673,82 @@ function productsView() {
     </tbody></table></div>${rows.length > 300 ? `<p class="muted" style="font-size:13px">앞 300종만 보여 줍니다. 검색으로 좁혀 주세요.</p>` : ''}` : '<div class="empty">찾는 상품이 없습니다</div>'}
   </div>`;
 }
-// 재고 현황 문서: 지금 화면의 조건(매장·검색·IP·필터) 그대로 전체 종류를 엑셀 또는 인쇄·PDF로
-function stockDocMeta() {
-  const st = S.stores, f = { all: '재고 등록 상품', in: '재고 있음', out: '품절', neg: '마이너스' }[S.ui.f] || '재고 등록 상품';
-  const cond = [f, S.ui.ip ? 'IP ' + S.ui.ip : '', S.ui.q ? `검색 "${S.ui.q}"` : ''].filter(Boolean).join(' · ');
-  const lm = lastMove(st);
-  return { st, cond, title: `재고 현황 · ${st.length > 1 ? st.map(shortName).join(', ') : storeName(st[0])}`, made: kst(new Date().toISOString()), who: whoText(S.user.name, userCo(S.user)), base: lm ? `재고 마지막 반영 ${kst(lm.at)}` : '' };
+// 재고 현황 문서 (대표 지시 2026-11-01): IP 여러 개 · 매장 여러 곳 · 기준 날짜를 골라 엑셀 또는 인쇄·PDF
+// 기준 날짜 재고 = 지금 재고 − 그 날짜 다음 날부터 들어온 기록(입고·판매·이동 등)을 되돌린 값
+function stockAtMap(st, date) {
+  const back = {}; let oldest = '';
+  for (const m of S.moves) { if (m.store !== st) continue; if (!oldest || m.date < oldest) oldest = m.date; if (m.date > date) back[m.pid] = (back[m.pid] || 0) + m.qty; }
+  return { at: pid => stockOf(st, pid) - (back[pid] || 0), oldest };
 }
-function exportStock() {
-  const rows = productRows(), M = stockDocMeta(), multi = M.st.length > 1;
-  const head = ['IP', '상품명', '바코드', '품번', '판매가', ...(multi ? M.st.map(storeName) : []), multi ? '합계' : '재고', '재고 금액', '상태'];
+function stockDocRows(o) {
+  const maps = o.stores.map(st => stockAtMap(st, o.date));
+  let rows = S.products.filter(p => (!o.ips.length || o.ips.includes(p.ip)) && o.stores.some(st => (S.stock[st] || {})[p.id] != null)).map(p => {
+    const per = maps.map(m => m.at(p.id)); return { p, per, t: per.reduce((a, b) => a + b, 0) };
+  });
+  if (o.f === 'in') rows = rows.filter(r => r.t > 0); if (o.f === 'out') rows = rows.filter(r => r.t === 0); if (o.f === 'neg') rows = rows.filter(r => r.t < 0 || r.per.some(x => x < 0));
+  rows.sort((a, b) => (a.p.ip || '').localeCompare(b.p.ip || '', 'ko') || a.p.name.localeCompare(b.p.name, 'ko'));
+  const warn = o.date < today() ? o.stores.filter((st, i) => Object.keys(S.stock[st] || {}).length && (!maps[i].oldest || maps[i].oldest > o.date)).map(storeName) : [];
+  return { rows, warn };
+}
+function stockDocMeta(o, n) {
+  const f = { all: '재고 등록 상품', in: '재고 있음', out: '품절', neg: '마이너스' }[o.f] || '재고 등록 상품';
+  const ipTxt = !o.ips.length ? 'IP 전체' : o.ips.length <= 4 ? o.ips.join(', ') : `${o.ips.slice(0, 3).join(', ')} 외 ${o.ips.length - 3}개`;
+  const stTxt = o.stores.length === myStores().length && o.stores.length > 1 ? '전체 매장' : o.stores.map(shortName).join(', ');
+  const isToday = o.date >= today();
+  return { title: `재고 현황 · ${stTxt}`, cond: `${md(o.date)}(${wd(o.date)}) ${isToday ? '현재' : '마감 기준'} · ${ipTxt} · ${f} · ${n}종`, made: kst(new Date().toISOString()), who: whoText(S.user.name, userCo(S.user)), stTxt, ipTxt };
+}
+function stockDocDrawer() {
+  const o = S.ui.sdoc; const mine = myStores();
+  const ips = [...new Set(S.products.filter(p => o.stores.some(st => (S.stock[st] || {})[p.id] != null)).map(p => p.ip))].sort((a, b) => a.localeCompare(b, 'ko'));
+  const fq = norm(o.ipq || ''); const shownIps = ips.filter(i => !fq || norm(i).includes(fq));
+  const { rows, warn } = stockDocRows(o);
+  const tq = rows.reduce((a, r) => a + r.t, 0);
+  return `<div class="hd"><h3>재고 문서 출력</h3><button class="x" data-close aria-label="닫기">×</button></div>
+  <div class="card sdoc" style="display:flex;flex-direction:column;gap:14px">
+    <div class="field"><label>매장 <span class="muted" style="font-weight:400">· 여러 곳 고르면 매장별 수량과 합계</span></label>
+      <div class="sgrid"><button class="sbtn ${o.stores.length === mine.length ? 'on' : ''}" data-sdst="__all">전체 매장</button>${mine.map(st => `<button class="sbtn ${o.stores.includes(st) ? 'on' : ''}" data-sdst="${st}"><span class="dot" style="background:${storeColor(st)}"></span>${esc(shortName(st))}</button>`).join('')}</div></div>
+    <div class="field"><label for="sdDate">기준 날짜 <span class="muted" style="font-weight:400">· 그날 영업 마감 기준 재고</span></label>${dateSel('sdDate', o.date)}
+      ${warn.length ? `<div class="note warn" style="margin-top:6px">🔸 ${esc(warn.join(', '))}: 이 날짜 이전 기록이 앱에 없어 정확하지 않을 수 있습니다 (앱 자료 시작일 이후 날짜를 골라 주세요)</div>` : ''}</div>
+    <div class="field"><label>IP <span class="muted" style="font-weight:400">· 여러 개 고를 수 있음 · 아무것도 안 고르면 전체</span></label>
+      <div class="row" style="gap:8px"><input class="inp" id="sdIpq" placeholder="IP 찾기 (예: 은혼)" value="${esc(o.ipq || '')}" style="flex:1;min-width:0"><button class="btn" data-sdip="__none">선택 해제</button></div>
+      ${o.ips.length ? `<div class="chips" style="margin-top:6px">${o.ips.map(i => `<button class="chip on" data-sdip="${esc(i)}">${esc(i)} ✕</button>`).join('')}</div>` : ''}
+      <div class="iplist">${shownIps.map(i => `<label class="ipck"><input type="checkbox" data-sdipc="${esc(i)}" ${o.ips.includes(i) ? 'checked' : ''}><span>${esc(i)}</span></label>`).join('') || '<span class="muted">찾는 IP가 없습니다</span>'}</div></div>
+    <div class="field"><label>상품 범위</label><div class="sgrid">${[['all', '재고 등록 전체'], ['in', '재고 있음'], ['out', '품절'], ['neg', '마이너스']].map(([k, t]) => `<button class="sbtn ${o.f === k ? 'on' : ''}" data-sdf="${k}">${t}</button>`).join('')}</div></div>
+    <div class="note" style="font-size:13px"><b>${esc(stockDocMeta(o, rows.length).title)}</b><br>${esc(stockDocMeta(o, rows.length).cond)} · 재고 합계 <b>${fmt(tq)}</b>개</div>
+  </div>
+  <div class="sgrid" style="grid-template-columns:1fr 1fr"><button class="btn" id="sdXls" ${rows.length ? '' : 'disabled'}>엑셀로 받기</button><button class="btn pri" id="sdPrint" ${rows.length ? '' : 'disabled'}>인쇄 · PDF</button></div>`;
+}
+function exportStock(o) {
+  const { rows } = stockDocRows(o), M = stockDocMeta(o, rows.length), multi = o.stores.length > 1;
+  const head = ['IP', '상품명', '바코드', '품번', '판매가', ...(multi ? o.stores.map(storeName) : []), multi ? '합계' : '재고', '재고 금액', '상태'];
   const body = rows.map(r => [r.p.ip, r.p.name, r.p.barcode || '', r.p.sku || '', r.p.price || '', ...(multi ? r.per : []), r.t, (r.p.price || 0) * Math.max(0, r.t), r.t < 0 ? '마이너스' : r.t === 0 ? '품절' : r.t <= 3 ? '3개 이하' : '정상']);
   const tq = rows.reduce((a, r) => a + r.t, 0), tm = rows.reduce((a, r) => a + (r.p.price || 0) * Math.max(0, r.t), 0);
-  const aoa = [[M.title], [`조건: ${M.cond} · ${rows.length}종`], [`${M.base} · 출력 ${M.made} · ${M.who}`], [], head, ...body, [], ['합계', `${rows.length}종`, '', '', '', ...(multi ? M.st.map((s, i) => rows.reduce((a, r) => a + r.per[i], 0)) : []), tq, tm, '']];
+  const aoa = [[M.title], [`조건: ${M.cond}`], [`출력 ${M.made} · ${M.who}`], [], head, ...body, [], ['합계', `${rows.length}종`, '', '', '', ...(multi ? o.stores.map((s, i) => rows.reduce((a, r) => a + r.per[i], 0)) : []), tq, tm, '']];
   const ws = XLSX.utils.aoa_to_sheet(aoa);
-  ws['!cols'] = [{ wch: 18 }, { wch: 44 }, { wch: 16 }, { wch: 14 }, { wch: 10 }, ...(multi ? M.st.map(() => ({ wch: 10 })) : []), { wch: 10 }, { wch: 14 }, { wch: 10 }];
+  ws['!cols'] = [{ wch: 18 }, { wch: 44 }, { wch: 16 }, { wch: 14 }, { wch: 10 }, ...(multi ? o.stores.map(() => ({ wch: 11 })) : []), { wch: 10 }, { wch: 14 }, { wch: 10 }];
   const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, '재고현황');
-  XLSX.writeFile(wb, `재고현황_${M.st.map(shortName).join('_').replace(/\s/g, '')}_${today().replace(/-/g, '')}.xlsx`);
+  XLSX.writeFile(wb, `재고현황_${M.stTxt.replace(/[\s,]+/g, '_')}_${o.ips.length === 1 ? o.ips[0].replace(/[\\/:*?"<>|\s]+/g, '') + '_' : ''}${o.date.replace(/-/g, '')}.xlsx`);
   toast(`엑셀로 받았습니다 · ${rows.length}종`);
 }
-function printStock() {
-  const rows = productRows(), M = stockDocMeta(), multi = M.st.length > 1;
+function printStock(o) {
+  const { rows } = stockDocRows(o), M = stockDocMeta(o, rows.length), multi = o.stores.length > 1;
   const e = v => String(v ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
   const tq = rows.reduce((a, r) => a + r.t, 0), tm = rows.reduce((a, r) => a + (r.p.price || 0) * Math.max(0, r.t), 0);
   const html = `<!doctype html><html lang="ko"><head><meta charset="utf-8"><title>${e(M.title)}</title><style>
-    @page{size:A4;margin:12mm}body{font-family:"Noto Sans KR","Malgun Gothic","Apple SD Gothic Neo",sans-serif;color:#111;font-size:10.5px;margin:0}
+    @page{size:A4 ${multi && o.stores.length > 3 ? 'landscape' : 'portrait'};margin:12mm}body{font-family:"Noto Sans KR","Malgun Gothic","Apple SD Gothic Neo",sans-serif;color:#111;font-size:10.5px;margin:0}
     .hd{display:flex;justify-content:space-between;align-items:flex-end;border-bottom:3px solid #D32229;padding-bottom:6px;margin-bottom:8px}
     h1{font-size:17px;margin:0}.meta{font-size:10px;color:#555;text-align:right;line-height:1.5}
-    .sum{display:flex;gap:18px;margin:6px 0 10px;font-size:11px}.sum b{font-size:13px}
-    table{width:100%;border-collapse:collapse}th{background:#111;color:#fff;font-weight:700;padding:5px 4px;text-align:left;font-size:10px}
-    td{border-bottom:1px solid #ddd;padding:3px 4px;vertical-align:top;font-size:9.5px;line-height:1.35}td.n,th.n{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+    .sum{display:flex;gap:18px;margin:6px 0 10px;font-size:11px;flex-wrap:wrap}.sum b{font-size:13px}
+    table{width:100%;border-collapse:collapse;table-layout:fixed}th{background:#111;color:#fff;font-weight:700;padding:5px 4px;text-align:left;font-size:10px}
+    td{border-bottom:1px solid #ddd;padding:3px 4px;vertical-align:top;font-size:9.5px;line-height:1.35;word-break:keep-all;overflow-wrap:anywhere}td.n,th.n{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
     tr:nth-child(even) td{background:#f6f6f7}.neg{color:#D32229;font-weight:700}.zero{color:#999}
-    tfoot{display:table-row-group}tfoot td{font-weight:800;border-top:2px solid #111;background:#fff!important;font-size:10.5px}thead{display:table-header-group}table{table-layout:fixed}tr{page-break-inside:avoid}
+    tfoot{display:table-row-group}tfoot td{font-weight:800;border-top:2px solid #111;background:#fff!important;font-size:10.5px}thead{display:table-header-group}tr{page-break-inside:avoid}
   </style></head><body>
-  <div class="hd"><div><h1>${e(M.title)}</h1><div style="font-size:10.5px;color:#444;margin-top:2px">조건: ${e(M.cond)}</div></div><div class="meta">${e(M.base)}<br>출력 ${e(M.made)} · ${e(M.who)}</div></div>
+  <div class="hd"><div><h1>${e(M.title)}</h1><div style="font-size:10.5px;color:#444;margin-top:2px">조건: ${e(M.cond)}</div></div><div class="meta">출력 ${e(M.made)}<br>${e(M.who)}</div></div>
   <div class="sum"><span>상품 <b>${rows.length.toLocaleString()}</b>종</span><span>재고 <b>${tq.toLocaleString()}</b>개</span><span>재고 금액(판매가) <b>${tm.toLocaleString()}</b>원</span><span>품절 <b>${rows.filter(r => r.t === 0).length}</b>종</span><span>마이너스 <b>${rows.filter(r => r.t < 0).length}</b>종</span></div>
-  <table><thead><tr><th style="width:5%">No</th><th style="width:16%">IP</th><th>상품명</th><th style="width:15%">바코드·품번</th>${multi ? M.st.map(s => `<th class="n">${e(shortName(s))}</th>`).join('') : ''}<th class="n" style="width:8%">${multi ? '합계' : '재고'}</th><th class="n" style="width:9%">판매가</th></tr></thead><tbody>
+  <table><thead><tr><th style="width:5%">No</th><th style="width:15%">IP</th><th>상품명</th><th style="width:14%">바코드·품번</th>${multi ? o.stores.map(s => `<th class="n" style="width:${o.stores.length > 3 ? 7 : 8}%">${e(shortName(s))}</th>`).join('') : ''}<th class="n" style="width:8%">${multi ? '합계' : '재고'}</th><th class="n" style="width:8%">판매가</th></tr></thead><tbody>
   ${rows.map((r, i) => `<tr><td>${i + 1}</td><td>${e(r.p.ip)}</td><td>${e(r.p.name)}</td><td>${e(r.p.barcode || r.p.sku)}</td>${multi ? r.per.map(x => `<td class="n ${x < 0 ? 'neg' : x === 0 ? 'zero' : ''}">${x.toLocaleString()}</td>`).join('') : ''}<td class="n ${r.t < 0 ? 'neg' : r.t === 0 ? 'zero' : ''}"><b>${r.t.toLocaleString()}</b></td><td class="n">${r.p.price ? r.p.price.toLocaleString() : ''}</td></tr>`).join('')}
-  </tbody><tfoot><tr><td colspan="4">합계 ${rows.length.toLocaleString()}종</td>${multi ? M.st.map((s, i) => `<td class="n">${rows.reduce((a, r) => a + r.per[i], 0).toLocaleString()}</td>`).join('') : ''}<td class="n">${tq.toLocaleString()}</td><td class="n"></td></tr></tfoot></table>
+  </tbody><tfoot><tr><td colspan="4">합계 ${rows.length.toLocaleString()}종</td>${multi ? o.stores.map((s, i) => `<td class="n">${rows.reduce((a, r) => a + r.per[i], 0).toLocaleString()}</td>`).join('') : ''}<td class="n">${tq.toLocaleString()}</td><td class="n"></td></tr></tfoot></table>
   </body></html>`;
   let fr = document.getElementById('printFrame'); if (fr) fr.remove();
   fr = document.createElement('iframe'); fr.id = 'printFrame'; fr.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0;visibility:hidden';
@@ -1950,8 +1988,12 @@ function bind() {
     if (d.cmp) { S.ui.cmp = { ...S.ui.cmpCtx, metric: d.cmp, mode: S.ui.cmpMode || 'auto' }; S.ui.drawer = cmpDrawer; render(); return; }
     if (d.cmpk) { S.ui.cmp.metric = d.cmpk; render(); return; }
     if (d.cmpm) { S.ui.cmp.mode = d.cmpm; S.ui.cmpMode = d.cmpm; render(); return; }
-    if (t.id === 'stockXls') { exportStock(); return; }
-    if (t.id === 'stockPrint') { printStock(); return; }
+    if (t.id === 'stockDoc') { S.ui.sdoc = { stores: [...S.stores], ips: S.ui.ip ? [S.ui.ip] : [], date: today(), f: ['in', 'out', 'neg'].includes(S.ui.f) ? S.ui.f : 'all', ipq: '' }; S.ui.drawer = stockDocDrawer; render(); return; }
+    if (d.sdst) { const o = S.ui.sdoc, mine = myStores(); if (d.sdst === '__all') o.stores = [...mine]; else { o.stores = o.stores.includes(d.sdst) ? o.stores.filter(x => x !== d.sdst) : [...o.stores, d.sdst]; if (!o.stores.length) o.stores = [d.sdst]; o.stores = mine.filter(x => o.stores.includes(x)); } render(); return; }
+    if (d.sdip) { const o = S.ui.sdoc; o.ips = d.sdip === '__none' ? [] : o.ips.filter(x => x !== d.sdip); render(); return; }
+    if (d.sdf) { S.ui.sdoc.f = d.sdf; render(); return; }
+    if (t.id === 'sdXls') { exportStock(S.ui.sdoc); return; }
+    if (t.id === 'sdPrint') { printStock(S.ui.sdoc); return; }
     if (t.id === 'noticeBtn') { S.ui.drawer = noticeDrawer; render(); return; }
     if (t.id === 'ntSave' && isOwner()) { const v = (document.getElementById('ntText') || {}).value || ''; S.ui.drawer = null; await saveNotice(v); toast(v.trim() ? '공지를 올렸습니다' : '공지를 내렸습니다'); return; }
     if (t.id === 'ntClear' && isOwner()) { S.ui.drawer = null; await saveNotice(''); toast('공지를 내렸습니다'); return; }
@@ -2078,6 +2120,9 @@ function bind() {
     if (d.iba != null) { const ib = S.inbounds.find(x => x.id === S.ui.ib); ib.items[+d.iba].actual = t.value === '' ? null : Math.max(0, parseInt(t.value, 10)); if (DB.saveInbound) DB.saveInbound(ib); render(); return; }
     if (t.id === 'ePlace') { S.ui.entry.place = t.value; render(); return; }
     if (t.id === 'eFrom') { S.ui.entry.from = t.value; render(); return; }
+    if (d.sdipc != null) { const o = S.ui.sdoc; o.ips = t.checked ? [...new Set([...o.ips, d.sdipc])] : o.ips.filter(x => x !== d.sdipc); render(); return; }
+    if (t.id === 'sdDate') { S.ui.sdoc.date = t.value; render(); return; }
+    if (t.id === 'sdIpq') { S.ui.sdoc.ipq = t.value; return; }
     if (t.id === 'machStore') { S.ui.machStore = t.value; S.ui.machPv = null; render(); return; }
     if (t.id === 'ipPast') { S.ui.ipPast = t.checked; render(); return; }
     if (['ipStore', 'ipName', 'ipStart', 'ipEnd', 'ipHost', 'ipNote'].includes(t.id)) { const k = { ipStore: 'store', ipName: 'ip', ipStart: 'start', ipEnd: 'end', ipHost: 'host', ipNote: 'note' }[t.id]; const f = S.ui.ipForm; f[k] = t.value; if (k === 'store') f.kind = STORE_KIND[t.value] || f.kind; if (k === 'start' && (!f.end || f.end < t.value)) f.end = t.value; render(); return; }
@@ -2185,6 +2230,12 @@ function fitSide() {
   side.style.top = th + 'px'; side.style.height = Math.max(160, innerHeight / zw - st - kh) + 'px'; side.style.paddingBottom = '16px';
 }
 addEventListener('resize', fitSide); addEventListener('scroll', () => requestAnimationFrame(fitSide), { passive: true });
+// 재고 문서 출력: IP 찾기 칸은 글자를 칠 때마다 바로 걸러 줌 (화면 전체를 다시 그리지 않음)
+document.addEventListener('input', ev => {
+  if (ev.target.id !== 'sdIpq' || !S.ui.sdoc) return;
+  S.ui.sdoc.ipq = ev.target.value; const q = norm(ev.target.value);
+  document.querySelectorAll('.iplist .ipck').forEach(l => { l.style.display = !q || norm(l.textContent).includes(q) ? '' : 'none'; });
+});
 function goTop() { resetZoom(); window.scrollTo(0, 0); }
 const TEXT_SIZES = [['아주 작게', 0.82], ['작게', 0.9], ['보통', 1], ['크게', 1.12], ['아주 크게', 1.25]];
 function applyTextSize(z) { S.ui.textZoom = z; document.documentElement.style.zoom = z === 1 ? '' : String(z); try { localStorage.setItem('smg-text-zoom', String(z)); } catch (e) { } }

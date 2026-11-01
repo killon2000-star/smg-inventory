@@ -263,6 +263,14 @@ body:not(.in-app) .kclock{display:none!important}
   #page .seg{display:grid;grid-template-columns:repeat(auto-fit,minmax(96px,1fr));width:100%}
   #page .seg button{min-height:40px;border-left:0;box-shadow:inset -1px -1px 0 var(--line)}
 }
+.sdoc .sgrid,.sgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(124px,1fr));gap:8px}
+.sbtn{white-space:nowrap}
+.sbtn{min-height:40px;border:1px solid var(--line);border-radius:9px;background:var(--surface-2);font-weight:700;font-size:13.5px;color:var(--ink);display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:0 8px}
+.sbtn.on{background:var(--red);border-color:var(--red);color:#fff}
+.sbtn.on .dot{box-shadow:0 0 0 2px #fff}
+.iplist{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:4px 10px;max-height:260px;overflow:auto;margin-top:8px;padding:8px;border:1px solid var(--line);border-radius:9px;background:var(--surface)}
+.ipck{display:flex;align-items:center;gap:8px;min-height:32px;font-size:13.5px;cursor:pointer}
+.ipck input{width:18px;height:18px;accent-color:var(--red);flex:none}
 .srow input{width:18px;height:18px;accent-color:var(--red)}
 .pop .foot{display:flex;gap:8px;justify-content:flex-end;margin-top:8px;padding-top:8px;border-top:1px solid var(--line-2)}
 .scrim{position:fixed;inset:0;z-index:65;background:transparent}
@@ -452,7 +460,7 @@ tr.flag td{background:var(--warn-bg)}
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 <script src="config.js"></script>
 <script src="firebase.js?v=27"></script>
-<script src="app.js?v=55"></script>
+<script src="app.js?v=56"></script>
 <script>if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});</script>
 
 </body></html>
