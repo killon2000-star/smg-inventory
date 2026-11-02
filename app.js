@@ -40,7 +40,7 @@ const PERM_DEF = [
 ];
 
 const DEFAULT_ORDER = STORES.map(s => s.id);
-const APP_VERSION = '2026-11-02 15:10';   // 앱 화면을 마지막으로 고친 시각 (한국 시간)
+const APP_VERSION = '2026-11-02 18:30';   // 앱 화면을 마지막으로 고친 시각 (한국 시간)
 /* ───────── 작은 도구 ───────── */
 const $ = (s, el = document) => el.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -209,6 +209,7 @@ const NAV = [
   { id: 'records', t: '기록', show: () => !limited() },
   { id: 'files', t: '파일 이력', show: () => !limited() && (can('approve') || can('sales') || can('move')) },
   { id: 'sales', t: '매출', grp: '관리자', show: () => can('sales') },
+  { id: 'collab', t: '콜라보 분석', show: () => can('sales') },
   { id: 'settle', t: '정산', show: () => canSettle() },
   { id: 'admin', t: '관리', show: () => can('approve') || isOwner() },
 ];
@@ -281,7 +282,7 @@ function render() {
   if (tw && tt && tw.scrollWidth > tw.clientWidth && !tw.dataset.sc) { tw.scrollLeft = Math.max(0, tt.offsetLeft - 108 - tw.clientWidth * 0.2); tw.dataset.sc = 1; }
 }
 // 아래 메뉴: 권한 있는 메뉴를 모두 보여 줌 (6개 넘으면 두 줄)
-const TAB = { home: ['홈', 'home'], ipnow: ['IP현황', 'star'], products: ['상품', 'box'], entry: ['입출고', 'plus'], count: ['실사', 'check'], inbound: ['입고확인', 'truck'], transfer: ['매장이동', 'swap'], records: ['기록', 'list'], files: ['파일', 'list'], sales: ['매출', 'chart'], settle: ['정산', 'won'], admin: ['관리', 'user'], more: ['설정', 'gear'] };
+const TAB = { home: ['홈', 'home'], ipnow: ['IP현황', 'star'], products: ['상품', 'box'], entry: ['입출고', 'plus'], count: ['실사', 'check'], inbound: ['입고확인', 'truck'], transfer: ['매장이동', 'swap'], records: ['기록', 'list'], files: ['파일', 'list'], sales: ['매출', 'chart'], collab: ['콜라보', 'star'], settle: ['정산', 'won'], admin: ['관리', 'user'], more: ['설정', 'gear'] };
 function tabbar(nav) {
   const pendingN = can('approve') ? S.users.filter(u => u.status === 'pending').length : 0;
   const out = [...nav.map(n => n.id), 'more'];
@@ -394,6 +395,7 @@ function pageView() {
     case 'files': return filesView();
     case 'inbound': return inboundView();
     case 'sales': return salesView();
+    case 'collab': return collabView();
     case 'settle': return settleView();
     case 'admin': return adminView();
     case 'more': return moreView();
@@ -567,6 +569,7 @@ function ipDrawer() {
     <div class="field"><label for="ipStore">매장</label><select class="inp" id="ipStore">${STORES.map(s => `<option value="${s.id}" ${f.store === s.id ? 'selected' : ''}>${esc(s.name)}</option>`).join('')}</select></div>
     <div class="field"><label>구분</label><div class="chips">${IP_KINDS.map(k => `<button class="chip ${f.kind === k ? 'on' : ''}" data-ipk="${k}">${k}</button>`).join('')}</div></div>
     <div class="field"><label for="ipName">IP 이름</label><input class="inp" id="ipName" value="${esc(f.ip)}" placeholder="예: 진격의 거인 (MAPPA)"></div>
+    <div class="field"><label for="ipCats">토스포스 카테고리 <span class="muted">(콜라보 분석용 · 쉼표로 여러 개)</span></label><input class="inp" id="ipCats" value="${esc((f.cats && f.cats.length ? f.cats : PLAN_CATS[f.ip] || []).join(', '))}" placeholder="예: 하이큐 쉬는시간 — 하이큐 10주년(상설)과 구분"></div>
     <div class="formgrid"><div class="field"><label for="ipStart">시작일</label>${dateSel('ipStart', f.start)}</div><div class="field"><label for="ipEnd">종료일</label>${dateSel('ipEnd', f.end)}</div></div>
     <div class="formgrid"><div class="field"><label for="ipHost">주최</label><input class="inp" id="ipHost" value="${esc(f.host)}" placeholder="예: 홀딩스, SMG-C"></div><div class="field"><label for="ipNote">메모</label><input class="inp" id="ipNote" value="${esc(f.note)}" placeholder="예: 종료일 확인 필요"></div></div>
   </div>
@@ -1123,8 +1126,7 @@ function readTable(rows, qtyPref) {
 async function fileRows(f) {
   if (/\.(pdf|png|jpe?g|heic|gif|webp)$/i.test(f.name)) throw new Error('PDF·사진은 입력할 수 없습니다. 엑셀이나 구글시트로 받아 주세요.');
   const wb = await readBook(f);
-  let best = null;
-  for (const n of wb.SheetNames) { const rows = XLSX.utils.sheet_to_json(wb.Sheets[n], { header: 1, defval: '' }); const d = detectCols(rows); if (d && (!best || d.score > best.d.score)) best = { n, rows, d }; }
+  const best = bestSheet(wb);
   return { rows: best ? best.rows : [], src: f.name + (best && wb.SheetNames.length > 1 ? ' › ' + best.n : '') };
 }
 async function linkRows(url) {
@@ -1340,39 +1342,26 @@ const HDR = {
 };
 const QTY_PLAN = ['예정수량', '출고수량', '발주수량', '수량', '입고수량', 'qty', '개수'];
 const QTY_ACTUAL = ['실제수량', '실수량', '검수수량', '확인수량', '입고수량', '수량', 'qty', '개수'];
-function detectCols(rows, qtyPref) {
-  let best = null;
-  for (let r = 0; r < Math.min(rows.length, 15); r++) {
-    const row = rows[r].map(c => String(c ?? '').trim().toLowerCase().replace(/\s+/g, ''));
-    const map = {};
-    for (const [k, keys] of Object.entries(HDR)) {
-      const ks = keys.map(x => x.toLowerCase().replace(/\s+/g, ''));
-      let idx = row.findIndex(c => ks.includes(c));
-      if (idx < 0) idx = row.findIndex(c => c && ks.some(x => c.includes(x)) && !Object.values(map).includes(row.indexOf(c)));
-      if (idx >= 0 && !Object.values(map).includes(idx)) map[k] = idx;
-    }
-    if (qtyPref) { for (const k of qtyPref) { const i = row.indexOf(k); if (i >= 0) { map.qty = i; break; } } }
-    const score = Object.keys(map).length + (map.qty != null ? 2 : 0) + (map.name != null || map.barcode != null || map.sku != null ? 2 : 0);
-    if (!best || score > best.score) best = { r, map, score };
-  }
-  return best;
-}
-function importRows(rows, src) {
-  const det = detectCols(rows);
-  if (!det || det.map.qty == null || (det.map.name == null && det.map.barcode == null && det.map.sku == null)) {
-    S.ui.imp = { src, err: '수량 칸과 상품 칸(상품명·바코드·품번 중 하나)을 찾지 못했습니다. 첫 줄에 "상품명", "수량" 같은 제목이 있는지 확인해 주세요.' }; return;
+function detectCols(rows, qtyPref) { return analyzeSheet(rows, qtyPref); }
+function importRows(rows, src, over) {
+  const det = analyzeSheet(rows, null, over) || { r: 0, a: 0, map: {}, H: (rows[0] || []).map(String), sig: '', how: 'manual' };
+  const prevFile = S.moves.find(m => m.file && m.file === src);
+  if (det.map.qty == null || (det.map.name == null && det.map.barcode == null && det.map.sku == null)) {
+    S.ui.imp = { src, raw: rows, det, err: '처음 보는 양식입니다. 아래에서 상품명(또는 바코드·품번)과 수량 칸을 골라 주세요.' }; return;
   }
   const m = det.map; const out = []; const seen = {};
   for (let i = det.r + 1; i < rows.length; i++) {
     const r = rows[i]; const g = k => m[k] != null ? String(r[m[k]] ?? '').trim().replace(/^'/, '') : '';
-    const qty = Number(String(g('qty')).replace(/,/g, ''));
-    const name = g('name'), bc = g('barcode'), sku = g('sku');
+    const qty = SM.numVal(g('qty'));
+    const op = g('option'); const name = op && op !== '-' && !g('name').includes(op) ? `${g('name')} ${op}`.trim() : g('name'); const bc = g('barcode'), sku = g('sku');
     if (!name && !bc && !sku) continue;
-    if (/합계|총계|소계/.test(name) && !bc && !sku) continue;
+    if (SM.TOTAL.test(SM.nz(sku)) || SM.TOTAL.test(SM.nz(bc)) || ((/합계|총계|소계/.test(name) || r.some(c => SM.TOTAL.test(SM.nz(c)))) && !bc && !sku)) continue;
+    if (SM.SYN.qty.includes(SM.nz(g('qty')))) continue;   // 반복 머리글
     let cand = []; let how = '';
     if (bc) { cand = findProduct(bc); how = '바코드'; }
     if (!cand.length && sku) { cand = findProduct(sku); how = '품번'; }
     if (!cand.length && name) { cand = S.byName[norm(name)] || []; how = '상품명'; }
+    if (!cand.length && name && norm(name).length >= 4) { const k = norm(name); cand = S.products.filter(p => { const q = norm(p.name); return q.length >= 4 && (q.endsWith(k) || k.endsWith(q)); }).slice(0, 6); how = '비슷한 이름'; }
     const row = { line: i + 1, name, bc, sku, qty, memo: g('memo'), how, cand: cand.map(p => p.id), pid: cand.length === 1 ? cand[0].id : '', st: '' };
     if (!(qty > 0)) row.st = 'qty';
     else if (!cand.length) row.st = 'new';
@@ -1381,34 +1370,34 @@ function importRows(rows, src) {
     if (seen[key]) { row.dup = seen[key]; } else seen[key] = row.line;
     out.push(row);
   }
-  S.ui.imp = { src, rows: out, header: det.r + 1 };
+  S.ui.imp = { src, raw: rows, det, rows: out, header: det.r + 1, prevFile, dupMode: 'sum' };
 }
 function importPreview() {
   const im = S.ui.imp; if (!im) return '';
-  if (im.err) return `<div class="note bad">🔺 ${esc(im.src)} — ${esc(im.err)}</div>`;
+  if (im.err) return `<div class="note bad">🔺 ${esc(im.src)} — ${esc(im.err)}</div>${mapPanel(im)}`;
   const R = im.rows; const ok = R.filter(r => r.pid && r.qty > 0);
   const cnt = k => R.filter(r => r.st === k).length;
   const dup = R.filter(r => r.dup).length;
-  return `<div class="card"><h2>미리보기 · ${esc(im.src)} <span class="r">${R.length}줄 (제목 ${im.header}번째 줄)</span></h2>
+  return `${mapPanel(im)}<div class="card"><h2>미리보기 · ${esc(im.src)} <span class="r">${R.length}줄 (제목 ${im.header}번째 줄)</span></h2>
     <div class="alerts" style="margin-bottom:10px">
       <div class="al"><span class="ic">✔</span><span class="tx">상품을 찾은 줄 <b>${ok.length}</b>개 · ${fmt(ok.reduce((a, b) => a + b.qty, 0))}개</span></div>
       ${cnt('new') ? `<div class="al"><span class="ic">🔺</span><span class="tx">등록된 상품에 없는 줄 <b>${cnt('new')}</b>개 — 저장에서 빠집니다. 새 상품이면 관리 › 상품 목록에서 먼저 등록해 주세요.</span></div>` : ''}
       ${cnt('multi') ? `<div class="al"><span class="ic">🔸</span><span class="tx">같은 이름 상품이 여러 개인 줄 <b>${cnt('multi')}</b>개 — 줄마다 맞는 상품을 골라 주세요.</span></div>` : ''}
       ${cnt('qty') ? `<div class="al"><span class="ic">🔺</span><span class="tx">수량이 비었거나 0인 줄 <b>${cnt('qty')}</b>개 — 저장에서 빠집니다.</span></div>` : ''}
-      ${dup ? `<div class="al"><span class="ic">🔸</span><span class="tx">파일 안에 같은 상품이 두 번 나온 줄 <b>${dup}</b>개 — 저장하면 수량이 합쳐집니다.</span></div>` : ''}
+      ${dup ? `<div class="al"><span class="ic">🔸</span><span class="tx">파일 안에 같은 상품이 두 번 나온 줄 <b>${dup}</b>개 — <span class="fseg sm"><button class="${im.dupMode === 'sum' ? 'on' : ''}" data-dupm="sum">수량 합치기</button><button class="${im.dupMode === 'first' ? 'on' : ''}" data-dupm="first">처음 줄만</button></span></span></div>` : ''}
+      ${im.prevFile ? `<div class="al"><span class="ic">🔺</span><span class="tx">같은 이름의 파일을 ${md(im.prevFile.date)}에 이미 올렸습니다 (${esc(whoText(im.prevFile.by, im.prevFile.co))}). 두 번 넣지 않도록 확인해 주세요.</span></div>` : ''}
     </div>
     <div class="tw"><table><thead><tr><th class="n">줄</th><th>파일 상품명</th><th class="hide-s">바코드·품번</th><th>찾은 상품</th><th class="n">수량</th><th>상태</th></tr></thead><tbody>
     ${R.map((r, i) => `<tr class="${r.st || r.dup ? 'flag' : ''}"><td class="n muted">${r.line}</td><td class="nm">${esc(r.name || '-')}</td><td class="code hide-s">${esc(r.bc || r.sku || '')}</td>
       <td class="nm">${r.st === 'multi' ? `<select class="inp" data-ip="${i}" style="min-width:180px"><option value="">고르기</option>${r.cand.map(c => `<option value="${esc(c)}" ${r.pid === c ? 'selected' : ''}>${esc(S.P[c].name)} · ${esc(S.P[c].barcode || S.P[c].sku)}</option>`).join('')}</select>` : r.pid ? `${esc(S.P[r.pid].name)}<div class="muted" style="font-size:12px">${esc(r.how)}로 찾음</div>` : '<span class="muted">없음</span>'}</td>
       <td class="n" style="font-weight:700">${fmt(r.qty)}</td><td>${r.st === 'new' ? '<span class="pill p-bad">🔺 미등록</span>' : r.st === 'qty' ? '<span class="pill p-bad">🔺 수량</span>' : r.st === 'multi' && !r.pid ? '<span class="pill p-warn">🔸 선택</span>' : r.dup ? `<span class="pill p-warn">🔸 ${r.dup}줄과 중복</span>` : '<span class="pill p-ok">✔</span>'}</td></tr>`).join('')}
     </tbody></table></div>
-    <div class="row" style="margin-top:12px;justify-content:flex-end"><button class="btn" id="impCancel">취소</button><button class="btn pri" id="impUse">찾은 ${R.filter(r => r.pid && r.qty > 0).length}줄을 ${esc(S.ui.entry.type)} 목록에 담기</button></div></div>`;
+    <div class="row" style="margin-top:12px;justify-content:flex-end"><button class="btn" id="impCancel">취소</button><button class="btn pri" id="impUse">찾은 ${R.filter(r => r.pid && r.qty > 0 && !(r.dup && im.dupMode === 'first')).length}줄을 ${esc(S.ui.entry.type)} 목록에 담기</button></div></div>`;
 }
 async function readFile(f) {
   if (/\.(pdf|png|jpe?g|heic|gif|webp)$/i.test(f.name)) { S.ui.imp = { src: f.name, err: 'PDF·사진은 입력할 수 없습니다. 엑셀이나 구글시트로 받아 주세요.' }; render(); return; }
   const wb = await readBook(f);
-  let best = null;
-  for (const n of wb.SheetNames) { const rows = XLSX.utils.sheet_to_json(wb.Sheets[n], { header: 1, defval: '' }); const d = detectCols(rows); if (d && (!best || d.score > best.d.score)) best = { n, rows, d }; }
+  const best = bestSheet(wb);
   importRows(best ? best.rows : [], `${f.name}${best && wb.SheetNames.length > 1 ? ' › ' + best.n : ''}`);
   render();
 }
@@ -1620,7 +1609,7 @@ function cmpDrawer() {
   <div class="card"><div class="tw"><table class="tb cmp-t"><thead><tr><th></th><th class="n">이번</th><th class="n">비교</th><th class="n">차이</th><th class="n">증감</th></tr></thead><tbody>
     ${Object.entries(CMP_M).map(([k, [t, u]]) => `<tr class="${k === m ? 'sel' : ''}" data-cmpk="${k}"><td><b>${t}</b></td><td class="n"><b>${fmt(cs[k])}</b>${u}</td><td class="n">${fmt(ps[k])}${u}</td><td class="n">${cs[k] - ps[k] >= 0 ? '+' : ''}${fmt(cs[k] - ps[k])}</td><td class="n">${chg(pct(cs[k], ps[k]))}</td></tr>`).join('')}
   </tbody></table></div></div>
-  ${n > 1 ? `<div class="card"><h2>${mt} 흐름 <span class="r"><span class="lg cur"></span>이번 <span class="lg pre"></span>비교</span></h2>${svg}</div>` : ''}
+  ${n > 1 ? `<div class="card"><h2>${mt} 흐름 <span class="r"><span class="lg cur"></span>이번 <span class="lg pre"></span>비교</span></h2>${lineChart(C.map(v => ({ lab: md(v.d), sub: `(${wd(v.d)})`, d: v.d, v: v[m], tip: `${md(v.d)}(${wd(v.d)}) · ${fmt(v[m])}${mu} · ${fmt(v.p)}건` })), { cmp: P.map(v => v[m]), cmpTip: P.map(v => `비교 ${md(v.d)}(${wd(v.d)}) ${fmt(v[m])}${mu}`), unitFmt: m === 's' || m === 't' ? man : fmt, aria: mt + ' 기간 비교' })}</div>` : ''}
   <div class="card"><h2>날짜별 ${mt}</h2><div class="tw"><table class="tb cmp-t"><thead><tr><th>이번</th><th class="n">${mt}</th><th>비교</th><th class="n">${mt}</th><th class="n">증감</th></tr></thead><tbody>
     ${Array.from({ length: n }, (_, i) => { const x = C[i], y = P[i]; return `<tr><td class="nowrap">${x ? `${md(x.d)}(${wd(x.d)})` : ''}</td><td class="n">${x ? (x.has ? `<b>${fmt(x[m])}</b>` : '<span class="muted">-</span>') : ''}</td><td class="nowrap muted">${y ? `${md(y.d)}(${wd(y.d)})` : ''}</td><td class="n">${y ? (y.has ? fmt(y[m]) : '<span class="muted">-</span>') : ''}</td><td class="n">${x && y && x.has && y.has ? chg(pct(x[m], y[m]), 0) : ''}</td></tr>`; }).join('')}
   </tbody></table></div></div>
@@ -1810,7 +1799,7 @@ function salesView() {
   const multi = stores.length > 1;
   const ch = pct(cur.s, pre.s);
   const units = [['day', '일별'], ['week', '주별'], ['month', '월별'], ['year', '연도별'], ['ip', 'IP별']];
-  const quick = [['최근 올린 날', () => [last, last]], ['최근 14일', () => [addDays(last, -13), last]], ['이번 주', () => { const k = periodKey(last, 'week'); return [k, last]; }], ['지난주', () => { const k = addDays(periodKey(last, 'week'), -7); return [k, addDays(k, 6)]; }], ['이번 달', () => [last.slice(0, 7) + '-01', last]], ['지난달', () => { const f = addDays(last.slice(0, 7) + '-01', -1); return [f.slice(0, 7) + '-01', f]; }], ['올해', () => [last.slice(0, 4) + '-01-01', last]], ['전체', () => [firstSalesDate(stores), last]]];
+  const quick = [['오늘', () => [today(), today()]], ['최근 올린 날', () => [last, last]], ['최근 14일', () => [addDays(last, -13), last]], ['이번주', () => { const k = periodKey(last, 'week'); return [k, last]; }], ['지난주', () => { const k = addDays(periodKey(last, 'week'), -7); return [k, addDays(k, 6)]; }], ['이번달', () => [last.slice(0, 7) + '-01', last]], ['지난달', () => { const f = addDays(last.slice(0, 7) + '-01', -1); return [f.slice(0, 7) + '-01', f]; }], ['올해', () => [last.slice(0, 4) + '-01-01', last]], ['전체', () => [firstSalesDate(stores), last]]];
   S._quick = quick;
   const noData = stores.filter(s => !per[s].days);
   const su = salesUpdated(stores);
@@ -1856,7 +1845,7 @@ function seriesBlock(per, sum, stores, unit) {
   const title = { day: '일별', week: '주별 (월~일)', month: '월별', year: '연도별' }[unit];
   const rows = keys.slice().reverse();
   return `<div class="card"><h2>${title} 매출 <span class="r">${rows.length}개 · 최근이 위</span></h2>
-    ${trendSvg(keys.map(k => multi ? totK(k) : val(stores[0], k)), keys.map(k => periodLabel(k, unit)))}
+    ${lineChart(keys.map(k => { const v = multi ? totK(k) : val(stores[0], k); const p = sum.reduce((a, s) => a + ((per[s].series[k] || {}).p || 0), 0); const ex = ` · ${fmt(p)}건`; if (unit === 'day') return dayPt(k, v, ex); if (unit === 'week') return { lab: md(k) + '~', sub: `(${wd(k)})`, v, tip: `${periodLabel(k, unit)} · ${fmt(v)}원${ex}` }; return { lab: unit === 'month' ? k.slice(2).replace('-', '.') : periodLabel(k, unit), v, tip: `${periodLabel(k, unit)} · ${fmt(v)}원${ex}` }; }), { aria: title + ' 매출 추이' })}
     ${multi ? `<div class="legend" style="margin:8px 0">${stores.map(s => `<span><span class="dot" style="background:${storeColor(s)}"></span>${esc(storeName(s))}</span>`).join('')}<span><span class="dot" style="background:var(--ink)"></span>합산</span></div>` : ''}
     <div class="hb" style="margin-top:8px">${rows.map((k, i) => {
       if (!multi) { const v = val(stores[0], k); const p = (per[stores[0]].series[k] || {}).p || 0; return `<span class="k">${periodLabel(k, unit)}</span><span class="tr"><i style="width:${v / mx * 100}%;background:var(--red)"></i></span><span class="v">${fmt(v)}<span class="muted" style="font-weight:500"> · ${fmt(p)}건</span></span>`; }
@@ -2269,6 +2258,239 @@ function onScanned(code) {
 function openProduct(pid) { S.ui.prevDrawer = (S.ui.drawer === homeDrawer || S.ui.drawer === cmpDrawer) ? S.ui.drawer : null; S.ui.drawer = () => productDrawer(pid); render(); resetZoom(); }
 
 /* ───────── 이벤트 ───────── */
+/* ───────── 그래프 (모든 날짜·요일 표시, 값 라벨, 눈금선, 주말 색, 누르면 자세히) ───────── */
+// pts: [{ lab:'10/19', sub:'(월)', d:'YYYY-MM-DD'|null, v, tip }]  o: { cmp:[v...], cmpTip:[...], color, aria, unitFmt }
+function niceMax(v) { if (v <= 0) return 1; const e = Math.pow(10, Math.floor(Math.log10(v))); const f = v / e; return (f <= 1 ? 1 : f <= 2 ? 2 : f <= 2.5 ? 2.5 : f <= 5 ? 5 : 10) * e; }
+function lineChart(pts, o = {}) {
+  const n = pts.length; if (!n) return '';
+  const zw = (parseFloat(getComputedStyle(document.body).zoom) || 1) * (parseFloat(document.documentElement.style.zoom) || 1);
+  const avail = Math.round(innerWidth / zw - (innerWidth / zw > 900 ? 300 : 64));
+  const W = Math.max(330, Math.min(1800, avail)), L = 44, R = 14, T = 26, B = 40, H = W < 640 ? 230 : 250;
+  const cw = (W - L - R) / Math.max(1, n);   // 점 하나 폭
+  const fv = o.unitFmt || man;
+  const all = pts.map(p => p.v).concat(o.cmp || []); const mx = niceMax(Math.max(1, ...all));
+  const X = i => L + cw * (i + .5), Y = v => T + (1 - v / mx) * (H - T - B);
+  let g = '';
+  for (let k = 0; k <= 4; k++) { const v = mx * k / 4, y = Y(v); g += `<line class="gl" x1="${L}" x2="${W - R}" y1="${y.toFixed(1)}" y2="${y.toFixed(1)}"/><text class="yl" x="${L - 6}" y="${(y + 4).toFixed(1)}" text-anchor="end">${k ? fv(v) : '0'}</text>`; }
+  // 주말 바탕색
+  pts.forEach((p, i) => { if (!p.d) return; const w = new Date(p.d + 'T00:00:00Z').getUTCDay(); if (w === 0 || w === 6) g += `<rect class="${w ? 'sat' : 'sun'}" x="${(X(i) - cw / 2).toFixed(1)}" y="${T}" width="${cw.toFixed(1)}" height="${H - T - B}"/>`; });
+  const step = Math.max(1, Math.ceil(36 / cw));   // 날짜 글자가 겹치지 않게 (430px 기준 약 9개)
+  const showVal = cw >= 40;
+  const line = (V, cls) => V.length > 1 ? `<polyline class="${cls}" points="${V.map((v, i) => `${X(i).toFixed(1)},${Y(v).toFixed(1)}`).join(' ')}"/>` : '';
+  if (o.cmp) g += line(o.cmp, 'ln2');
+  g += pts.length > 1 ? `<polygon class="area" points="${X(0).toFixed(1)},${Y(0)} ${pts.map((p, i) => `${X(i).toFixed(1)},${Y(p.v).toFixed(1)}`).join(' ')} ${X(n - 1).toFixed(1)},${Y(0)}"/>` : '';
+  g += line(pts.map(p => p.v), 'ln');
+  const iMax = pts.reduce((k, p, i) => (p.v > pts[k].v ? i : k), 0);
+  pts.forEach((p, i) => {
+    const w = p.d ? new Date(p.d + 'T00:00:00Z').getUTCDay() : -1, wc = w === 0 ? ' sun' : w === 6 ? ' sat' : '';
+    g += `<circle class="pt" cx="${X(i).toFixed(1)}" cy="${Y(p.v).toFixed(1)}" r="${n > 60 ? 2 : 3.2}"/>`;
+    if (showVal || i === iMax || i === n - 1) g += `<text class="vl" x="${X(i).toFixed(1)}" y="${(Y(p.v) - 7).toFixed(1)}" text-anchor="${i === 0 && !showVal ? 'start' : i === n - 1 && !showVal ? 'end' : 'middle'}">${fv(p.v)}</text>`;
+    if (i % step === 0 || (i === n - 1 && (n - 1) % step >= step / 2)) g += `<text class="xl${wc}" x="${X(i).toFixed(1)}" y="${H - B + 16}" text-anchor="middle">${esc(p.lab)}</text>${p.sub ? `<text class="xl xs${wc}" x="${X(i).toFixed(1)}" y="${H - B + 30}" text-anchor="middle">${esc(p.sub)}</text>` : ''}`;
+    g += `<rect class="chit" data-tip="${esc(p.tip || p.lab + ' ' + fmt(p.v))}${o.cmpTip && o.cmpTip[i] ? esc(' · ' + o.cmpTip[i]) : ''}" x="${(X(i) - cw / 2).toFixed(1)}" y="${T - 20}" width="${cw.toFixed(1)}" height="${H - T + 20}"><title>${esc(p.tip || '')}</title></rect>`;
+  });
+  return `<div class="chartbox"><svg class="trend lc" viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="${esc(o.aria || '추이 그래프')}">${g}</svg><div class="ctip" hidden></div>
+    <div class="chint muted">점을 누르면 날짜·금액·건수가 나옵니다${step > 1 ? ` · 날짜는 ${step}칸마다 표시` : ''} · <span class="sat-t">토</span> <span class="sun-t">일</span> 바탕색</div></div>`;
+}
+function dayPt(d, v, extra) { return { lab: md(d), sub: `(${wd(d)})`, d, v, tip: `${md(d)}(${wd(d)}) · ${fmt(v)}원${extra || ''}` }; }
+// 누르거나 마우스를 올리면 말풍선
+function chartTip(ev) {
+  const r = ev.target.closest && ev.target.closest('.chit'); const boxes = document.querySelectorAll('.chartbox .ctip');
+  if (!r) { if (ev.type === 'click') boxes.forEach(b => b.hidden = true); return; }
+  const box = r.closest('.chartbox'), tip = box.querySelector('.ctip'), br = box.getBoundingClientRect(), rr = r.getBoundingClientRect();
+  tip.textContent = r.dataset.tip; tip.hidden = false;
+  const x = Math.min(Math.max(rr.left + rr.width / 2 - br.left - tip.offsetWidth / 2, 0), br.width - tip.offsetWidth);
+  tip.style.left = x + 'px'; tip.style.top = '0px';
+  box.querySelectorAll('.chit.on').forEach(e => e.classList.remove('on')); r.classList.add('on');
+}
+document.addEventListener('click', chartTip); document.addEventListener('pointerover', e => { if (e.pointerType === 'mouse') chartTip(e); });
+
+/* ───────── 파일 자동 매핑 (양식 없이: 여러 줄 머리글, 같은 뜻 열 이름, 양식 기억) ───────── */
+const SM = (() => {
+  const nz = s => String(s ?? '').replace(/[\s\n\r\t()（）\[\]{}:·.\-_/]/g, '').toLowerCase();
+  const SYN = {
+    sku: ['sku', '품번', '상품코드', '품목코드', '제품코드', '자체코드', '상품번호', 'itemcode', 'code', '코드', 'productcode', '관리코드', '모델번호'],
+    barcode: ['바코드', 'barcode', 'ean', 'jan', 'upc', 'gtin', '바코드번호'],
+    name: ['상품명', '품명', '제품명', '품목명', '상품', '품목', '아이템', 'item', 'itemname', 'productname', 'product', 'name', '상품이름', '물건'],
+    qty: ['수량', 'qty', 'quantity', 'q\'ty', 'ea', '개수', '갯수', '입고수량', '출고수량', '이동수량', '실사수량', '실제수량', '재고수량', '확정수량', '납품수량', '발주수량', '예정수량', '입고량', '출고량', '수'],
+    date: ['날짜', '일자', '입고일', '출고일', '입고날짜', '출고날짜', '입고일자', '출고일자', '납품일', 'date', '기준일', '일시'],
+    price: ['판매가', '단가', '소비자가', '가격', 'price', '정가', '상품가격', '공급가'],
+    option: ['옵션명', '옵션', 'option', '색상', '사이즈'],
+    memo: ['메모', '비고', '사유', 'note', 'memo', 'remark', '참고'],
+    ip: ['ip', '카테고리', '작품', '브랜드', 'category'],
+  };
+  const numVal = v => { if (typeof v === 'number') return v; const t = String(v ?? '').replace(/[₩￦$,\s]/g, '').replace(/(개|ea|pcs|원|매|장)$/i, ''); return /^-?\d+(\.\d+)?$/.test(t) ? Number(t) : NaN; };
+  const isNum = v => String(v ?? '').trim() !== '' && !Number.isNaN(numVal(v));
+  const TOTAL = /^(합계|총계|소계|누계|계|total|subtotal|sum|grandtotal)$/i;
+  function score1(cell, f) {
+    const c = nz(cell); if (!c) return 0; let best = 0;
+    SYN[f].forEach((k, i) => { const w = 1 - i * .02; if (c === k) best = Math.max(best, 3 * w); else if (k.length >= 2 && (c.startsWith(k) || c.endsWith(k))) best = Math.max(best, 2 * w); else if (k.length >= 2 && c.includes(k)) best = Math.max(best, 1.2 * w); });
+    if (f === 'qty' && /현재고|참고|리스트/.test(c)) best *= .5; if (f === 'qty' && /금액|가격|단가/.test(c)) best = 0; if (f === 'name' && /코드|번호|바코드/.test(c)) best = 0; if (f === 'sku' && /바코드|barcode/.test(c)) best = 0;
+    return best;
+  }
+  const score = (cell, f) => { const parts = String(cell ?? '').split(' > '); if (parts.length < 2) return score1(cell, f); const L = parts.length - 1; return Math.max(score1(parts[L], f), ...parts.slice(0, L).map(x => score1(x, f) * .6), score1(parts.join(''), f) * .7); };
+  function fillMerges(rows, merges = []) {
+    for (const m of merges) { const v = rows[m.s.r] && rows[m.s.r][m.s.c]; if (v === '' || v == null) continue;
+      for (let r = m.s.r; r <= Math.min(m.e.r, rows.length - 1); r++) { rows[r] ||= []; for (let c = m.s.c; c <= m.e.c; c++) if ((r !== m.s.r || c !== m.s.c) && (r === m.s.r || m.e.r - m.s.r < 4) && (rows[r][c] === '' || rows[r][c] == null)) rows[r][c] = v; } }
+    return rows;
+  }
+  function detectHeader(rows) {
+    let best = { i: -1, s: 0 };
+    for (let i = 0; i < Math.min(rows.length, 40); i++) { const r = rows[i] || []; const filled = r.filter(c => String(c ?? '').trim()).length; if (filled < 2) continue;
+      let s = 0; const hit = new Set();
+      for (const f of Object.keys(SYN)) { const m = Math.max(0, ...r.map(c => score(c, f))); if (m >= 1.2) { s += m; hit.add(f); } }
+      if (!['qty', 'name', 'sku', 'barcode'].some(f => hit.has(f))) continue;
+      s -= r.filter(isNum).length / filled * 4;
+      if (rows.slice(i + 1, i + 6).some(x => x && x.some(isNum))) s += 1;
+      if (s > best.s) best = { i, s }; }
+    return best.i;
+  }
+  function headerBlock(rows, hi) {
+    const txt = r => (r || []).map(c => String(c ?? '').trim()); const isHd = r => { const f = txt(r).filter(Boolean); return f.length >= 1 && !(r || []).some(isNum) && !f.some(x => TOTAL.test(nz(x))); };
+    let a = hi, b = hi;
+    while (a > 0 && isHd(rows[a - 1]) && new Set(txt(rows[a - 1]).filter(Boolean)).size >= 2) a--;
+    while (b + 1 < rows.length && b - a < 6 && isHd(rows[b + 1]) && rows.slice(b + 2, b + 8).some(x => (x || []).some(isNum))) b++;
+    return [a, b];
+  }
+  function flatHeader(rows, a, b) {
+    const Bk = []; for (let r = a; r <= b; r++) Bk.push((rows[r] || []).map(c => String(c ?? '').replace(/\s+/g, ' ').trim()));
+    const n = Math.max(...Bk.map(r => r.length)); Bk.forEach(r => { while (r.length < n) r.push(''); });
+    return Array.from({ length: n }, (_, c) => { const parts = []; Bk.forEach(r => { const v = r[c]; if (v && !parts.includes(v)) parts.push(v); }); return parts.join(' > '); });
+  }
+  const signature = H => H.map(nz).filter(Boolean).join('|');
+  function autoMap(H, qtyPref) {
+    const map = {}, used = new Set();
+    for (const f of ['barcode', 'sku', 'date', 'price', 'memo', 'option', 'ip', 'name', 'qty']) { let bi = -1, bs = 0;
+      H.forEach((h, i) => { if (used.has(i)) return; let s = score(h, f); if (f === 'qty' && qtyPref && s > 0) { const c = nz(h.split(' > ').pop()); const k = qtyPref.findIndex(x => nz(x) === c); if (k >= 0) s += 3 - k * .1; } if (s > bs) { bs = s; bi = i; } });
+      if (bi >= 0 && bs >= 1.2) { map[f] = bi; used.add(bi); } }
+    return map;
+  }
+  // 엑셀 → 시트별 행 (병합 셀 채움, 비정상 범위 정리)
+  function bookSheets(wb) {
+    return wb.SheetNames.map(n => { const ws = wb.Sheets[n]; if (!ws['!ref']) return null;
+      let mr = 0, mc = 0; for (const k of Object.keys(ws)) { if (k[0] === '!') continue; const v = ws[k]; if (v && v.v !== '' && v.v != null) { const a = XLSX.utils.decode_cell(k); if (a.r > mr) mr = a.r; if (a.c > mc) mc = a.c; } }
+      ws['!ref'] = XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: mr, c: mc } });
+      return { n, rows: fillMerges(XLSX.utils.sheet_to_json(ws, { header: 1, defval: '', raw: true, blankrows: true }), ws['!merges'] || []) }; }).filter(Boolean);
+  }
+  return { SYN, nz, numVal, isNum, TOTAL, detectHeader, headerBlock, flatHeader, signature, autoMap, bookSheets };
+})();
+const FIELD_T = { name: '상품명', barcode: '바코드', sku: '품번', qty: '수량', option: '옵션', price: '판매가', date: '날짜', memo: '메모', ip: 'IP' };
+S.maps = S.maps || {};
+try { Object.assign(S.maps, JSON.parse(localStorage.getItem('smg-import-maps') || '{}')); } catch (e) { }
+async function saveImportMap(sig, m) {
+  S.maps[sig] = m; try { localStorage.setItem('smg-import-maps', JSON.stringify(S.maps)); } catch (e) { }
+  if (DB.saveImportMap) await DB.saveImportMap(sig, m).catch(e => toast('양식을 저장하지 못했습니다: ' + e.message));
+}
+// 머리글 찾기 + 열 매핑. 돌려주는 값 {r: 머리글 마지막 줄, a: 첫 줄, map, H, sig, how:'saved'|'auto'|'manual', score}
+function analyzeSheet(rows, qtyPref, over) {
+  const hi = SM.detectHeader(rows); if (hi < 0 && !over) return null;
+  const [a, b] = hi < 0 ? [over.a, over.r] : SM.headerBlock(rows, hi);
+  const H = SM.flatHeader(rows, a, b); const sig = SM.signature(H);
+  let map, how;
+  if (over && over.map) { map = over.map; how = 'manual'; }
+  else if (S.maps[sig]) { map = { ...S.maps[sig].map }; how = 'saved'; }
+  else { map = SM.autoMap(H, qtyPref); how = 'auto'; }
+  const score = Object.keys(map).length + (map.qty != null ? 2 : 0) + (map.name != null || map.barcode != null || map.sku != null ? 2 : 0);
+  return { r: b, a, map, H, sig, how, score };
+}
+function bestSheet(wb) {
+  let best = null;
+  for (const s of SM.bookSheets(wb)) { const d = analyzeSheet(s.rows); if (d && (!best || d.score > best.d.score)) best = { ...s, d }; }
+  return best;
+}
+function mapPanel(im) {
+  const d = im.det; if (!d) return '';
+  const opts = (f) => `<option value="">없음</option>` + d.H.map((h, i) => h ? `<option value="${i}" ${d.map[f] === i ? 'selected' : ''}>${esc(String.fromCharCode(65 + (i % 26)))}${i >= 26 ? Math.floor(i / 26) : ''} · ${esc(h.length > 28 ? h.slice(0, 28) + '…' : h)}</option>` : '').join('');
+  const how = { saved: '<span class="pill p-ok">저장된 양식</span>', auto: '<span class="pill p-info">자동으로 찾음</span>', manual: '<span class="pill p-warn">직접 고름</span>' }[d.how];
+  return `<div class="card mapcard"><h2>열 맞추기 ${how} <span class="r">제목 ${d.a + 1}${d.r > d.a ? '~' + (d.r + 1) : ''}번째 줄</span></h2>
+    <div class="muted" style="font-size:12.5px;margin:-4px 0 10px">양식이 달라도 됩니다. 칸이 틀렸으면 고르고 [다시 읽기] — [이 양식 기억]을 누르면 같은 제목 줄의 파일은 다음부터 자동으로 맞춥니다.</div>
+    <div class="mapgrid">${['name', 'barcode', 'sku', 'option', 'qty', 'price', 'memo'].map(f => `<div class="field"><label for="mp_${f}">${FIELD_T[f]}${f === 'qty' ? ' *' : ''}</label><select class="inp" id="mp_${f}" data-mapf="${f}">${opts(f)}</select></div>`).join('')}</div>
+    <div class="row" style="margin-top:10px;justify-content:flex-end"><button class="btn" id="mapRe">다시 읽기</button><button class="btn pri" id="mapSave">이 양식 기억</button></div></div>`;
+}
+function readMapUI() { const m = {}; document.querySelectorAll('[data-mapf]').forEach(s => { if (s.value !== '') m[s.dataset.mapf] = +s.value; }); return m; }
+
+/* ───────── 콜라보 분석 ───────── */
+// IP 일정 이름 → 토스포스 카테고리 (일정마다 '카테고리'를 고치면 그 값이 우선). 하이큐 쉬는시간(콜라보) ≠ 하이큐 10주년(상설)
+const PLAN_CATS = { '하이큐!! 쉬는시간': ['하이큐 쉬는시간'], '에반게리온 Light & Shadow': ['에반게리온'], '진격의 거인 The Final Season': ['MP-진격의 거인'], '주술회전 2 (MAPPA)': ['MP-주술회전2'], '슈가슈가룬 2': ['슈슈룬2'], '은혼 구작 2': ['은혼 구작2'] };
+const catsOf = r => (r.cats && r.cats.length ? r.cats : PLAN_CATS[r.ip] || [r.ip]);
+const catMatch = (r, cat) => { const c = norm(cat); return catsOf(r).some(x => norm(x) === c); };
+const collabAt = (st, cat, d) => ipPlan().some(r => r.store === st && r.start <= d && d <= r.end && catMatch(r, cat));
+function stockAt(st, pid, d) { let q = stockOf(st, pid); for (const m of S.moves) if (m.store === st && m.pid === pid && m.date > d) q -= m.qty; return q; }
+function collabCalc(st, r, a, b) {
+  const pids = new Set(S.products.filter(p => catMatch(r, p.ip || '')).map(p => p.id));
+  const inP = {}, sold = {}, etc = {}, etcList = [];
+  for (const m of S.moves) {
+    if (m.store !== st || !pids.has(m.pid) || m.date > b) continue;
+    if (m.type === '입고') inP[m.pid] = (inP[m.pid] || 0) + m.qty;
+    else if (m.type === '판매') sold[m.pid] = (sold[m.pid] || 0) - m.qty;
+    else { etc[m.pid] = (etc[m.pid] || 0) + m.qty; etcList.push(m); }
+  }
+  // 토스포스 매출 (기간 안, 이 IP 카테고리)
+  const pos = {}; let posS = 0, posQ = 0;
+  const ipAll = {}; let colS = 0, permS = 0, colQ = 0, permQ = 0;
+  for (let d = a; d <= b; d = addDays(d, 1)) {
+    const rec = dayRec(st, d); if (!rec) continue;
+    for (const [nm, [q, s, ip]] of Object.entries(rec.pr || {})) if (catMatch(r, ip)) { const x = pos[nm] ||= { q: 0, s: 0 }; x.q += q; x.s += s; posS += s; posQ += q; }
+    for (const [ip, [q, s]] of Object.entries(rec.ip || {})) { const c = collabAt(st, ip, d); const x = ipAll[ip] ||= { q: 0, s: 0, c: false }; x.q += q; x.s += s; x.c = x.c || c; if (c) { colS += s; colQ += q; } else { permS += s; permQ += q; } }
+  }
+  const rows = [...pids].filter(pid => inP[pid] || sold[pid] || etc[pid] || stockOf(st, pid) || pos[S.P[pid].name]).map(pid => {
+    const p = S.P[pid], ps = pos[p.name] || { q: 0, s: 0 }; const i = inP[pid] || 0, so = sold[pid] || 0, e = etc[pid] || 0, now = stockAt(st, pid, b);
+    return { pid, p, in: i, sold: so, etc: e, now, rest: now - (i - so + e), rate: i ? so / i * 100 : null, ps };
+  }).sort((x, y) => y.sold - x.sold || y.ps.s - x.ps.s);
+  const T = rows.reduce((t, x) => ({ in: t.in + x.in, sold: t.sold + x.sold, etc: t.etc + x.etc, now: t.now + x.now, rest: t.rest + x.rest }), { in: 0, sold: 0, etc: 0, now: 0, rest: 0 });
+  const inNames = new Set(rows.filter(x => x.in > 0).map(x => x.p.name));
+  const split = { inS: 0, inQ: 0, inN: 0, noS: 0, noQ: 0, noN: 0, noList: [] };
+  for (const [nm, x] of Object.entries(pos)) { if (inNames.has(nm)) { split.inS += x.s; split.inQ += x.q; split.inN++; } else { split.noS += x.s; split.noQ += x.q; split.noN++; split.noList.push([nm, x]); } }
+  split.noList.sort((x, y) => y[1].s - x[1].s);
+  return { rows, T, posS, posQ, split, ipAll, colS, permS, colQ, permQ, etcList: etcList.filter(m => m.date >= addDays(a, -30)).sort((x, y) => x.date.localeCompare(y.date)) };
+}
+function collabView() {
+  const mine = S.stores.filter(s => myStores().includes(s)); const st0 = S.ui.cb && mine.includes(S.ui.cb.store) ? S.ui.cb.store : mine[0];
+  const plans = ipPlan().filter(r => r.store === st0);
+  const last = latestSalesDate([st0]) || today();
+  if (!S.ui.cb || S.ui.cb.store !== st0 || !plans.find(r => r.id === S.ui.cb.id)) { const cur = plans.filter(r => r.start <= last).slice(-1)[0] || plans[0]; S.ui.cb = { store: st0, id: cur ? cur.id : '', a: cur ? cur.start : last, b: cur ? cur.end : last }; }
+  const cb = S.ui.cb, r = plans.find(x => x.id === cb.id);
+  const top = `${head('콜라보 분석', `IP 콜라보 기간의 입고 · 판매 · 재고 · 매출 · ${esc(shortName(st0))} ${last ? `매출 ${last} 마감` : ''}`)}
+  <div class="card"><div class="flt">
+    ${mine.length > 1 ? `<div class="fg"><div class="fl">매장</div><div class="fseg">${mine.map(s => `<button class="${s === st0 ? 'on' : ''}" data-cbst="${s}">${esc(shortName(s))}</button>`).join('')}</div></div>` : ''}
+    <div class="fg"><div class="fl"><label for="cbPlan">콜라보</label></div><select class="inp" id="cbPlan">${plans.map(x => `<option value="${x.id}" ${x.id === cb.id ? 'selected' : ''}>${esc(x.ip)} · ${x.start.slice(2).replace(/-/g, '.')}~${x.end.slice(5).replace('-', '.')}</option>`).join('')}</select></div>
+    <div class="fg"><div class="fl">기간</div><div class="frange"><div class="fd"><span>시작</span>${dateSel('cba', cb.a)}</div><span class="fsep">~</span><div class="fd"><span>종료</span>${dateSel('cbb', cb.b)}</div></div></div>
+  </div></div>`;
+  if (!r) return top + '<div class="empty">이 매장에 등록된 IP 일정이 없습니다. IP 현황에서 일정을 추가해 주세요.</div>';
+  const a = cb.a, b = cb.b, R = collabCalc(st0, r, a, b), T = R.T;
+  const days = daysBetween(a, b) + 1, cats = catsOf(r);
+  const eq = `<div class="card eqcard" id="cbTot" data-in="${T.in}" data-sold="${T.sold}" data-etc="${T.etc}" data-now="${T.now}">
+    <h2>${esc(r.ip)} <span class="r">${md(a)}(${wd(a)}) ~ ${md(b)}(${wd(b)}) · ${days}일 · 토스포스 카테고리 ${cats.map(esc).join(', ')}</span></h2>
+    <div class="eq"><div class="eqi"><span class="k">입고</span><b class="num">${fmt(T.in)}</b></div><span class="op">−</span>
+      <div class="eqi"><span class="k">판매 차감</span><b class="num">${fmt(T.sold)}</b></div><span class="op">${T.etc < 0 ? '−' : '+'}</span>
+      <div class="eqi"><span class="k">기타</span><b class="num">${fmt(Math.abs(T.etc))}</b></div>${T.rest ? `<span class="op">${T.rest < 0 ? '−' : '+'}</span><div class="eqi"><span class="k">기초·미기록</span><b class="num">${fmt(Math.abs(T.rest))}</b></div>` : ''}<span class="op">=</span>
+      <div class="eqi res"><span class="k">현재고 <small>${md(b) < md(today()) || b < today() ? md(b) + ' 기준' : '지금'}</small></span><b class="num">${fmt(T.now)}</b></div></div>
+    <div class="muted" style="font-size:12.5px">입고·판매 차감·기타 = 앱 입출고 기록 (기간 종료일까지, 이 IP 상품 ${R.rows.length}종) · 판매율 <b class="ink">${T.in ? (T.sold / T.in * 100).toFixed(1) : '-'}%</b></div></div>`;
+  const sp = R.split, tot = sp.inS + sp.noS || 1;
+  const split = `<div class="card"><h2>콜라보 매출 ${fmt(R.posS)}원 <span class="r">토스포스 · ${fmt(R.posQ)}개</span></h2>
+    <div class="tw"><table><thead><tr><th>구분</th><th class="n">상품</th><th class="n">수량</th><th class="n">매출</th><th class="n">비중</th></tr></thead><tbody>
+      <tr><td><b style="color:var(--ok)">입고된 상품 판매</b></td><td class="n">${fmt(sp.inN)}종</td><td class="n">${fmt(sp.inQ)}</td><td class="n"><b>${fmt(sp.inS)}</b></td><td class="n">${(sp.inS / tot * 100).toFixed(1)}%</td></tr>
+      <tr><td><b style="color:#8a4b00">입고 없는 상품 판매</b></td><td class="n">${fmt(sp.noN)}종</td><td class="n">${fmt(sp.noQ)}</td><td class="n"><b>${fmt(sp.noS)}</b></td><td class="n">${(sp.noS / tot * 100).toFixed(1)}%</td></tr>
+    </tbody><tfoot><tr class="tot"><td>합계</td><td class="n">${fmt(sp.inN + sp.noN)}종</td><td class="n">${fmt(sp.inQ + sp.noQ)}</td><td class="n">${fmt(sp.inS + sp.noS)}</td><td class="n">100%</td></tr></tfoot></table></div>
+    ${sp.noList.length ? `<div class="muted" style="font-size:12.5px;margin-top:8px">🔸 입고 기록 없이 팔린 상품: ${sp.noList.slice(0, 5).map(([n, x]) => `${esc(n.replace(/^에바30주년팝업_/, ''))} ${fmt(x.q)}개`).join(' · ')}${sp.noList.length > 5 ? ` 외 ${sp.noList.length - 5}종` : ''} — 입고 등록이 빠졌거나 상품 목록에 없는 이름입니다.</div>` : ''}</div>`;
+  const etc = `<div class="card"><h2>기타 내역 <span class="r">이동 · 창고 · 반품 · 폐기 · 실사 조정</span></h2>${R.etcList.length ? `<div class="tw"><table><thead><tr><th>날짜</th><th>구분</th><th>상품명</th><th class="n">수량</th><th class="hide-s">메모</th></tr></thead><tbody>
+    ${R.etcList.map(m => `<tr><td class="nowrap num">${md(m.date)}(${wd(m.date)})</td><td>${typePill(m.type)}</td><td class="nm">${esc((S.P[m.pid] || {}).name || m.pid)}</td><td class="n"><b>${m.qty > 0 ? '+' : ''}${fmt(m.qty)}</b></td><td class="hide-s muted">${esc(m.memo || '')}</td></tr>`).join('')}</tbody></table></div>` : '<div class="empty">기타 내역 없음 — 입고와 판매 차감만 있습니다</div>'}</div>`;
+  const sku = `<div class="card"><h2>상품별 <span class="r">${R.rows.length}종 · 판매 많은 순</span></h2><div class="tw"><table class="cbsku"><thead><tr><th>상품명</th><th class="n">입고</th><th class="n">판매</th><th class="n hide-s">기타</th><th class="n">현재고</th><th class="n">판매율</th><th class="n hide-s">매출</th></tr></thead><tbody>
+    ${R.rows.map(x => `<tr data-pid="${x.pid}"><td class="nm">${esc(x.p.name.replace(/^에바30주년팝업_/, ''))}<div class="muted code" style="font-size:11.5px">${esc(x.p.sku || x.p.barcode || '')}</div></td><td class="n">${fmt(x.in)}</td><td class="n"><b>${fmt(x.sold)}</b></td><td class="n hide-s">${x.etc ? fmt(x.etc) : '-'}</td><td class="n ${x.now < 0 ? 'qty-neg' : ''}"><b>${fmt(x.now)}</b>${x.now === 0 ? ' <span class="pill p-mute">품절</span>' : ''}</td><td class="n">${x.rate == null ? '-' : x.rate.toFixed(1) + '%'}</td><td class="n hide-s">${fmt(x.ps.s)}</td></tr>`).join('')}
+    </tbody><tfoot><tr class="tot"><td>합계</td><td class="n">${fmt(T.in)}</td><td class="n">${fmt(T.sold)}</td><td class="n hide-s">${fmt(T.etc)}</td><td class="n">${fmt(T.now)}</td><td class="n">${T.in ? (T.sold / T.in * 100).toFixed(1) + '%' : '-'}</td><td class="n hide-s">${fmt(R.rows.reduce((s, x) => s + x.ps.s, 0))}</td></tr></tfoot></table></div></div>`;
+  const all = R.colS + R.permS || 1;
+  const cvp = `<div class="card"><h2>콜라보 vs 상설 <span class="r">${esc(shortName(st0))} 전체 매출 · 같은 기간</span></h2>
+    <div class="g-bar" role="img" aria-label="콜라보 ${Math.round(R.colS / all * 100)}%"><i class="pos" style="width:${R.colS / all * 100}%"></i><i class="mac" style="width:${R.permS / all * 100}%"></i></div>
+    <div class="tw"><table><thead><tr><th>구분</th><th class="n">수량</th><th class="n">매출</th><th class="n">비중</th></tr></thead><tbody>
+      <tr><td><b style="color:var(--pos,#1f5fbf)">콜라보</b> <span class="muted">(기간 중 일정에 있는 IP)</span></td><td class="n">${fmt(R.colQ)}</td><td class="n"><b>${fmt(R.colS)}</b></td><td class="n">${(R.colS / all * 100).toFixed(1)}%</td></tr>
+      <tr><td><b>상설</b> <span class="muted">(그 밖 IP · 예: 하이큐 10주년)</span></td><td class="n">${fmt(R.permQ)}</td><td class="n"><b>${fmt(R.permS)}</b></td><td class="n">${(R.permS / all * 100).toFixed(1)}%</td></tr>
+    </tbody><tfoot><tr class="tot"><td>합계</td><td class="n">${fmt(R.colQ + R.permQ)}</td><td class="n">${fmt(R.colS + R.permS)}</td><td class="n">100%</td></tr></tfoot></table></div></div>`;
+  const ips = Object.entries(R.ipAll).sort((x, y) => y[1].s - x[1].s); const mx = ips.length ? ips[0][1].s || 1 : 1;
+  const rank = `<div class="card"><h2>IP별 매출 순위 <span class="r">${ips.length}개 · 같은 기간</span></h2><div class="hb">${ips.slice(0, 20).map(([k, x], i) => `<span class="k wrap"><span class="muted num">${i + 1}</span> ${esc(k)} <span class="pill ${x.c ? 'p-bad' : 'p-mute'}">${x.c ? '콜라보' : '상설'}</span></span><span class="tr"><i style="width:${x.s / mx * 100}%;background:${x.c ? 'var(--red)' : 'var(--ink-2)'}"></i></span><span class="v">${fmt(x.s)}<span class="muted" style="font-weight:500"> · ${(x.s / all * 100).toFixed(1)}%</span></span>`).join('')}</div></div>`;
+  // 일별 콜라보 매출 흐름
+  const pts = []; for (let d = a; d <= (b < last ? b : last); d = addDays(d, 1)) { const rec = dayRec(st0, d); let s = 0, q = 0; if (rec) for (const [ip, [qq, ss]] of Object.entries(rec.ip || {})) if (catMatch(r, ip)) { s += ss; q += qq; } pts.push(dayPt(d, s, ` · ${fmt(q)}개`)); }
+  const trend = pts.length > 1 ? `<div class="card"><h2>일별 콜라보 매출</h2>${lineChart(pts, { aria: r.ip + ' 일별 매출' })}</div>` : '';
+  return top + eq + split + trend + sku + etc + cvp + rank;
+}
 function bind() {
   const app = $('#app');
   app.onclick = async ev => {
@@ -2363,12 +2585,17 @@ function bind() {
     if (t.id === 'ipAdd') { S.ui.ipForm = { id: '', store: S.stores[0] || 'suwon', kind: STORE_KIND[S.stores[0]] || '팝업', ip: '', start: today(), end: today(), host: '', note: '' }; S.ui.drawer = ipDrawer; render(); return; }
     if (d.ipe) { const r = ipPlan().find(x => x.id === d.ipe); if (r) { S.ui.ipForm = { ...r }; S.ui.drawer = ipDrawer; render(); } return; }
     if (d.ipk) { S.ui.ipForm.kind = d.ipk; render(); return; }
-    if (t.id === 'ipSave') { const f = S.ui.ipForm; [['ipName', 'ip'], ['ipHost', 'host'], ['ipNote', 'note']].forEach(([i, k]) => { const e = document.getElementById(i); if (e) f[k] = e.value; }); if (!f.ip.trim()) { toast('IP 이름을 넣어 주세요'); return; } if (f.end < f.start) { toast('종료일이 시작일보다 빠릅니다'); return; } const L = ipPlan().map(({ _lane, ...r }) => r), r = { id: f.id || 'u' + Date.now().toString(36), store: f.store, kind: f.kind, ip: f.ip.trim(), start: f.start, end: f.end, host: f.host.trim(), note: f.note.trim() }; const i = L.findIndex(x => x.id === r.id); i >= 0 ? (L[i] = r) : L.push(r); S.ui.drawer = null; S.ui.ipForm = null; await saveIpPlan(L); toast('IP 일정을 저장했습니다'); return; }
+    if (t.id === 'ipSave') { const f = S.ui.ipForm; [['ipName', 'ip'], ['ipHost', 'host'], ['ipNote', 'note']].forEach(([i, k]) => { const e = document.getElementById(i); if (e) f[k] = e.value; }); if (!f.ip.trim()) { toast('IP 이름을 넣어 주세요'); return; } if (f.end < f.start) { toast('종료일이 시작일보다 빠릅니다'); return; } const L = ipPlan().map(({ _lane, ...r }) => r), r = { id: f.id || 'u' + Date.now().toString(36), store: f.store, kind: f.kind, ip: f.ip.trim(), start: f.start, end: f.end, host: f.host.trim(), note: f.note.trim(), cats: ((document.getElementById('ipCats') || {}).value || '').split(',').map(x => x.trim()).filter(Boolean) }; const i = L.findIndex(x => x.id === r.id); i >= 0 ? (L[i] = r) : L.push(r); S.ui.drawer = null; S.ui.ipForm = null; await saveIpPlan(L); toast('IP 일정을 저장했습니다'); return; }
     if (t.id === 'ipDel') { const id = S.ui.ipForm.id; if (!S.ui.ipDelAsk) { S.ui.ipDelAsk = true; t.textContent = '한 번 더 누르면 지웁니다'; return; } S.ui.ipDelAsk = false; S.ui.drawer = null; S.ui.ipForm = null; await saveIpPlan(ipPlan().filter(x => x.id !== id).map(({ _lane, ...r }) => r)); toast('일정을 지웠습니다'); return; }
     if (t.id === 'plSave') { await savePlace(); return; }
     if (t.id === 'linkGo') { readLink($('#linkIn').value.trim()); return; }
     if (t.id === 'impCancel') { S.ui.imp = null; render(); return; }
-    if (t.id === 'impUse') { S.ui.entry.file = S.ui.imp.src; for (const r of S.ui.imp.rows) if (r.pid && r.qty > 0) addLine(r.pid, r.qty, r.dup ? `파일 ${r.dup}줄과 같은 상품 — 수량 합침` : null); S.ui.imp = null; S.ui.entry.mode = 'hand'; render(); return; }
+    if (d.dupm) { S.ui.imp.dupMode = d.dupm; render(); return; }
+    if (t.id === 'mapRe' || t.id === 'mapSave') { const im = S.ui.imp; const m = readMapUI(); if (m.qty == null || (m.name == null && m.barcode == null && m.sku == null)) { toast('상품명(또는 바코드·품번)과 수량 칸을 골라 주세요'); return; }
+      if (t.id === 'mapSave') { await saveImportMap(im.det.sig, { map: m, sample: im.det.H.filter(Boolean).slice(0, 8), by: S.user.name, at: new Date().toISOString() }); }
+      importRows(im.raw, im.src, { a: im.det.a, r: im.det.r, map: m }); if (t.id === 'mapSave') S.ui.imp.det.how = 'saved'; render(); if (t.id === 'mapSave') toast('이 양식을 기억했습니다 — 같은 제목 줄 파일은 다음부터 자동'); return; }
+    if (d.cbst) { S.ui.cb = { store: d.cbst }; render(); return; }
+    if (t.id === 'impUse') { S.ui.entry.file = S.ui.imp.src; for (const r of S.ui.imp.rows) if (r.pid && r.qty > 0 && !(r.dup && S.ui.imp.dupMode === 'first')) addLine(r.pid, r.qty, r.dup ? `파일 ${r.dup}줄과 같은 상품 — 수량 합침` : null); S.ui.imp = null; S.ui.entry.mode = 'hand'; render(); return; }
     if (t.id === 'cSave') { await saveCount(); S.ui.cntMsg = null; return; }
     if (t.id === 'cntTpl') { countTemplate(); return; }
     if (t.id === 'cntFile') { pickFile('.xlsx,.xls,.csv', f => fileRows(f).then(x => countApply(x.rows, x.src)).catch(e => { S.ui.cntMsg = { bad: true, html: '🔺 ' + esc(e.message) }; render(); })); return; }
@@ -2410,6 +2637,8 @@ function bind() {
       h.value = `${y}-${String(m).padStart(2, '0')}-${String(dd).padStart(2, '0')}`;
       onChange({ target: h }); return;
     }
+    if (t.id === 'cbPlan') { const r = ipPlan().find(x => x.id === t.value); if (r) S.ui.cb = { store: r.store, id: r.id, a: r.start, b: r.end }; render(); return; }
+    if (t.id === 'cba' || t.id === 'cbb') { S.ui.cb[t.id === 'cba' ? 'a' : 'b'] = t.value; if (S.ui.cb.b < S.ui.cb.a) S.ui.cb.b = S.ui.cb.a; render(); return; }
     if (t.id === 'roleSel') { setUser(S.users.find(u => u.uid === t.value)); render(); return; }
     if (d.sc) { const on = t.checked; let s = S.stores.filter(x => x !== d.sc); if (on) s.push(d.sc); if (!s.length) s = [d.sc]; S.stores = STORES.map(x => x.id).filter(x => s.includes(x)); S.sumStores = null; S.ui.range = null; render(); return; }
     if (t.id === 'pip') { S.ui.ip = t.value; render(); return; }

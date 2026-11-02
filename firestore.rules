@@ -88,6 +88,12 @@ service cloud.firestore {
       allow delete: if perm('approve') || isOwner();
     }
 
+    // 파일 양식 기억 (머리글 모양 → 열 매핑). 상품·수량 자료가 아니라 열 번호만 저장
+    match /importMaps/{id} {
+      allow read: if active() && !limitedUser();
+      allow write: if (perm('move') || perm('count') || perm('approve')) && request.resource.data.keys().hasOnly(['sig', 'map', 'sample', 'by', 'at']);
+    }
+
     // 창고 보관 수량
     match /warehouse/{doc} { allow read: if active() && !limitedUser(); allow write: if perm('move'); }
 

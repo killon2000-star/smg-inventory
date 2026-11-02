@@ -1,6 +1,7 @@
 /* SMG 재고관리 — Firebase 연결 (실제 앱에서만 불러옵니다) */
 window.SMG_FIREBASE = function (S, X) {
   'use strict';
+  const sigId = s => { let h = 5381; for (let i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) >>> 0; return 'm' + h.toString(36) + '_' + s.length; };
   const fb = window.firebase;
   fb.initializeApp(window.SMG_CONFIG);
   const auth = fb.auth(), db = fb.firestore();
@@ -55,6 +56,7 @@ window.SMG_FIREBASE = function (S, X) {
     if (cfg && cfg.exists && cfg.data().stores) cfg.data().stores.forEach(s => { if (!X.STORES.find(x => x.id === s.id)) X.STORES.push(s); });   // 코드 목록 + 관리 화면에서 추가한 매장
     unsub.push(db.collection('config').doc('notice').onSnapshot(d => { S.notice = d.exists ? d.data() : null; X.render(); }, () => { }));
     unsub.push(db.collection('config').doc('app').onSnapshot(d => { const x = d.exists ? d.data() : {}; if (x.ipPlan) { S.ipPlan = x.ipPlan; S.ipPlanAt = x.ipPlanAt || ''; } X.render(); }, () => { }));
+    db.collection('importMaps').get().then(q => { q.docs.forEach(d => { const x = d.data(); if (x.sig) S.maps[x.sig] = x; }); }).catch(() => { });
     unsub.push(db.collection('products').onSnapshot(q => { S.products = q.docs.map(d => d.data()); X.indexProducts(); X.render(); }));
     for (const st of mine) {
       unsub.push(db.collection('stores').doc(st).onSnapshot(d => { S.stock[st] = (d.exists && d.data().q) || {}; X.render(); }, () => { }));
@@ -126,6 +128,8 @@ window.SMG_FIREBASE = function (S, X) {
     async deleteUser(uid) { await db.collection('users').doc(uid).delete(); },
     async saveNotice(n) { await db.collection('config').doc('notice').set(n); },
     async saveIpPlan(list, at) { await db.collection('config').doc('app').set({ ipPlan: list, ipPlanAt: at }, { merge: true }); },
+    // 파일 양식(머리글 모양) 기억: importMaps/{서명 해시}
+    async saveImportMap(sig, m) { await db.collection('importMaps').doc(sigId(sig)).set({ sig, ...m }); },
     async saveZip(pw) { await db.collection('config').doc('zip').set({ pw }, { merge: true }); },
     async saveProduct(p) { await db.collection('products').doc(key(p.id)).set(p, { merge: true }); },
     async apply(f) {
