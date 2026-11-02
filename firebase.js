@@ -121,6 +121,7 @@ window.SMG_FIREBASE = function (S, X) {
     async saveInbound(ib) { await db.collection('inbounds').doc(ib.id).set(JSON.parse(JSON.stringify(ib))); },
     async saveSettleRules(r) { await db.collection('settle').doc('_rules').set(r); },
     async savePlace(p) { await db.collection('places').doc(p.id).set(p); },
+    async saveMe(upd) { await db.collection('users').doc(S.user.uid).update({ ...upd, updatedAt: ts(), updatedBy: upd.name }); return true; },
     async saveStoreOrder(order) { await db.collection('users').doc(S.user.uid).update({ storeOrder: order }); },
     async deleteUser(uid) { await db.collection('users').doc(uid).delete(); },
     async saveNotice(n) { await db.collection('config').doc('notice').set(n); },

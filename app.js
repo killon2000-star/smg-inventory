@@ -40,7 +40,7 @@ const PERM_DEF = [
 ];
 
 const DEFAULT_ORDER = STORES.map(s => s.id);
-const APP_VERSION = '2026-11-02 12:40';   // 앱 화면을 마지막으로 고친 시각 (한국 시간)
+const APP_VERSION = '2026-11-02 13:20';   // 앱 화면을 마지막으로 고친 시각 (한국 시간)
 /* ───────── 작은 도구 ───────── */
 const $ = (s, el = document) => el.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -145,8 +145,10 @@ const DEMO_ROLES = [
 let DB = DemoBackend;
 // 누가 올렸는지: 모든 기록에 이름(by)과 회사(co)를 함께 남김 (대표 지시 2026-11-01: 매출·재고 파일 모두 회사와 이름 확인)
 const userCo = u => !u ? '' : (u.company === '기타(직접 입력)' ? (u.companyOther || '기타') : (u.company || (u.owner ? '온인터내셔널' : '')));
-const whoText = (by, co) => by ? `${by}${co ? ` (${co})` : ''}` : '';
-function stampMoves(list, file) { for (const m of list) { if (!m.co) m.co = userCo(S.user); if (m.by === '자동(POS)') m.upBy = S.user ? S.user.name : ''; if (file && !m.file) m.file = file; } return list; }
+// 이름이 바뀐 사람(예: 영어 이름 → 실명)도 지금 이름·직급으로 보여 줌
+const akaUser = (by, co) => [S.user, ...(S.users || [])].filter(Boolean).find(x => (x.name === by || (x.aka || []).includes(by)) && (!co || userCo(x) === co));
+const whoText = (by, co) => { if (!by) return ''; const u = akaUser(by, co); return u ? `${u.name}${u.position ? ' ' + u.position : ''} (${userCo(u) || co || ''})` : `${by}${co ? ` (${co})` : ''}`; };
+function stampMoves(list, file) { for (const m of list) { if (!m.co) m.co = userCo(S.user); if (S.user && !m.uid) m.uid = S.user.uid; if (m.by === '자동(POS)') m.upBy = S.user ? S.user.name : ''; if (file && !m.file) m.file = file; } return list; }
 
 /* ───────── 색인 ───────── */
 function indexProducts() {
@@ -205,6 +207,7 @@ const NAV = [
   { id: 'inbound', t: '입고 확인', show: () => can('move') },
   { id: 'transfer', t: '매장 이동', show: () => can('move') },
   { id: 'records', t: '기록', show: () => !limited() },
+  { id: 'files', t: '파일 이력', show: () => !limited() && (can('approve') || can('sales') || can('move')) },
   { id: 'sales', t: '매출', grp: '관리자', show: () => can('sales') },
   { id: 'settle', t: '정산', show: () => canSettle() },
   { id: 'admin', t: '관리', show: () => can('approve') || isOwner() },
@@ -251,7 +254,7 @@ function render() {
       <span class="nm">${esc(sv)}</span><span class="car"></span>
     </button>
     ${noticeBar()}
-    ${S.mode === 'demo' ? '' : `<div class="who"><span class="nmx">${esc(S.user.name)} · ${esc(S.user.position)}</span><button class="btn sm" id="logout">로그아웃</button></div>`}
+    <div class="who"><button class="me-btn" id="meBtn" title="내 정보" aria-label="내 정보 · ${esc(S.user.name)}"><span class="me1"><b>${esc(S.user.name)}</b> ${esc(S.user.position || '')}</span><span class="me2">${esc(meLine(S.user))}</span></button>${S.mode === 'demo' ? '' : '<button class="btn sm" id="logout">로그아웃</button>'}</div>
   </header>
   ${S.mode === 'demo' ? `<div class="demobar"><span class="demo-tag">미리보기</span><label for="roleSel">권한별로 보기</label><select id="roleSel">${DEMO_ROLES.map(r => `<option value="${r.uid}" ${S.user.uid === r.uid ? 'selected' : ''}>${esc(r.label)}</option>`).join('')}</select><span class="muted hide-s">수원 실제 자료 · 저장한 내용은 새로고침하면 처음 상태로 돌아갑니다</span></div>` : ''}
   ${S.stores.length > 1 ? `<div class="storebar" aria-label="보고 있는 매장"><span class="lb">보고 있는 매장</span>${S.stores.map(id => `<button class="schip" data-sg="${id}" title="${esc(storeName(id))}만 보기"><span class="dot" style="background:${storeColor(id)}"></span>${esc(storeName(id))}</button>`).join('')}<button class="schip more" id="storeBtn2">바꾸기</button></div>` : ''}
@@ -278,7 +281,7 @@ function render() {
   if (tw && tt && tw.scrollWidth > tw.clientWidth && !tw.dataset.sc) { tw.scrollLeft = Math.max(0, tt.offsetLeft - 108 - tw.clientWidth * 0.2); tw.dataset.sc = 1; }
 }
 // 아래 메뉴: 권한 있는 메뉴를 모두 보여 줌 (6개 넘으면 두 줄)
-const TAB = { home: ['홈', 'home'], ipnow: ['IP현황', 'star'], products: ['상품', 'box'], entry: ['입출고', 'plus'], count: ['실사', 'check'], inbound: ['입고확인', 'truck'], transfer: ['매장이동', 'swap'], records: ['기록', 'list'], sales: ['매출', 'chart'], settle: ['정산', 'won'], admin: ['관리', 'user'], more: ['설정', 'gear'] };
+const TAB = { home: ['홈', 'home'], ipnow: ['IP현황', 'star'], products: ['상품', 'box'], entry: ['입출고', 'plus'], count: ['실사', 'check'], inbound: ['입고확인', 'truck'], transfer: ['매장이동', 'swap'], records: ['기록', 'list'], files: ['파일', 'list'], sales: ['매출', 'chart'], settle: ['정산', 'won'], admin: ['관리', 'user'], more: ['설정', 'gear'] };
 function tabbar(nav) {
   const pendingN = can('approve') ? S.users.filter(u => u.status === 'pending').length : 0;
   const out = [...nav.map(n => n.id), 'more'];
@@ -388,6 +391,7 @@ function pageView() {
     case 'count': return countView();
     case 'transfer': return transferView();
     case 'records': return recordsView();
+    case 'files': return filesView();
     case 'inbound': return inboundView();
     case 'sales': return salesView();
     case 'settle': return settleView();
@@ -640,6 +644,99 @@ function homeView() {
   </div>`;
 }
 
+/* ───────── 내 정보 (상단 이름 누르면) ───────── */
+function placesOf(u) { const p = (u.places || []).filter(Boolean); if (p.length) return p.join(', '); const st = (u.perms && u.perms.stores) || []; return st.map(shortName).join(', '); }
+function meLine(u) { return [userCo(u), placesOf(u)].filter(Boolean).join(' · '); }
+function meDrawer() {
+  const u = S.user, f = S.ui.meF; const noReal = /^[A-Za-z .]+$/.test(u.name || '');
+  const st = u.owner ? '전체 매장' : ((u.perms && u.perms.stores) || []).map(storeName).join(', ') || '-';
+  const pm = u.owner ? '모든 권한 (대표)' : [u.perms && u.perms.move && '입출고', u.perms && u.perms.count && '실사', u.perms && u.perms.sales && '매출', u.perms && u.perms.approve && '승인'].filter(Boolean).join(' · ') || '재고 보기';
+  return `<div class="hd"><div><div class="muted" style="font-size:12px">로그인한 계정</div><h3>내 정보</h3></div><button class="x" data-close aria-label="닫기">×</button></div>
+  ${noReal ? '<div class="note">🔸 이름이 영어로만 되어 있습니다. 파일 이력과 기록에 누가 올렸는지 바로 알 수 있도록 실명을 넣어 주세요.</div>' : ''}
+  <div class="card" style="display:flex;flex-direction:column;gap:12px">
+    <div class="field"><label for="meName">이름 (실명)</label><input class="inp" id="meName" value="${esc(f.name)}" placeholder="예: 홍길동"></div>
+    <div class="field"><label for="mePhone">휴대폰 (선택)</label><input class="inp" id="mePhone" inputmode="tel" value="${esc(f.phone)}"></div>
+    <div class="row" style="justify-content:flex-end"><button class="btn pri" id="meSave">저장</button></div>
+  </div>
+  <div class="card"><dl class="kv"><dt>이메일</dt><dd>${esc(u.email || '-')}</dd><dt>소속 회사</dt><dd>${esc(userCo(u) || '-')}</dd><dt>직급</dt><dd>${esc(u.position || '-')}</dd><dt>근무 매장</dt><dd>${esc(placesOf(u) || '-')}</dd><dt>볼 수 있는 매장</dt><dd>${esc(st)}</dd><dt>권한</dt><dd>${esc(pm)}</dd></dl>
+  <p class="muted" style="margin:10px 0 0;font-size:12.5px">회사·직급·매장·권한은 관리 화면에서 승인 권한자가 바꿉니다.</p></div>`;
+}
+async function saveMe() {
+  const f = S.ui.meF; const nm = (($('#meName') || {}).value || f.name).trim(), ph = (($('#mePhone') || {}).value || f.phone).trim();
+  if (!nm) { alertBox('이름을 넣어 주세요.'); return; }
+  const aka = [...new Set([...(S.user.aka || []), ...(S.user.name && S.user.name !== nm ? [S.user.name] : [])])];
+  const upd = { name: nm, phone: ph, aka };
+  try { if (DB.saveMe) await DB.saveMe(upd); } catch (e) { alertBox('저장하지 못했습니다: ' + e.message); return; }
+  Object.assign(S.user, upd); const su = (S.users || []).find(x => x.uid === S.user.uid); if (su) Object.assign(su, upd);
+  S.ui.drawer = null; toast('내 정보를 저장했습니다');
+}
+// 기록에 남은 이름 → 지금 이름 (예전에 영어 이름으로 올린 기록도 실명으로 보이게)
+function whoNow(by, uid, co) {
+  if (!by && !uid) return '';
+  if (by === '자동(POS)') by = '';
+  const pool = [S.user, ...(S.users || [])].filter(Boolean);
+  let u = uid && pool.find(x => x.uid === uid);
+  if (!u && by) u = pool.find(x => (x.aka || []).includes(by) && (!co || userCo(x) === co));
+  if (u) return `${u.name}${u.position ? ' ' + u.position : ''} (${userCo(u) || co || ''})`;
+  if (/claude/i.test(by || '')) return '처음 자료 입력';
+  return whoText(by, co);
+}
+
+/* ───────── 파일 이력: 올린 파일 전부 · 누가 올렸는지 ───────── */
+const FK = { pos: '토스포스 매출', mach: '기계 매출', in: '입고 파일', plan: '입고 예정 리스트', act: '실제 입고 수량', count: '실사 파일', move: '입출고 파일' };
+function fileHistory(stores) {
+  const G = new Map();
+  const add = (key, o) => { const g = G.get(key); if (!g) { G.set(key, { n: 0, amt: 0, d1: '', d2: '', ...o }); return G.get(key); } if (o.at && (!g.at || o.at < g.at)) g.at = o.at; return g; };
+  const span = (g, d) => { if (!d) return; if (!g.d1 || d < g.d1) g.d1 = d; if (!g.d2 || d > g.d2) g.d2 = d; };
+  const sales = can('sales');
+  for (const st of stores) for (const [ym, mon] of Object.entries(S.sales[st] || {})) {
+    if (sales) for (const [dd, r] of Object.entries(mon.days || {})) { const u = r.up; if (!u) continue; const g = add(`pos|${st}|${u.file}|${(u.at || '').slice(0, 16)}`, { k: 'pos', st, file: u.file || '(파일 이름 없음)', at: u.at, by: u.by, co: u.co, uid: u.uid }); g.n++; g.amt += r.s || 0; span(g, ym + '-' + dd); }
+    if (sales) for (const m of Object.values(mon.mach || {})) { const u = m.up; if (!u) continue; const g = add(`mach|${st}|${u.file}|${(u.at || '').slice(0, 16)}`, { k: 'mach', st, file: u.file || '(파일 이름 없음)', at: u.at, by: u.by, co: u.co, uid: u.uid, mach: new Set() }); g.mach.add(m.name); for (const [dd, v] of Object.entries(m.days || {})) { g.amt += v[0] || 0; span(g, ym + '-' + dd); } }
+  }
+  for (const m of S.moves) {
+    if (!m.file || !stores.includes(m.store)) continue;
+    const pos = m.type === '판매' && m.by === '자동(POS)';
+    const k = pos ? 'pos' : m.type === COUNT_TYPE ? 'count' : m.type === '입고' ? 'in' : 'move';
+    if (pos) { // 같은 매출 파일의 재고 차감은 매출 줄에 붙임
+      let g = [...G.values()].find(x => x.k === 'pos' && x.st === m.store && x.file === m.file);
+      if (!g) g = add(`pos|${m.store}|${m.file}`, { k: 'pos', st: m.store, file: m.file, at: m.at, by: m.upBy || '', co: m.co, uid: m.uid, onlyStock: true });
+      g.ded = (g.ded || 0) + 1; if (g.onlyStock) span(g, m.date); continue;
+    }
+    const g = add(`${k}|${m.store}|${m.file}|${(m.at || '').slice(0, 13)}|${m.by}`, { k, st: m.store, file: m.file, at: m.at, by: m.by, co: m.co, uid: m.uid }); g.n++; g.q = (g.q || 0) + Math.abs(m.qty); span(g, m.date);
+  }
+  for (const ib of S.inbounds || []) {
+    if (!stores.includes(ib.store)) continue;
+    if (ib.src) { const g = add(`plan|${ib.id}`, { k: 'plan', st: ib.store, file: ib.src, at: ib.at, by: ib.by, co: ib.co, uid: ib.uid }); g.n = (ib.items || []).length; g.q = (ib.items || []).reduce((a, x) => a + (x.plan || x.qty || 0), 0); span(g, ib.date); }
+    if (ib.actSrc) { const g = add(`act|${ib.id}`, { k: 'act', st: ib.store, file: ib.actSrc, at: ib.actAt || ib.at, by: ib.actBy, co: ib.actCo, uid: ib.actUid }); g.n = (ib.items || []).length; span(g, ib.date); }
+  }
+  return [...G.values()].sort((a, b) => (b.at || '').localeCompare(a.at || ''));
+}
+function filesView() {
+  const st = S.stores, all = fileHistory(st), multi = st.length > 1;
+  const fk = S.ui.fk || '', q = norm(S.ui.fq || ''), who = S.ui.fwho || '';
+  const whoOf = r => whoNow(r.by, r.uid, r.co) || '-';
+  const people = [...new Set(all.map(whoOf))].sort((a, b) => a.localeCompare(b, 'ko'));
+  let L = all.filter(r => (!fk || r.k === fk) && (!who || whoOf(r) === who) && (!q || norm(r.file).includes(q)));
+  const kinds = Object.keys(FK).filter(k => all.some(r => r.k === k));
+  const desc = r => {
+    const per = r.d1 ? (r.d1 === r.d2 ? md(r.d1) : `${md(r.d1)}~${md(r.d2)}`) : '';
+    if (r.k === 'pos') return r.onlyStock ? `${per} 재고 차감 ${fmt(r.ded)}줄` : `${per} ${fmt(r.n)}일 · ${man(r.amt)}${r.ded ? ` · 재고 차감 ${fmt(r.ded)}줄` : ''}`;
+    if (r.k === 'mach') return `${[...r.mach].join(', ')} · ${per} · ${man(r.amt)}`;
+    if (r.k === 'plan') return `${per} 입고 예정 · ${fmt(r.n)}종 ${r.q ? fmt(r.q) + '개' : ''}`;
+    if (r.k === 'act') return `${per} 입고분 · ${fmt(r.n)}종 대조`;
+    return `${per} · ${fmt(r.n)}종 ${r.q ? fmt(r.q) + '개' : ''}`;
+  };
+  const kst16 = a => a ? kst(a) : '-';
+  return `${head('파일 이력', `올린 파일 ${fmt(all.length)}건 · 매출·재고·입고·실사 파일을 누가 언제 올렸는지 모아 봅니다${can('sales') ? '' : ' (매출 파일은 매출 권한자만 보입니다)'}`)}
+  <div class="card" style="display:flex;flex-direction:column;gap:10px">
+    <div class="chips"><button class="chip ${!fk ? 'on' : ''}" data-fk="">전체 ${fmt(all.length)}</button>${kinds.map(k => `<button class="chip ${fk === k ? 'on' : ''}" data-fk="${k}">${FK[k]} ${fmt(all.filter(r => r.k === k).length)}</button>`).join('')}</div>
+    <div class="formgrid"><div class="field"><label for="fq">파일 이름 찾기</label><input class="inp" id="fq" value="${esc(S.ui.fq || '')}" placeholder="예: 매출리포트"></div>
+    <div class="field"><label for="fwho">올린 사람</label><select class="inp" id="fwho"><option value="">전체</option>${people.map(p => `<option ${who === p ? 'selected' : ''}>${esc(p)}</option>`).join('')}</select></div></div>
+  </div>
+  <div class="card"><h2>${fk ? FK[fk] : '전체'} <span class="r">${fmt(L.length)}건</span></h2>${L.length ? `<div class="tw"><table class="tb flist"><thead><tr><th>올린 시각</th><th>종류</th><th>파일</th>${multi ? '<th>매장</th>' : ''}<th>올린 사람</th></tr></thead><tbody>
+    ${L.map(r => `<tr><td class="nowrap">${kst16(r.at)}</td><td class="nowrap"><span class="pill ${r.k === 'pos' || r.k === 'mach' ? 'p-info' : r.k === 'count' ? 'p-warn' : 'p-ok'}">${FK[r.k]}</span></td><td class="fnm"><span class="fn">📎 ${esc(r.file)}</span><span class="muted fd">${esc(desc(r))}</span></td>${multi ? `<td class="nowrap">${sdot(r.st)}${esc(shortName(r.st))}</td>` : ''}<td class="fwho"><b>${esc(whoOf(r))}</b></td></tr>`).join('')}
+  </tbody></table></div>` : '<div class="empty">올린 파일이 없습니다</div>'}</div>`;
+}
 /* ───────── 홈 칸 상세 (현재 재고 · 품절 · 마이너스) ───────── */
 // 판매 기록(POS)으로 상품별 최근 판매 수량과 마지막 판매일을 셉니다
 function saleStats(stores, ref) {
@@ -985,7 +1082,7 @@ function ibDetailView(ib) {
   </div>`;
 }
 function ibApplyActual(ib, rows, src) {
-  ib.actSrc = src; ib.actBy = S.user ? S.user.name : ''; ib.actCo = userCo(S.user);
+  ib.actSrc = src; ib.actBy = S.user ? S.user.name : ''; ib.actCo = userCo(S.user); ib.actAt = new Date().toISOString(); ib.actUid = S.user ? S.user.uid : '';
   const byKey = {}; ib.items.forEach((x, i) => { byKey[x.key] = i; });
   let matched = 0, extra = 0;
   const add = {}; for (const r of rows) { if (!(r.qty >= 0) || r.qty === null) continue; const k = itemKey(r); add[k] = (add[k] || { r, q: 0 }); add[k].q += r.qty; }
@@ -1525,7 +1622,7 @@ function machDrawer() {
     <div class="row" style="justify-content:flex-end;margin-top:10px"><button class="btn pri" id="machSave">기계 매출 저장</button></div></div>` : ''}` : ''}`;
 }
 async function saveMach() {
-  const pv = S.ui.machPv; const st = pv.store; const up = { at: new Date().toISOString(), by: S.user.name, co: userCo(S.user), file: pv.files.join(', ') };
+  const pv = S.ui.machPv; const st = pv.store; const up = { at: new Date().toISOString(), by: S.user.name, co: userCo(S.user), uid: S.user.uid, file: pv.files.join(', ') };
   for (const m of pv.mach) {
     const id = 'm' + m.no.replace(/\W/g, ''); const byM = {};
     for (const [d, v] of Object.entries(m.days)) (byM[d.slice(0, 7)] ||= {})[d.slice(8)] = v;
@@ -1728,7 +1825,7 @@ async function savePos() {
   const pv = S.ui.posPreview; const st = pv.store;
   for (const d of pv.days) {
     const ip = {}, pr = {}; for (const x of d.L) { const a = ip[x.ip] ||= [0, 0]; a[0] += x.q; a[1] += x.s; const b = pr[x.name] ||= [0, 0, x.ip]; b[0] += x.q; b[1] += x.s; }
-    const rec = { s: d.s, p: d.p, q: d.q, ip, pr, up: { at: new Date().toISOString(), by: S.user.name, co: userCo(S.user), file: pv.file || '' } };
+    const rec = { s: d.s, p: d.p, q: d.q, ip, pr, up: { at: new Date().toISOString(), by: S.user.name, co: userCo(S.user), uid: S.user.uid, file: pv.file || '' } };
     await DB.saveSalesDay(st, d.date, rec);
     ((S.sales[st] ||= {})[d.date.slice(0, 7)] ||= { days: {} }).days[d.date.slice(8)] = rec;
   }
@@ -2171,6 +2268,9 @@ function bind() {
     if (t.id === 'confirmOk') { const f = S.ui.confirm; S.ui.drawer = null; S.ui.confirm = null; await f(); render(); return; }
     if (t.id === 'addStore') { alertBox('매장 추가는 실제 앱에서 저장됩니다. 미리보기에서는 4곳 고정입니다.'); return; }
     if (t.id === 'logout') { FB.signOut(); return; }
+    if (t.id === 'meBtn') { S.ui.meF = { name: S.user.name || '', phone: S.user.phone || '' }; S.ui.drawer = meDrawer; render(); return; }
+    if (t.id === 'meSave') { await saveMe(); return; }
+    if (d.fk != null) { S.ui.fk = d.fk; render(); return; }
   };
   app.onchange = ev => { inChange = true; try { onChange(ev); } finally { inChange = false; } };
   const onChange = ev => {
@@ -2215,6 +2315,8 @@ function bind() {
     if (d.pp) { const [id, k] = d.pp.split(':'); S.ui.draft[id][k] = t.checked; return; }
     if (d.zpw) { S.zipPw[d.zpw] = t.value; if (DB.saveZip) DB.saveZip(S.zipPw).then(() => toast('비밀번호를 저장했습니다')); else render(); return; }
   };
+  const fq = $('#fq'); if (fq) fq.oninput = debounce(() => { S.ui.fq = fq.value; rerenderKeep('#fq'); });
+  const fw = $('#fwho'); if (fw) fw.onchange = () => { S.ui.fwho = fw.value; render(); };
   const pq = $('#pq'); if (pq) pq.oninput = debounce(() => { S.ui.q = pq.value; rerenderKeep('#pq'); });
   const cq = $('#cq'); if (cq) cq.oninput = debounce(() => { S.ui.countQ = cq.value; rerenderKeep('#cq'); });
   const rq = $('#rq'); if (rq) rq.oninput = debounce(() => { S.ui.recQ = rq.value; rerenderKeep('#rq'); });

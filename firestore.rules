@@ -41,9 +41,9 @@ service cloud.firestore {
         && (resource.data.company != '기타(직접 입력)' || request.resource.data.get('limited', false) == true)
         && settleOf(request.resource.data) == settleOf(resource.data);
       allow update: if isOwner();
-      // 본인: 매장 표시 순서만 바꿀 수 있음
+      // 본인: 매장 표시 순서, 내 정보(실명·휴대폰)만 바꿀 수 있음
       allow update: if active() && request.auth.uid == uid
-        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['storeOrder']);
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['storeOrder', 'name', 'phone', 'aka', 'updatedAt', 'updatedBy']);
       allow delete: if perm('approve') && resource.data.status == 'pending';
     }
 
