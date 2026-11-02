@@ -53,7 +53,14 @@ const pct = (a, b) => b ? ((a / b - 1) * 100) : null;
 const today = () => new Date(Date.now() + 9 * 3600e3).toISOString().slice(0, 10);
 const WD = ['일', '월', '화', '수', '목', '금', '토'];
 const wd = d => WD[new Date(d + 'T00:00:00Z').getUTCDay()];
-const md = d => d.slice(5).replace('-', '/');
+// 날짜 표시는 모두 여기서 (대표 지시 11/3): 2026.10.15(목) · 범위는 fr(a,b) = '2026.10.15(목) ~ 2026.11.24(화)'
+const fd = d => d ? `${d.slice(0, 4)}.${d.slice(5, 7)}.${d.slice(8, 10)}(${wd(d.slice(0, 10))})` : '';
+const fr = (a, b) => `${fd(a)} ~ ${fd(b)}`;
+const fm = ym => `${ym.slice(0, 4)}.${ym.slice(5, 7)}`;   // 2026.01
+const mdc = d => `${d.slice(5, 7)}.${d.slice(8, 10)}`;     // 그래프 축 전용 (제목에 연도 표시)
+const md = fd;
+// '2026-10-30 09:12' 같은 글자 → '2026.10.30(금) 09:12'
+const fdt = s => /^\d{4}-\d{2}-\d{2}/.test(s || '') ? (/T/.test(s) ? kst(s) : fd(s.slice(0, 10)) + s.slice(10)) : (s || '');
 // 'YYYY-MM-DDTHH:mm…' (UTC ISO 또는 날짜만) → '10/30 02:25' 한국 시간
 const kst = iso => { if (!iso) return ''; if (/^\d{4}-\d{2}-\d{2}(T00:00)?$/.test(iso)) return md(iso.slice(0, 10)); const t = new Date(Date.parse(iso) + 9 * 3600e3).toISOString(); return `${md(t.slice(0, 10))} ${t.slice(11, 16)}`; };
 const addDays = (d, n) => new Date(Date.parse(d + 'T00:00:00Z') + n * 864e5).toISOString().slice(0, 10);
@@ -266,7 +273,7 @@ function render() {
     <nav class="side" aria-label="메뉴">
       ${nav.map(n => `${n.grp ? `<div class="grp">${n.grp}</div>` : ''}<button data-nav="${n.id}" class="${S.view === n.id ? 'on' : ''}">${esc(n.t)}${n.id === 'admin' && pendingN && can('approve') ? `<span class="cnt">${pendingN}</span>` : ''}</button>`).join('')}
       <div style="margin:24px 12px 0">${textSizeBox()}</div>
-      <div class="grp" style="margin-top:16px">앱 업데이트 ${APP_VERSION.slice(5).replace('-', '/')}</div>
+      <div class="grp" style="margin-top:16px">앱 업데이트 ${fd(APP_VERSION.slice(0, 10))} ${APP_VERSION.slice(11)}</div>
     </nav>
     <main><div class="page" id="page">${pageView()}</div></main>
   </div>
@@ -445,7 +452,7 @@ function dateSel(id, val) {
   const [y, m, d] = v.split('-').map(Number);
   const y0 = 2025, y1 = Number(today().slice(0, 4)) + 1;
   const last = new Date(Date.UTC(y, m, 0)).getUTCDate();
-  const opt = (a, b, cur, suf) => { let o = ''; for (let i = a; i <= b; i++) o += `<option value="${i}" ${i === cur ? 'selected' : ''}>${i}${suf}</option>`; return o; };
+  const opt = (a, b, cur, suf) => { let o = ''; for (let i = a; i <= b; i++) o += `<option value="${i}" ${i === cur ? 'selected' : ''}>${suf === '년' ? i : String(i).padStart(2, '0')}${suf}</option>`; return o; };
   return `<span class="dsel"><input type="hidden" id="${id}" value="${v}">
     <select class="inp" data-dsel="${id}:y" aria-label="년">${opt(y0, Math.max(y1, y), y, '년')}</select>
     <select class="inp" data-dsel="${id}:m" aria-label="월">${opt(1, 12, m, '월')}</select>
@@ -497,7 +504,7 @@ const IP_PLAN_DEFAULT = [
 const ipPlan = () => (S.ipPlan || IP_PLAN_DEFAULT).slice().sort((a, b) => a.start.localeCompare(b.start));
 const dDiff = (a, b) => Math.round((Date.parse(b) - Date.parse(a)) / 864e5);
 const canIpEdit = () => isOwner() || can('approve');
-const mdw = d => { const t = new Date(d + 'T00:00:00Z'); return `${t.getUTCMonth() + 1}/${t.getUTCDate()}(${'일월화수목금토'[t.getUTCDay()]})`; };
+const mdw = fd;
 function ipStatus(store, t = today()) {
   const L = ipPlan().filter(r => r.store === store);
   return { now: L.filter(r => r.start <= t && t <= r.end), next: L.filter(r => r.start > t).slice(0, 2), last: L.filter(r => r.end < t).slice(-1)[0] };
@@ -530,7 +537,7 @@ function ipTimeline() {
     const n = Math.max(1, lanes.length);
     return `<div class="tlrow" style="height:${n * 30 + 8}px"><div class="tllb"><span class="dot" style="background:${storeColor(s.id)}"></span>${esc(shortName(s.id))}</div><div class="tltrack">
       ${L.map(r => { const l = Math.max(0, pct(r.start)), w = Math.min(100, pct(r.end) + 100 / (W / 864e5)) - l; const on = r.start <= t && t <= r.end;
-        return `<div class="tlbar${on ? ' on' : ''}${r.end < t ? ' past' : ''}" style="left:${l}%;width:${w}%;top:${r._lane * 30 + 4}px;--c:${storeColor(s.id)}" title="${esc(r.ip)} ${r.start}~${r.end}"><span>${esc(r.ip)}</span></div>`; }).join('')}
+        return `<div class="tlbar${on ? ' on' : ''}${r.end < t ? ' past' : ''}" style="left:${l}%;width:${w}%;top:${r._lane * 30 + 4}px;--c:${storeColor(s.id)}" title="${esc(r.ip)} ${fr(r.start, r.end)}"><span>${esc(r.ip)}</span></div>`; }).join('')}
     </div></div>`;
   }).join('');
   return `<div class="card"><h2>앞으로 일정 <span class="muted" style="font-weight:500;font-size:12px">지난달 ~ 4달 뒤 · 빨간 선 = 오늘</span></h2>
@@ -596,10 +603,10 @@ function noticeDrawer() {
   ${edit ? `<div class="card" style="display:flex;flex-direction:column;gap:10px">
       <div class="field"><label for="ntText">공지 내용 <span class="muted" style="font-weight:400">· 첫 줄이 맨 위에 보이고, 누르면 전체가 보입니다</span></label>
       <textarea class="inp" id="ntText" rows="6" style="resize:vertical;min-height:120px" placeholder="예: 11/12(목) 진격의 거인 팝업 오픈 — 전날 18시까지 진열 완료">${esc(n.text || '')}</textarea></div>
-      ${n.at ? `<div class="muted" style="font-size:12px">마지막 수정 ${esc(n.at)}</div>` : ''}
+      ${n.at ? `<div class="muted" style="font-size:12px">마지막 수정 ${esc(fdt(n.at))}</div>` : ''}
     </div>
     <div class="row" style="justify-content:space-between">${n.text ? '<button class="btn" id="ntClear" style="color:var(--red)">공지 내리기</button>' : '<span></span>'}<span class="row"><button class="btn" data-close>취소</button><button class="btn pri" id="ntSave">공지 올리기</button></span></div>`
-  : `<div class="card"><div style="white-space:pre-wrap;line-height:1.6;font-size:15px">${esc(n.text || '등록된 공지가 없습니다')}</div>${n.at ? `<div class="muted" style="font-size:12px;margin-top:10px">${esc(n.at)}</div>` : ''}</div>
+  : `<div class="card"><div style="white-space:pre-wrap;line-height:1.6;font-size:15px">${esc(n.text || '등록된 공지가 없습니다')}</div>${n.at ? `<div class="muted" style="font-size:12px;margin-top:10px">${esc(fdt(n.at))}</div>` : ''}</div>
     <div class="row" style="justify-content:flex-end"><button class="btn pri" data-close>확인</button></div>`}`;
 }
 async function saveNotice(text) {
@@ -638,7 +645,7 @@ function todoBox(st) {
   const V = velocity(ss);
   let neg = 0, low = 0; for (const p of S.products) { const has = st.some(s => (S.stock[s] || {})[p.id] != null); if (!has) continue; const t = st.reduce((a, s) => a + stockOf(s, p.id), 0); if (t < 0) neg++; else if (t > 0 && t <= LOW_QTY && V.v[p.id] > 0 && stockDays(t, V.v[p.id], V.days) <= LOW_DAYS) low++; }
   const it = (ic, lb, v, sub, go, bad) => `<button class="todo ${bad ? 'bad' : ''}" ${go}><span class="ti">${ic}</span><span class="tl">${lb}<small>${sub}</small></span><b class="tv">${v}</b></button>`;
-  return `<div class="card todobox"><h2>오늘 할 일 <span class="r">${today().slice(5).replace('-', '/')}(${wd(today())}) 기준</span></h2><div class="todos">
+  return `<div class="card todobox"><h2>오늘 할 일 <span class="r">${fd(today())} 기준</span></h2><div class="todos">
     ${it('🚚', '받기 확인 안 한 이동', `${pend.length}건`, pend.length ? `${fmt(pendQ)}개 · 가장 오래된 ${md(pend.map(t => t.date).sort()[0])}` : '없음', can('move') ? 'data-nav="transfer"' : '', pend.length)}
     ${it('📦', '확정 안 한 입고', `${ibs.length}건`, ibs.length ? ibs.slice(0, 2).map(x => esc(x.title)).join(', ') : '없음', can('move') ? 'data-nav="inbound"' : '', ibs.length)}
     ${ss.length ? it('🧾', 'POS 매출 마지막 반영', worst && worst.d != null ? (worst.d === 0 ? '오늘' : `${worst.d}일 전`) : '자료 없음', pos.map(x => `${esc(shortName(x.s))} ${x.l ? md(x.l) : '-'}`).join(' · '), can('sales') ? 'data-nav="sales"' : '', worst && (worst.d == null || worst.d > 2)) : ''}
@@ -651,10 +658,10 @@ function ceoKpi(st) {
   if (!K && !can('sales')) return '';
   const tile = (lb, v, unit, d, go = '') => `<button class="tile tbtn kpi" ${go}><span class="lb">${lb}</span><span class="v big${String(v).length > 9 ? ' long' : ''}">${v}<small>${unit}</small></span><span class="d">${d}</span></button>`;
   return `<div class="tiles kpis">
-    ${K ? tile(`${+K.last.slice(5, 7)}월 누적 매출 <span class="go">매출 ›</span>`, fmt(K.cur.s), '원', `${chg(K.ch)} <span class="muted">지난달 같은 기간(${md(K.pm1)}~${md(K.pEnd)}) ${man(K.prev.s)}원</span>`, 'data-nav="sales"') : ''}
+    ${K ? tile(`${+K.last.slice(5, 7)}월 누적 매출 <span class="go">매출 ›</span>`, fmt(K.cur.s), '원', `${chg(K.ch)} <span class="muted">지난달 같은 기간(${md(K.pm1)} ~ ${md(K.pEnd)}) ${man(K.prev.s)}원</span>`, 'data-nav="sales"') : ''}
     ${K ? tile(`${+K.last.slice(5, 7)}월 말 예상`, fmt(Math.round(K.fc / 1000) * 1000), '원', `<span class="muted">${K.n}일간 하루 평균 ${man(K.cur.s / K.n)}원 × ${K.dim}일${K.prevFull.s ? ` · 지난달 ${man(K.prevFull.s)}원` : ''}</span>`, 'data-nav="sales"') : ''}
     ${tile('재고 금액 <span class="go">상품 ›</span>', fmt(SV.t), '원', `<span class="muted">판매가 × 재고 (마이너스 제외)${SV.noPrice ? ` · 가격 없는 ${SV.noPrice}종 빠짐` : ''}</span>`, 'data-nav="products"')}
-  </div>${K ? `<div class="muted" style="font-size:12px;margin-top:-8px">토스포스 매출 ${md(K.last)}(${wd(K.last)})까지 · ${ss.map(shortName).join(', ')}${st.some(isWh) ? ' · 국대출판물류(물류창고)는 매출 합계에서 뺌' : ''} · 목표 설정이 없어 지난달과 비교합니다</div>` : ''}`;
+  </div>${K ? `<div class="muted" style="font-size:12px;margin-top:-8px">토스포스 매출 ${md(K.last)}까지 · ${ss.map(shortName).join(', ')}${st.some(isWh) ? ' · 국대출판물류(물류창고)는 매출 합계에서 뺌' : ''} · 목표 설정이 없어 지난달과 비교합니다</div>` : ''}`;
 }
 // 매출: TOP5·BOTTOM5 (상품·IP) · 매장 순위 · 이번 주 vs 지난 주 한 줄
 function ceoSales(per, sum, stores, a, b) {
@@ -662,15 +669,15 @@ function ceoSales(per, sum, stores, a, b) {
   const P = Object.entries(pr).filter(([, x]) => x.s > 0).sort((x, y) => y[1].s - x[1].s), I = Object.entries(ip).filter(([, x]) => x.s > 0).sort((x, y) => y[1].s - x[1].s);
   const nm = k => esc(k.replace(/^에바30주년팝업_/, ''));
   const list = (L, top, isP) => `<ol class="rk">${L.map(([k, x], i) => `<li><span class="rn">${top ? i + 1 : (isP ? P : I).length - i}</span><span class="rt">${nm(k)}${isP ? `<small>${esc(x.ip || '')}</small>` : ''}</span><span class="rq">${fmt(x.q)}개</span><b class="rv">${fmt(x.s)}</b></li>`).join('')}</ol>`;
-  const tb = (t, L) => L.length < 2 ? '' : `<div class="card"><h2>${t} <span class="r">${md(a)}~${md(b)} · 매출(원)</span></h2><div class="grid2 tb5"><div><div class="tbh up">▲ 잘 팔린 TOP 5</div>${list(L.slice(0, 5), true, L === P)}</div><div><div class="tbh dn">▼ 덜 팔린 BOTTOM 5 <span class="muted">(1개 이상 팔린 것 중)</span></div>${list(L.slice(-5).reverse(), false, L === P)}</div></div></div>`;
+  const tb = (t, L) => L.length < 2 ? '' : `<div class="card"><h2>${t} <span class="r">${md(a)} ~ ${md(b)} · 매출(원)</span></h2><div class="grid2 tb5"><div><div class="tbh up">▲ 잘 팔린 TOP 5</div>${list(L.slice(0, 5), true, L === P)}</div><div><div class="tbh dn">▼ 덜 팔린 BOTTOM 5 <span class="muted">(1개 이상 팔린 것 중)</span></div>${list(L.slice(-5).reverse(), false, L === P)}</div></div></div>`;
   // 이번 주(최근 7일) vs 지난 주
   const last = latestSalesDate(sum); let sent = '';
   if (last) { const w1 = salesSum(sum, addDays(last, -6), last), w0 = salesSum(sum, addDays(last, -13), addDays(last, -7)); const c = w0.s ? pct(w1.s, w0.s) : null;
     const ipW = {}; for (const s of sum) for (let d = addDays(last, -13); d <= last; d = addDays(d, 1)) { const r = dayRec(s, d); if (!r) continue; const cur = d > addDays(last, -7); for (const [k, [, v]] of Object.entries(r.ip || {})) { const x = ipW[k] ||= [0, 0]; x[cur ? 1 : 0] += v; } }
     const best = Object.entries(ipW).sort((x, y) => (y[1][1] - y[1][0]) - (x[1][1] - x[1][0]))[0], worst = Object.entries(ipW).sort((x, y) => (x[1][1] - x[1][0]) - (y[1][1] - y[1][0]))[0];
-    sent = `<div class="card wk"><b>이번 주 한 줄 요약</b> — 최근 7일(${md(addDays(last, -6))}(${wd(addDays(last, -6))})~${md(last)}(${wd(last)})) 매출 <b class="ink">${won(w1.s)}</b>${c == null ? ', 그 전 주 자료가 없습니다.' : `, 지난 주보다 <b class="${c >= 0 ? 'up' : 'dn'}">${Math.abs(c).toFixed(1)}% ${c >= 0 ? '늘었습니다' : '줄었습니다'}</b> (지난 주 ${won(w0.s)}).`}${best && best[1][1] - best[1][0] > 0 ? ` 가장 많이 늘어난 IP는 <b>${esc(best[0])}</b>(+${man(best[1][1] - best[1][0])}원)` : ''}${worst && worst[1][1] - worst[1][0] < 0 ? `, 가장 많이 줄어든 IP는 <b>${esc(worst[0])}</b>(−${man(worst[1][0] - worst[1][1])}원)` : ''}${best || worst ? '입니다.' : ''}</div>`; }
+    sent = `<div class="card wk"><b>이번 주 한 줄 요약</b> — 최근 7일(${md(addDays(last, -6))} ~ ${md(last)}) 매출 <b class="ink">${won(w1.s)}</b>${c == null ? ', 그 전 주 자료가 없습니다.' : `, 지난 주보다 <b class="${c >= 0 ? 'up' : 'dn'}">${Math.abs(c).toFixed(1)}% ${c >= 0 ? '늘었습니다' : '줄었습니다'}</b> (지난 주 ${won(w0.s)}).`}${best && best[1][1] - best[1][0] > 0 ? ` 가장 많이 늘어난 IP는 <b>${esc(best[0])}</b>(+${man(best[1][1] - best[1][0])}원)` : ''}${worst && worst[1][1] - worst[1][0] < 0 ? `, 가장 많이 줄어든 IP는 <b>${esc(worst[0])}</b>(−${man(worst[1][0] - worst[1][1])}원)` : ''}${best || worst ? '입니다.' : ''}</div>`; }
   const R = sum.map(s => [s, per[s].s]).sort((x, y) => y[1] - x[1]), mx = Math.max(1, ...R.map(x => x[1])), tot = R.reduce((t, x) => t + x[1], 0);
-  const rank = sum.length > 1 ? `<div class="card"><h2>매장 순위 <span class="r">${md(a)}~${md(b)} · 매출(원)</span></h2><div class="hb">${R.map(([s, v], i) => `<span class="k"><span class="muted num">${i + 1}</span> ${sdot(s)}${esc(shortName(s))}</span><span class="tr"><i style="width:${v / mx * 100}%;background:${i === 0 ? 'var(--red)' : 'var(--ink-2)'}"></i></span><span class="v">${fmt(v)}<span class="muted" style="font-weight:500"> · ${tot ? (v / tot * 100).toFixed(1) : 0}%</span></span>`).join('')}</div></div>` : '';
+  const rank = sum.length > 1 ? `<div class="card"><h2>매장 순위 <span class="r">${md(a)} ~ ${md(b)} · 매출(원)</span></h2><div class="hb">${R.map(([s, v], i) => `<span class="k"><span class="muted num">${i + 1}</span> ${sdot(s)}${esc(shortName(s))}</span><span class="tr"><i style="width:${v / mx * 100}%;background:${i === 0 ? 'var(--red)' : 'var(--ink-2)'}"></i></span><span class="v">${fmt(v)}<span class="muted" style="font-weight:500"> · ${tot ? (v / tot * 100).toFixed(1) : 0}%</span></span>`).join('')}</div></div>` : '';
   return sent + rank + tb('상품 TOP 5 · BOTTOM 5', P) + tb('IP TOP 5 · BOTTOM 5', I);
 }
 // 콜라보: 일평균 · 지금 속도면 종료일 예상 재고 · 추가 발주/이동 추천 · 지난 콜라보와 비교
@@ -685,18 +692,18 @@ function collabForecast(st, r, a, b, R) {
     return { ...x, lack, src };
   });
   const past = ipPlan().filter(p => p.id !== r.id && p.end < a && myStores().includes(p.store)).map(p => { const d = daysBetween(p.start, p.end) + 1; let s = 0, q = 0, nd = 0; for (let x = p.start; x <= p.end; x = addDays(x, 1)) { const rec = dayRec(p.store, x); if (!rec) continue; nd++; for (const [ip, [qq, ss]] of Object.entries(rec.ip || {})) if (catMatch(p, ip)) { s += ss; q += qq; } } return { p, d, s, q, nd }; }).filter(x => x.s > 0).sort((x, y) => y.p.start.localeCompare(x.p.start)).slice(0, 6);
-  return `<div class="card fc"><h2>지금 속도라면 <span class="r">${md(a)}~${md(end)} ${el}일 실적 기준${left ? ` · 종료까지 ${left}일 남음` : ' · 콜라보 종료'}</span></h2>
+  return `<div class="card fc"><h2>지금 속도라면 <span class="r">${md(a)} ~ ${md(end)} ${el}일 실적 기준${left ? ` · 종료까지 ${left}일 남음` : ' · 콜라보 종료'}</span></h2>
     <div class="tiles">
       <div class="tile"><span class="lb">일평균 매출</span><span class="v big">${fmt(daily)}<small>원</small></span><span class="d muted">하루 ${fmt(soldPerDay)}개 판매</span></div>
-      <div class="tile"><span class="lb">${left ? `종료일 ${md(b)}(${wd(b)}) 예상 매출` : '콜라보 총매출'}</span><span class="v big">${fmt(R.posS + daily * left)}<small>원</small></span><span class="d muted">${left ? `지금까지 ${man(R.posS)}원 + ${left}일 × ${man(daily)}원` : `${el}일 실적`}</span></div>
+      <div class="tile"><span class="lb">${left ? '종료일 예상 매출' : '콜라보 총매출'}</span><span class="v big">${fmt(R.posS + daily * left)}<small>원</small></span><span class="d muted">${left ? `종료 ${md(b)} · 지금까지 ${man(R.posS)}원 + ${left}일 × ${man(daily)}원` : `${el}일 실적`}</span></div>
       <div class="tile ${recs.length ? 'alert' : ''}"><span class="lb">${left ? '종료일 예상 잔여재고' : '남은 재고'}</span><span class="v big">${fmt(left ? exp : R.T.now)}<small>개</small></span><span class="d">${left ? `<span class="muted">지금 ${fmt(R.T.now)}개 − 예상 판매 ${fmt(R.T.now - exp)}개</span>` : '<span class="muted">반품·이동 판단용</span>'}</span></div>
     </div>
     ${recs.length ? `<h2 style="margin-top:14px">추가 발주 · 이동 추천 <span class="r">${recs.length}종 · 품절됐거나 ${left ? '종료 전 품절 예상' : ''}</span></h2><div class="tw"><table><thead><tr><th>상품명</th><th class="n">하루 판매</th><th class="n">현재고</th>${left ? '<th class="n">품절 예상</th>' : ''}<th class="n">필요</th><th>추천</th></tr></thead><tbody>
-      ${recs.slice(0, 12).map(x => `<tr data-pid="${x.pid}" class="click"><td class="nm">${esc(x.p.name.replace(/^에바30주년팝업_/, ''))}</td><td class="n">${x.v.toFixed(1)}</td><td class="n ${x.now <= 0 ? 'qty-neg' : ''}"><b>${fmt(x.now)}</b></td>${left ? `<td class="n nowrap">${x.now <= 0 ? '<span class="pill p-bad">품절</span>' : `${md(addDays(last, Math.floor(x.out)))}(${wd(addDays(last, Math.floor(x.out)))})`}</td>` : ''}<td class="n"><b>${fmt(x.lack)}</b></td><td class="rc nowrap">${x.src.length ? `<span class="pill p-info">이동</span> <span class="nowrap">${esc(shortName(x.src[0][0]))} ${fmt(x.src[0][1])}개</span>` : '<span class="pill p-warn">발주</span>'}</td></tr>`).join('')}</tbody></table></div>${recs.length > 12 ? `<p class="muted" style="font-size:12.5px">급한 순 12종만 보여 줍니다 (전체 ${recs.length}종)</p>` : ''}` : `<div class="note" style="margin-top:10px">✔ ${left ? '지금 속도면 종료일까지 품절될 상품이 없습니다.' : '품절된 상품이 없습니다.'}</div>`}
+      ${recs.slice(0, 12).map(x => `<tr data-pid="${x.pid}" class="click"><td class="nm">${esc(x.p.name.replace(/^에바30주년팝업_/, ''))}</td><td class="n">${x.v.toFixed(1)}</td><td class="n ${x.now <= 0 ? 'qty-neg' : ''}"><b>${fmt(x.now)}</b></td>${left ? `<td class="n nowrap">${x.now <= 0 ? '<span class="pill p-bad">품절</span>' : `${md(addDays(last, Math.floor(x.out)))}`}</td>` : ''}<td class="n"><b>${fmt(x.lack)}</b></td><td class="rc nowrap">${x.src.length ? `<span class="pill p-info">이동</span> <span class="nowrap">${esc(shortName(x.src[0][0]))} ${fmt(x.src[0][1])}개</span>` : '<span class="pill p-warn">발주</span>'}</td></tr>`).join('')}</tbody></table></div>${recs.length > 12 ? `<p class="muted" style="font-size:12.5px">급한 순 12종만 보여 줍니다 (전체 ${recs.length}종)</p>` : ''}` : `<div class="note" style="margin-top:10px">✔ ${left ? '지금 속도면 종료일까지 품절될 상품이 없습니다.' : '품절된 상품이 없습니다.'}</div>`}
     <div class="muted" style="font-size:12px;margin-top:8px">필요 수량 = 하루 판매 × 남은 날 − 현재고${left ? '' : ' (종료 후: 1주일치)'} · 이동 = 내 권한 매장 중 재고가 있는 곳</div>
     ${past.length ? `<h2 style="margin-top:14px">지난 콜라보와 비교 <span class="r">토스포스 IP 매출</span></h2><div class="tw"><table><thead><tr><th>콜라보</th><th class="hide-s">매장</th><th class="n">기간</th><th class="n">매출</th><th class="n">일평균</th></tr></thead><tbody>
       <tr class="sel"><td><b>${esc(r.ip)}</b> <span class="pill p-bad">이번</span></td><td class="hide-s nowrap">${esc(shortName(st))}</td><td class="n">${el}일</td><td class="n"><b>${fmt(R.posS)}</b></td><td class="n"><b>${fmt(daily)}</b></td></tr>
-      ${past.map(x => `<tr><td>${esc(x.p.ip)} <span class="muted" style="font-size:12px">${x.p.start.slice(2).replace(/-/g, '.')}~</span></td><td class="hide-s nowrap">${esc(shortName(x.p.store))}</td><td class="n">${x.nd}일</td><td class="n">${fmt(x.s)}</td><td class="n">${fmt(x.s / (x.nd || 1))} ${chg(pct(daily, x.s / (x.nd || 1)))}</td></tr>`).join('')}</tbody></table></div><div class="muted" style="font-size:12px;margin-top:6px">일평균 옆 ▲▼ = 이번 콜라보가 그 콜라보보다 높거나 낮은 정도 · 기간 = 매출 자료가 있는 날 수</div>` : '<div class="muted" style="font-size:12.5px;margin-top:10px">비교할 지난 콜라보 매출 자료가 없습니다.</div>'}
+      ${past.map(x => `<tr><td>${esc(x.p.ip)} <span class="muted" style="font-size:12px">${fd(x.p.start)} ~</span></td><td class="hide-s nowrap">${esc(shortName(x.p.store))}</td><td class="n">${x.nd}일</td><td class="n">${fmt(x.s)}</td><td class="n">${fmt(x.s / (x.nd || 1))} ${chg(pct(daily, x.s / (x.nd || 1)))}</td></tr>`).join('')}</tbody></table></div><div class="muted" style="font-size:12px;margin-top:6px">일평균 옆 ▲▼ = 이번 콜라보가 그 콜라보보다 높거나 낮은 정도 · 기간 = 매출 자료가 있는 날 수</div>` : '<div class="muted" style="font-size:12.5px;margin-top:10px">비교할 지난 콜라보 매출 자료가 없습니다.</div>'}
   </div>`;
 }
 function homeView() {
@@ -717,7 +724,7 @@ function homeView() {
       const m1 = last.slice(0, 8) + '01'; const posM = st.reduce((a, x) => { let t = 0; for (let d = m1; d <= last; d = addDays(d, 1)) { const r = dayRec(x, d); if (r) t += r.s; } return a + t; }, 0);
       const mEnd = addDays(addDays(m1, 40).slice(0, 8) + '01', -1); const ML = machAgg(st, m1, mEnd);
       const macM = ML.reduce((a, m) => a + m.s, 0), machLast = ML.reduce((a, m) => (m.last > a ? m.last : a), '');
-      salesBlock = `<button class="tile tbtn" data-nav="sales"><span class="lb">${+last.slice(5, 7)}월 총매출 <span class="go">매출 ›</span></span><span class="v big${String(fmt(posM + macM)).length > 9 ? ' long' : ''}">${fmt(posM + macM)}<small>원</small></span><span class="d muted">토스포스 ${md(last)}까지 ${man(posM)} + 기계 ${machLast ? md(machLast) + '까지 ' : ''}${man(macM)}</span></button>` + `<button class="tile tbtn" data-hday="${last}"><span class="lb">매출 · ${md(last)}(${wd(last)}) <span class="go">상세 ›</span></span><span class="v big${String(fmt(s)).length>9?' long':''}">${fmt(s)}<small>원</small></span><span class="d ${ch == null ? 'muted' : ch >= 0 ? '' : ''}">${ch == null ? '지난주 같은 요일 자료 없음' : `${chg(ch)} 지난주 같은 요일 대비`} · ${fmt(p)}건</span></button>`;
+      salesBlock = `<button class="tile tbtn" data-nav="sales"><span class="lb">${+last.slice(5, 7)}월 총매출 <span class="go">매출 ›</span></span><span class="v big${String(fmt(posM + macM)).length > 9 ? ' long' : ''}">${fmt(posM + macM)}<small>원</small></span><span class="d muted">토스포스 ${md(last)}까지 ${man(posM)} + 기계 ${machLast ? md(machLast) + '까지 ' : ''}${man(macM)}</span></button>` + `<button class="tile tbtn" data-hday="${last}"><span class="lb">매출 · ${md(last)} <span class="go">상세 ›</span></span><span class="v big${String(fmt(s)).length>9?' long':''}">${fmt(s)}<small>원</small></span><span class="d ${ch == null ? 'muted' : ch >= 0 ? '' : ''}">${ch == null ? '지난주 같은 요일 자료 없음' : `${chg(ch)} 지난주 같은 요일 대비`} · ${fmt(p)}건</span></button>`;
     } }
   }
   return `${head(multi ? `${st.length}개 매장 요약` : storeName(st[0]), `${freshLine(st) || '아직 반영된 자료가 없습니다'}${limited() ? ' · 재고 수량만 볼 수 있는 계정입니다' : ''}`, installBtn('sm'))}
@@ -819,7 +826,7 @@ function filesView() {
   let L = all.filter(r => (!fk || r.k === fk) && (!who || whoOf(r) === who) && (!q || norm(r.file).includes(q)));
   const kinds = Object.keys(FK).filter(k => all.some(r => r.k === k));
   const desc = r => {
-    const per = r.d1 ? (r.d1 === r.d2 ? md(r.d1) : `${md(r.d1)}~${md(r.d2)}`) : '';
+    const per = r.d1 ? (r.d1 === r.d2 ? md(r.d1) : `${md(r.d1)} ~ ${md(r.d2)}`) : '';
     if (r.k === 'pos') return r.onlyStock ? `${per} 재고 차감 ${fmt(r.ded)}줄` : `${per} ${fmt(r.n)}일 · ${man(r.amt)}${r.ded ? ` · 재고 차감 ${fmt(r.ded)}줄` : ''}`;
     if (r.k === 'mach') return `${[...r.mach].join(', ')} · ${per} · ${man(r.amt)}`;
     if (r.k === 'plan') return `${per} 입고 예정 · ${fmt(r.n)}종 ${r.q ? fmt(r.q) + '개' : ''}`;
@@ -970,7 +977,7 @@ function stockDocMeta(o, n) {
   const ipTxt = !o.ips.length ? 'IP 전체' : o.ips.length <= 4 ? o.ips.join(', ') : `${o.ips.slice(0, 3).join(', ')} 외 ${o.ips.length - 3}개`;
   const stTxt = o.stores.length === myStores().length && o.stores.length > 1 ? '전체 매장' : o.stores.map(shortName).join(', ');
   const isToday = o.date >= today();
-  return { title: `재고 현황 · ${stTxt}`, cond: `${md(o.date)}(${wd(o.date)}) ${isToday ? '현재' : '마감 기준'} · ${ipTxt} · ${f} · ${n}종`, made: kst(new Date().toISOString()), who: whoText(S.user.name, userCo(S.user)), stTxt, ipTxt };
+  return { title: `재고 현황 · ${stTxt}`, cond: `${md(o.date)} ${isToday ? '현재' : '마감 기준'} · ${ipTxt} · ${f} · ${n}종`, made: kst(new Date().toISOString()), who: whoText(S.user.name, userCo(S.user)), stTxt, ipTxt };
 }
 // 상품에 판매가가 없으면 토스포스 판매 기록(매출 ÷ 수량)으로 채움
 function posPriceMap() {
@@ -1013,7 +1020,7 @@ function flowMeta(o, rows, from, to) {
   const M = stockDocMeta(o, rows.length), pd = addDays(from, -1);
   const ipName = o.ips.length === 1 ? o.ips[0] : M.ipTxt;
   return { ...M, pd, title: `${ipName} — 남은 재고 (${md(to)} ${to >= today() ? '현재' : '영업 마감 기준'})`, eyebrow: `${M.stTxt} · 재고 확인`,
-    basis: `기준 자료: ${md(pd)} 마감 재고 + ${md(from)}~${md(to)} 입고·판매·기타(이동·실사 조정) · ${o.stores.length > 1 ? `${o.stores.length}개 매장 합계` : M.stTxt}`,
+    basis: `기준 자료: ${md(pd)} 마감 재고 + ${md(from)} ~ ${md(to)} 입고·판매·기타(이동·실사 조정) · ${o.stores.length > 1 ? `${o.stores.length}개 매장 합계` : M.stTxt}`,
     heads: ['NO.', ...(o.ips.length === 1 ? [] : ['IP']), '상품명', '입고\n~' + md(pd), '판매\n~' + md(pd), '이동·실사·\n기타 ~' + md(pd), '재고\n' + md(pd) + ' 마감', '추가 입고\n' + md(from) + '~' + md(to), '판매\n' + md(from) + '~' + md(to), '이동·실사\n' + md(from) + '~' + md(to), md(to) + '\n남은 재고', '상태', '판매가', '재고 금액\n(판매가×남은 재고)'] };
 }
 function flowNotes(rows, from) {
@@ -1056,7 +1063,7 @@ async function exportFlow(o) {
   for (const c of [C.pin, C.psale, C.poth, C.st, C.inq, C.sale, C.oth, C.t, C.amt]) { const cell = put(TR, c, { f: `SUM(${col(c)}${R0 + 2}:${col(c)}${TR})` }, { font: { ...F, bold: true }, numFmt: '#,##0', border: top, alignment: { horizontal: 'right' }, ...(c === C.t ? { fill: { fgColor: { rgb: 'EEF3FC' } } } : {}) }); const key = Object.keys(C).find(k => C[k] === c); cell.v = rows.reduce((a, r) => a + (key === 'amt' ? Math.max(0, r.t) * priceOf(r.p) : key === 'st' ? r.start : r[{ pin: 'preIn', psale: 'preSale', poth: 'preOth', inq: 'inQ', sale: 'sale', oth: 'oth', t: 't' }[key]]), 0); }
   const N = flowNotes(rows, from); const merges = [];
   N.forEach(([lv, t], i) => { const R = TR + 2 + i; put(R, 0, (lv === 'bad' ? '▲ ' : '◆ ') + t, { font: { ...F, bold: lv === 'bad' }, fill: { fgColor: { rgb: 'E9F0FB' } } }); for (let c = 1; c < nc; c++) put(R, c, '', { fill: { fgColor: { rgb: 'E9F0FB' } } }); merges.push({ s: { r: R, c: 0 }, e: { r: R, c: nc - 1 } }); });
-  const FR = TR + 3 + N.length; put(FR, 0, `기준: ${o.date}(${wd(o.date)}) ${o.date >= today() ? '현재' : '영업 마감'} · 출력 ${M.made} · ${M.who}`, { font: { ...F, sz: 9, color: { rgb: '888888' } } });
+  const FR = TR + 3 + N.length; put(FR, 0, `기준: ${fd(o.date)} ${o.date >= today() ? '현재' : '영업 마감'} · 출력 ${M.made} · ${M.who}`, { font: { ...F, sz: 9, color: { rgb: '888888' } } });
   ws['!ref'] = `A1:${col(nc - 1)}${FR + 1}`; ws['!merges'] = merges;
   ws['!cols'] = [{ wch: 6 }, ...(oneIp ? [] : [{ wch: 16 }]), { wch: 42 }, { wch: 9 }, { wch: 9 }, { wch: 11 }, { wch: 11 }, { wch: 11 }, { wch: 11 }, { wch: 11 }, { wch: 11 }, { wch: 10 }, { wch: 9 }, { wch: 15 }];
   ws['!rows'] = []; ws['!rows'][R0] = { hpt: 34 };
@@ -1085,7 +1092,7 @@ function printFlow(o) {
   ${rows.map((r, i) => `<tr class="${r.t < 0 ? 'a' : r.inQ ? 'b' : ''}"><td class="c">${i + 1}</td>${oneIp ? '' : `<td>${e(r.p.ip)}</td>`}<td>${e(r.p.name)}</td><td class="r">${n(r.preIn)}</td><td class="r">${n(r.preSale)}</td><td class="r">${n(r.preOth)}</td><td class="r">${r.start.toLocaleString()}</td><td class="r">${n(r.inQ)}</td><td class="r">${n(r.sale)}</td><td class="r">${n(r.oth)}</td><td class="r now">${r.t.toLocaleString()}</td><td class="c st">${flowStatus(r.t)}</td><td class="r">${n(priceOf(r.p))}</td><td class="r">${n(Math.max(0, r.t) * priceOf(r.p))}</td></tr>`).join('')}
   </tbody><tfoot><tr><td></td>${oneIp ? '' : '<td></td>'}<td>합계 ${rows.length}종</td><td class="r">${n(T('preIn'))}</td><td class="r">${n(T('preSale'))}</td><td class="r">${n(T('preOth'))}</td><td class="r">${T('start').toLocaleString()}</td><td class="r">${n(T('inQ'))}</td><td class="r">${n(T('sale'))}</td><td class="r">${n(T('oth'))}</td><td class="r now">${T('t').toLocaleString()}</td><td></td><td></td><td class="r">${tm.toLocaleString()}</td></tr></tfoot></table>
   <div class="nt">${flowNotes(rows, from).map(([lv, t]) => `${lv === 'bad' ? '🔺 <b>' : '🔸 '}${e(t)}${lv === 'bad' ? '</b>' : ''}`).join('<br>')}</div>
-  <div class="ft">기준: ${o.date}(${wd(o.date)}) ${o.date >= today() ? '현재' : '영업 마감'} · 출력 ${e(M.made)} · ${e(M.who)}</div>
+  <div class="ft">기준: ${fd(o.date)} ${o.date >= today() ? '현재' : '영업 마감'} · 출력 ${e(M.made)} · ${e(M.who)}</div>
   </body></html>`;
   printHtml(html);
 }
@@ -1176,7 +1183,7 @@ function byRecent(L) { return L.map((m, i) => [m, i]).sort((a, b) => (b[0].date 
 function movesTable(list, withName = true, compact = false) {
   if (!list.length) return '<div class="empty">기록이 없습니다</div>';
   return `<div class="tw"><table><thead><tr><th>날짜</th>${S.stores.length > 1 || compact ? '<th>매장</th>' : ''}<th>구분</th>${withName ? '<th>상품명</th>' : ''}<th class="n">수량</th><th class="hide-s">메모</th></tr></thead><tbody>
-  ${list.map(m => `<tr><td class="nowrap num" style="text-align:left">${md(m.date)}(${wd(m.date)})</td>${S.stores.length > 1 || compact ? `<td class="nowrap">${sdot(m.store)}${esc(shortName(m.store))}</td>` : ''}<td>${typePill(m.type)}</td>${withName ? `<td class="nm">${esc((S.P[m.pid] || {}).name || m.pid)}</td>` : ''}<td class="n ${m.qty < 0 ? 'qty-neg' : ''}" style="font-weight:600">${m.qty > 0 ? '+' : ''}${fmt(m.qty)}</td><td class="hide-s muted" style="font-size:12px">${esc(m.memo || '')}${m.by && !/claude/i.test(m.by) ? ` · ${esc(m.by === '자동(POS)' ? (m.upBy ? `POS 파일 · ${whoText(m.upBy, m.co)}` : '자동(POS)') : whoText(m.by, m.co))}` : ''}${m.file ? `<br><span style="font-size:11px">📎 ${esc(m.file)}</span>` : ''}</td></tr>`).join('')}
+  ${list.map(m => `<tr><td class="nowrap num" style="text-align:left">${md(m.date)}</td>${S.stores.length > 1 || compact ? `<td class="nowrap">${sdot(m.store)}${esc(shortName(m.store))}</td>` : ''}<td>${typePill(m.type)}</td>${withName ? `<td class="nm">${esc((S.P[m.pid] || {}).name || m.pid)}</td>` : ''}<td class="n ${m.qty < 0 ? 'qty-neg' : ''}" style="font-weight:600">${m.qty > 0 ? '+' : ''}${fmt(m.qty)}</td><td class="hide-s muted" style="font-size:12px">${esc(m.memo || '')}${m.by && !/claude/i.test(m.by) ? ` · ${esc(m.by === '자동(POS)' ? (m.upBy ? `POS 파일 · ${whoText(m.upBy, m.co)}` : '자동(POS)') : whoText(m.by, m.co))}` : ''}${m.file ? `<br><span style="font-size:11px">📎 ${esc(m.file)}</span>` : ''}</td></tr>`).join('')}
   </tbody></table></div>`;
 }
 function typePill(t) { const pos = ['입고', '창고에서 가져옴', '매장 이동(받음)']; return `<span class="pill ${t === COUNT_TYPE ? 'p-info' : pos.includes(t) ? 'p-ok' : t === '판매' ? 'p-mute' : 'p-warn'}">${esc(t)}</span>`; }
@@ -1185,7 +1192,7 @@ function typePill(t) { const pos = ['입고', '창고에서 가져옴', '매장 
 const placeById = id => allPlaces().find(p => p.id === id);
 function placeLabel(p) {
   if (!p) return '';
-  const per = p.start ? ` · ${p.start.slice(2).replace(/-/g, '.')}${p.end && p.end !== p.start ? '~' + p.end.slice(5).replace('-', '.') : ''}` : '';
+  const per = p.start ? ` · ${p.end && p.end !== p.start ? fr(p.start, p.end) : fd(p.start)}` : '';
   return `${p.name}${p.addr ? ' · ' + p.addr : ''}${per}`;
 }
 function placeQty(p) { return Object.values(p.q || {}).reduce((a, b) => a + b, 0); }
@@ -1607,11 +1614,11 @@ function transferView() {
   const hist = S.transfers.filter(t => (st.includes(t.to) || st.includes(t.from)) && t.status !== 'sent').sort((a, b) => (b.recvDate || '').localeCompare(a.recvDate || '') || byNew(a, b));
   const nm = t => esc((S.P[t.pid] || {}).name || t.pid), code = t => esc((S.P[t.pid] || {}).barcode || (S.P[t.pid] || {}).sku || '');
   const card = (t, recv) => `<div class="tcard${recv ? ' recv' : ''}">
-    <div class="tc1"><span class="tcd">${md(t.date)}(${wd(t.date)})</span><span class="tcr">${sdot(t.from)}${esc(shortName(t.from))} → ${sdot(t.to)}${esc(shortName(t.to))}</span></div>
+    <div class="tc1"><span class="tcd">${md(t.date)}</span><span class="tcr">${sdot(t.from)}${esc(shortName(t.from))} → ${sdot(t.to)}${esc(shortName(t.to))}</span></div>
     <div class="tc2"><span class="tcn">${nm(t)}${code(t) ? ` <span class="code">${code(t)}</span>` : ''}</span><b class="tcq">${fmt(t.qty)}<small>개</small></b></div>
     ${recv ? `<div class="tc3"><label for="rq_${t.id}">실제로 받은 수량</label><input class="inp qty" id="rq_${t.id}" type="number" inputmode="numeric" min="0" max="${t.qty}" value="${t.qty}"><button class="btn pri" data-recv="${t.id}">받기 확인</button></div>` : '<div class="tc3"><span class="pill p-warn">🔸 받는 매장 확인 기다리는 중</span></div>'}
   </div>`;
-  const hrow = t => { const rq = t.recvQty ?? t.qty, short = t.qty - rq; return `<tr><td class="nowrap">${md(t.date)}(${wd(t.date)})</td><td class="nowrap">${esc(shortName(t.from))} → ${esc(shortName(t.to))}</td><td class="nm">${nm(t)}</td><td class="n">${fmt(t.qty)}</td><td class="n" style="font-weight:700">${fmt(rq)}</td><td>${short > 0 ? `<span class="pill p-bad">🔺 ${fmt(short)}개 모자람</span>` : `<span class="pill p-ok">✔ 받음 ${t.recvDate ? md(t.recvDate) + '(' + wd(t.recvDate) + ')' : ''}</span>`}</td></tr>`; };
+  const hrow = t => { const rq = t.recvQty ?? t.qty, short = t.qty - rq; return `<tr><td class="nowrap">${md(t.date)}</td><td class="nowrap">${esc(shortName(t.from))} → ${esc(shortName(t.to))}</td><td class="nm">${nm(t)}</td><td class="n">${fmt(t.qty)}</td><td class="n" style="font-weight:700">${fmt(rq)}</td><td>${short > 0 ? `<span class="pill p-bad">🔺 ${fmt(short)}개 모자람</span>` : `<span class="pill p-ok">✔ 받음 ${t.recvDate ? md(t.recvDate) + '(' + wd(t.recvDate) + ')' : ''}</span>`}</td></tr>`; };
   return `${head('매장 이동', '보낸 매장에서 빠지고, 받는 매장이 확인하면 더해집니다', `<button class="btn pri" data-quick="매장 이동">상품 보내기</button>`)}
   <div class="card"><h2>받을 상품 <span class="r">${pend.length}건 대기</span></h2>${pend.length ? `<p class="muted" style="margin:0 0 10px;font-size:13px">상자를 열어 센 수량을 넣고 [받기 확인]을 누르세요. 덜 왔으면 받은 만큼만 더하고, 모자란 수량은 기록에 남습니다.</p><div class="tcards">${pend.map(t => card(t, true)).join('')}</div>` : '<div class="empty">받을 상품이 없습니다</div>'}</div>
   <div class="card"><h2>보낸 상품 · 받는 중 <span class="r">${going.length}건</span></h2>${going.length ? `<div class="tcards">${going.map(t => card(t, false)).join('')}</div>` : '<div class="empty">받는 중인 상품이 없습니다. 위 [상품 보내기]로 시작하세요.</div>'}</div>
@@ -1673,8 +1680,8 @@ function periodKey(d, unit) {
   return 'all';
 }
 function periodLabel(k, unit) {
-  if (unit === 'day') return `${md(k)} (${wd(k)})`;
-  if (unit === 'week') return `${md(k)}~${md(addDays(k, 6))}`;
+  if (unit === 'day') return `${md(k)}`;
+  if (unit === 'week') return `${md(k)} ~ ${md(addDays(k, 6))}`;
   if (unit === 'month') return `${k.slice(0, 4)}.${k.slice(5)}`;
   if (unit === 'year') return `${k}년`;
   return k;
@@ -1704,10 +1711,10 @@ const addMonths = (d, n) => { const [y, m, dd] = d.split('-').map(Number); const
 function cmpRange(a, b, mode = 'auto') {
   const len = daysBetween(a, b) + 1;
   if (mode === 'auto') mode = len === 1 ? 'week' : a.slice(8) === '01' ? 'month' : 'prev';
-  if (mode === 'week') return { pa: addDays(a, -7), pb: addDays(b, -7), mode, label: len === 1 ? `지난주 ${wd(a)}요일(${md(addDays(a, -7))})` : `1주 전 (${md(addDays(a, -7))}~${md(addDays(b, -7))})` };
-  if (mode === 'month') { const pa = addMonths(a, -1); let pb = addMonths(b, -1); if (b.slice(8) >= '28' && b === addDays(addMonths(b.slice(0, 8) + '01', 1), -1)) pb = addDays(a.slice(0, 8) + '01', -1); return { pa, pb, mode, label: `지난달 같은 날짜 (${md(pa)}~${md(pb)})` }; }
-  if (mode === 'year') { const pa = addMonths(a, -12), pb = addMonths(b, -12); return { pa, pb, mode, label: `작년 같은 날짜 (${pa.slice(2, 4)}.${md(pa)}~${md(pb)})` }; }
-  return { pa: addDays(a, -len), pb: addDays(a, -1), mode: 'prev', label: `바로 앞 ${len}일 (${md(addDays(a, -len))}~${md(addDays(a, -1))})` };
+  if (mode === 'week') return { pa: addDays(a, -7), pb: addDays(b, -7), mode, label: len === 1 ? `지난주 같은 요일 · ${md(addDays(a, -7))}` : `1주 전 (${md(addDays(a, -7))} ~ ${md(addDays(b, -7))})` };
+  if (mode === 'month') { const pa = addMonths(a, -1); let pb = addMonths(b, -1); if (b.slice(8) >= '28' && b === addDays(addMonths(b.slice(0, 8) + '01', 1), -1)) pb = addDays(a.slice(0, 8) + '01', -1); return { pa, pb, mode, label: `지난달 같은 날짜 (${md(pa)} ~ ${md(pb)})` }; }
+  if (mode === 'year') { const pa = addMonths(a, -12), pb = addMonths(b, -12); return { pa, pb, mode, label: `작년 같은 날짜 (${pa.slice(2, 4)}.${md(pa)} ~ ${md(pb)})` }; }
+  return { pa: addDays(a, -len), pb: addDays(a, -1), mode: 'prev', label: `바로 앞 ${len}일 (${md(addDays(a, -len))} ~ ${md(addDays(a, -1))})` };
 }
 const CMP_M = { s: ['매출', '원'], p: ['결제건수', '건'], t: ['객단가', '원'], q: ['판매수량', '개'] };
 function cmpDrawer() {
@@ -1730,17 +1737,17 @@ function cmpDrawer() {
   const val = (v, k) => k === 's' || k === 't' ? fmt(v) : fmt(v);
   return `<div class="hd"><h3>${mt} 비교</h3><button class="x" data-close aria-label="닫기">×</button></div>
   <div class="card" style="display:flex;flex-direction:column;gap:10px">
-    <div class="cmp-p"><span class="pl cur">이번</span><b>${md(a)}(${wd(a)}) ~ ${md(b)}(${wd(b)})</b> <span class="muted">${C.length}일</span></div>
-    <div class="cmp-p"><span class="pl pre">비교</span><b>${md(r.pa)}(${wd(r.pa)}) ~ ${md(r.pb)}(${wd(r.pb)})</b> <span class="muted">${r.label.split(' (')[0]} · ${P.length}일</span></div>
+    <div class="cmp-p"><span class="pl cur">이번</span><b>${md(a)} ~ ${md(b)}</b> <span class="muted">${C.length}일</span></div>
+    <div class="cmp-p"><span class="pl pre">비교</span><b>${md(r.pa)} ~ ${md(r.pb)}</b> <span class="muted">${r.label.split(' (')[0]} · ${P.length}일</span></div>
     <div class="chips">${modes.map(([k, t]) => `<button class="chip ${(c.mode || 'auto') === k ? 'on' : ''}" data-cmpm="${k}">${t}</button>`).join('')}</div>
     ${ps.n === 0 ? '<div class="note">🔸 비교 기간에 매출 자료가 없습니다. 다른 비교 기간을 골라 보세요.</div>' : ''}
   </div>
   <div class="card"><div class="tw"><table class="tb cmp-t"><thead><tr><th></th><th class="n">이번</th><th class="n">비교</th><th class="n">차이</th><th class="n">증감</th></tr></thead><tbody>
     ${Object.entries(CMP_M).map(([k, [t, u]]) => `<tr class="${k === m ? 'sel' : ''}" data-cmpk="${k}"><td><b>${t}</b></td><td class="n"><b>${fmt(cs[k])}</b>${u}</td><td class="n">${fmt(ps[k])}${u}</td><td class="n">${cs[k] - ps[k] >= 0 ? '+' : ''}${fmt(cs[k] - ps[k])}</td><td class="n">${chg(pct(cs[k], ps[k]))}</td></tr>`).join('')}
   </tbody></table></div></div>
-  ${n > 1 ? `<div class="card"><h2>${mt} 흐름 <span class="r"><span class="lg cur"></span>이번 <span class="lg pre"></span>비교</span></h2>${lineChart(C.map(v => ({ lab: md(v.d), sub: `(${wd(v.d)})`, d: v.d, v: v[m], tip: `${md(v.d)}(${wd(v.d)}) · ${fmt(v[m])}${mu} · ${fmt(v.p)}건` })), { cmp: P.map(v => v[m]), cmpTip: P.map(v => `비교 ${md(v.d)}(${wd(v.d)}) ${fmt(v[m])}${mu}`), unitFmt: m === 's' || m === 't' ? man : fmt, aria: mt + ' 기간 비교' })}</div>` : ''}
+  ${n > 1 ? `<div class="card"><h2>${mt} 흐름 <span class="muted" style="font-size:12.5px;font-weight:600">${C.length ? fr(C[0].d, C[C.length - 1].d) : ''}</span> <span class="r"><span class="lg cur"></span>이번 <span class="lg pre"></span>비교</span></h2>${lineChart(C.map(v => ({ lab: mdc(v.d), sub: `(${wd(v.d)})`, d: v.d, v: v[m], tip: `${md(v.d)} · ${fmt(v[m])}${mu} · ${fmt(v.p)}건` })), { cmp: P.map(v => v[m]), cmpTip: P.map(v => `비교 ${md(v.d)} ${fmt(v[m])}${mu}`), unitFmt: m === 's' || m === 't' ? man : fmt, aria: mt + ' 기간 비교' })}</div>` : ''}
   <div class="card"><h2>날짜별 ${mt}</h2><div class="tw"><table class="tb cmp-t"><thead><tr><th>이번</th><th class="n">${mt}</th><th>비교</th><th class="n">${mt}</th><th class="n">증감</th></tr></thead><tbody>
-    ${Array.from({ length: n }, (_, i) => { const x = C[i], y = P[i]; return `<tr><td class="nowrap">${x ? `${md(x.d)}(${wd(x.d)})` : ''}</td><td class="n">${x ? (x.has ? `<b>${fmt(x[m])}</b>` : '<span class="muted">-</span>') : ''}</td><td class="nowrap muted">${y ? `${md(y.d)}(${wd(y.d)})` : ''}</td><td class="n">${y ? (y.has ? fmt(y[m]) : '<span class="muted">-</span>') : ''}</td><td class="n">${x && y && x.has && y.has ? chg(pct(x[m], y[m]), 0) : ''}</td></tr>`; }).join('')}
+    ${Array.from({ length: n }, (_, i) => { const x = C[i], y = P[i]; return `<tr><td class="nowrap">${x ? `${md(x.d)}` : ''}</td><td class="n">${x ? (x.has ? `<b>${fmt(x[m])}</b>` : '<span class="muted">-</span>') : ''}</td><td class="nowrap muted">${y ? `${md(y.d)}` : ''}</td><td class="n">${y ? (y.has ? fmt(y[m]) : '<span class="muted">-</span>') : ''}</td><td class="n">${x && y && x.has && y.has ? chg(pct(x[m], y[m]), 0) : ''}</td></tr>`; }).join('')}
   </tbody></table></div></div>
   ${topSold(stores, a, b, r.pa, r.pb)}`;
 }
@@ -1859,7 +1866,7 @@ function machDrawer() {
   ${pv ? `${pv.errs.length ? `<div class="note bad">🔺 ${pv.errs.map(esc).join('<br>🔺 ')}</div>` : ''}
   ${pv.mach.length ? `<div class="card"><h2>확인 · ${esc(storeName(pv.store))}</h2>
     <div class="tw"><table><thead><tr><th>기계 (단말기)</th><th>기간</th><th class="n">매출</th><th class="n">건수</th></tr></thead><tbody>
-    ${pv.mach.map((m, i) => `<tr><td><input class="inp" data-mname="${i}" value="${esc(m.name)}" style="min-width:150px"><div class="muted" style="font-size:11.5px">단말기 ${esc(m.no)} · ${esc(m.files.join(', '))}</div></td><td class="nowrap">${md(m.from)}~${md(m.to)} <span class="muted">${Object.keys(m.days).length}일</span>${m.exists ? `<div style="font-size:11.5px;color:var(--warn)">🔸 이미 올린 ${m.exists}일은 새 값으로 바뀝니다</div>` : ''}</td><td class="n" style="font-weight:700">${fmt(m.s)}</td><td class="n">${fmt(m.n)}</td></tr>`).join('')}
+    ${pv.mach.map((m, i) => `<tr><td><input class="inp" data-mname="${i}" value="${esc(m.name)}" style="min-width:150px"><div class="muted" style="font-size:11.5px">단말기 ${esc(m.no)} · ${esc(m.files.join(', '))}</div></td><td class="nowrap">${md(m.from)} ~ ${md(m.to)} <span class="muted">${Object.keys(m.days).length}일</span>${m.exists ? `<div style="font-size:11.5px;color:var(--warn)">🔸 이미 올린 ${m.exists}일은 새 값으로 바뀝니다</div>` : ''}</td><td class="n" style="font-weight:700">${fmt(m.s)}</td><td class="n">${fmt(m.n)}</td></tr>`).join('')}
     <tr class="tot"><td>합계</td><td></td><td class="n">${fmt(pv.mach.reduce((a, m) => a + m.s, 0))}</td><td class="n">${fmt(pv.mach.reduce((a, m) => a + m.n, 0))}</td></tr></tbody></table></div>
     <div class="muted" style="font-size:12px;margin-top:6px">올린 사람으로 <b>${esc(whoText(S.user.name, userCo(S.user)))}</b>이 함께 저장됩니다. 기계 이름은 위 칸에서 바꿀 수 있습니다.</div>
     <div class="row" style="justify-content:flex-end;margin-top:10px"><button class="btn pri" id="machSave">기계 매출 저장</button></div></div>` : ''}` : ''}`;
@@ -1894,7 +1901,7 @@ function machAgg(stores, a, b) {
 function machBlock(stores, a, b, posTotal) {
   const L = machAgg(stores, a, b);
   const tot = L.reduce((x, m) => x + m.s, 0);
-  return `<div class="card"><h2>자판기·기계 매출 <span class="r">POS 밖 카드 단말기 · ${md(a)}~${md(b)}</span></h2>
+  return `<div class="card"><h2>자판기·기계 매출 <span class="r">POS 밖 카드 단말기 · ${md(a)} ~ ${md(b)}</span></h2>
   ${L.length ? `<div class="tw"><table><thead><tr><th>기계</th>${stores.length > 1 ? '<th>매장</th>' : ''}<th class="n">매출</th><th class="n hide-s">건수</th><th class="hide-s">마지막 거래</th><th class="hide-s">올린 사람</th></tr></thead><tbody>
   ${L.map(m => `<tr><td class="nm">${esc(m.name)}<div class="muted" style="font-size:11px">단말기 ${esc(m.no || '')}</div></td>${stores.length > 1 ? `<td class="nowrap">${sdot(m.st)}${esc(shortName(m.st))}</td>` : ''}<td class="n" style="font-weight:700">${fmt(m.s)}</td><td class="n hide-s">${fmt(m.n)}</td><td class="hide-s nowrap">${md(m.last)}</td><td class="hide-s" style="font-size:12px">${m.up ? `${esc(whoText(m.up.by, m.up.co))}<div class="muted">${kst(m.up.at)}${m.up.file ? ' · 📎 ' + esc(m.up.file) : ''}</div>` : '-'}</td></tr>`).join('')}
   <tr class="tot"><td>기계 합계</td>${stores.length > 1 ? '<td></td>' : ''}<td class="n">${fmt(tot)}</td><td class="n hide-s">${fmt(L.reduce((x, m) => x + m.n, 0))}</td><td class="hide-s"></td><td class="hide-s"></td></tr>
@@ -1906,7 +1913,7 @@ function machBlock(stores, a, b, posTotal) {
 function grandTotal(stores, a, b, pa, pb, pos, posPrev, cmpLabel) {
   const mc = machAgg(stores, a, b).reduce((x, m) => x + m.s, 0), mp = machAgg(stores, pa, pb).reduce((x, m) => x + m.s, 0);
   const tot = pos + mc, prev = posPrev + mp, w = tot ? pos / tot * 100 : 100;
-  return `<div class="card grand"><div class="g-top"><div><div class="g-lb">총매출 <span>토스포스 + 자판기·기계 · ${md(a)}${a !== b ? '~' + md(b) : ''}</span></div>
+  return `<div class="card grand"><div class="g-top"><div><div class="g-lb">총매출 <span>토스포스 + 자판기·기계 · ${md(a)}${a !== b ? ' ~ ' + md(b) : ''}</span></div>
     <div class="g-v">${fmt(tot)}<small>원</small></div></div>
     <div class="g-cmp">${chg(pct(tot, prev))}<div class="muted">${esc(cmpLabel.split(' (')[0])} ${fmt(prev)}원${mc && !mp ? '<br>비교 기간은 기계 자료가 없어 토스포스만' : ''}</div></div></div>
     <div class="g-bar" role="img" aria-label="토스포스 ${Math.round(w)}%, 기계 ${100 - Math.round(w)}%"><i class="pos" style="width:${w}%"></i><i class="mac" style="width:${100 - w}%"></i></div>
@@ -1933,7 +1940,7 @@ function salesView() {
   S._quick = quick;
   const noData = stores.filter(s => !per[s].days);
   const su = salesUpdated(stores);
-  return `${head('매출', `토스포스 매출리포트 기준 · ${S.stores.length > 1 ? '매장마다 마감일이 다릅니다 (아래 표)' : `${last ? `<b>${last} 마감</b>까지` : '아직 자료 없음'}${su.up ? ` · 마지막 올림 ${kst(su.up.at)} ${esc(whoText(su.up.by, su.up.co))}` : ''}`}`, `<button class="btn" id="posBtn">토스포스 파일 올리기</button><button class="btn" id="machBtn">자판기·기계 매출 올리기</button>`)}${freshTable(S.stores)}
+  return `${head('매출', `토스포스 매출리포트 기준 · ${S.stores.length > 1 ? '매장마다 마감일이 다릅니다 (아래 표)' : `${last ? `<b>${fd(last)} 마감</b>까지` : '아직 자료 없음'}${su.up ? ` · 마지막 올림 ${kst(su.up.at)} ${esc(whoText(su.up.by, su.up.co))}` : ''}`}`, `<button class="btn" id="posBtn">토스포스 파일 올리기</button><button class="btn" id="machBtn">자판기·기계 매출 올리기</button>`)}${freshTable(S.stores)}
   ${grandTotal(sum, a, b, pa, pb, cur.s, pre.s, cr.label)}
   <div class="card" style="display:flex;flex-direction:column;gap:12px">
     <div class="flt">
@@ -1955,7 +1962,7 @@ function salesView() {
   ${ceoSales(per, sum, stores, a, b)}
   ${unit !== 'ip' ? machBlock(sum, a, b, cur.s) : ''}
   ${multi ? storeCompare(per, sum, stores) : ''}
-  ${len === 1 && unit !== 'ip' ? `<div class="note" style="font-size:12.5px">${md(a)}(${wd(a)}) 하루 매출입니다. 아래 그래프는 흐름을 보기 위해 그날까지 최근 14일을 보여 줍니다.</div>` : ''}
+  ${len === 1 && unit !== 'ip' ? `<div class="note" style="font-size:12.5px">${md(a)} 하루 매출입니다. 아래 그래프는 흐름을 보기 위해 그날까지 최근 14일을 보여 줍니다.</div>` : ''}
   ${unit === 'ip' ? ipBlock(per, sum) : seriesBlock(len === 1 && unit === 'day' ? aggregate(stores, addDays(a, -13), a) : per, sum, stores, unit)}
   ${unit !== 'ip' ? ipBlock(per, sum, 10) : ''}
   ${productTop(per, sum)}`;
@@ -1976,8 +1983,8 @@ function seriesBlock(per, sum, stores, unit) {
   const mx = Math.max(1, ...keys.map(k => multi ? Math.max(...stores.map(s => val(s, k)), totK(k)) : val(stores[0], k)));
   const title = { day: '일별', week: '주별 (월~일)', month: '월별', year: '연도별' }[unit];
   const rows = keys.slice().reverse();
-  return `<div class="card"><h2>${title} 매출 <span class="r">${rows.length}개 · 최근이 위</span></h2>
-    ${lineChart(keys.map(k => { const v = multi ? totK(k) : val(stores[0], k); const p = sum.reduce((a, s) => a + ((per[s].series[k] || {}).p || 0), 0); const ex = ` · ${fmt(p)}건`; if (unit === 'day') return dayPt(k, v, ex); if (unit === 'week') return { lab: md(k) + '~', sub: `(${wd(k)})`, v, tip: `${periodLabel(k, unit)} · ${fmt(v)}원${ex}` }; return { lab: unit === 'month' ? k.slice(2).replace('-', '.') : periodLabel(k, unit), v, tip: `${periodLabel(k, unit)} · ${fmt(v)}원${ex}` }; }), { aria: title + ' 매출 추이' })}
+  return `<div class="card"><h2>${title} 매출 <span class="muted" style="font-size:12.5px;font-weight:600">${keys.length ? periodLabel(keys[0], unit).split(' ~ ')[0] + ' ~ ' + periodLabel(keys[keys.length - 1], unit).split(' ~ ').pop() : ''}</span> <span class="r">${rows.length}개 · 최근이 위</span></h2>
+    ${lineChart(keys.map(k => { const v = multi ? totK(k) : val(stores[0], k); const p = sum.reduce((a, s) => a + ((per[s].series[k] || {}).p || 0), 0); const ex = ` · ${fmt(p)}건`; if (unit === 'day') return dayPt(k, v, ex); if (unit === 'week') return { lab: mdc(k) + '~', sub: `(${wd(k)})`, v, tip: `${periodLabel(k, unit)} · ${fmt(v)}원${ex}` }; return { lab: unit === 'month' ? fm(k) : periodLabel(k, unit), v, tip: `${periodLabel(k, unit)} · ${fmt(v)}원${ex}` }; }), { aria: title + ' 매출 추이' })}
     ${multi ? `<div class="legend" style="margin:8px 0">${stores.map(s => `<span><span class="dot" style="background:${storeColor(s)}"></span>${esc(storeName(s))}</span>`).join('')}<span><span class="dot" style="background:var(--ink)"></span>합산</span></div>` : ''}
     <div class="hb" style="margin-top:8px">${rows.map((k, i) => {
       if (!multi) { const v = val(stores[0], k); const p = (per[stores[0]].series[k] || {}).p || 0; return `<span class="k">${periodLabel(k, unit)}</span><span class="tr"><i style="width:${v / mx * 100}%;background:var(--red)"></i></span><span class="v">${fmt(v)}<span class="muted" style="font-weight:500"> · ${fmt(p)}건</span></span>`; }
@@ -2027,7 +2034,7 @@ function posDrawer() {
     <div class="drop"><div style="font-weight:700">토스포스에서 받은 zip 또는 xlsx</div><div class="muted" style="font-size:13px;margin:4px 0 10px">zip은 관리 › 파일 비밀번호에 등록한 비밀번호로 앱이 풉니다</div><button class="btn" id="posFileBtn">파일 고르기</button></div>
   </div>
   ${pv ? pv.err ? `<div class="note bad">🔺 ${esc(pv.err)}</div>` : `<div class="card"><h2>확인 · ${esc(storeName(pv.store))}</h2>
-    <div class="alerts">${pv.days.map(d => `<div class="al"><span class="ic">${d.ok ? '✔' : '🔺'}</span><span class="tx"><b>${d.date}(${wd(d.date)})</b> 매출 ${won(d.s)} · ${fmt(d.p)}건 · 상품 ${d.items}종 ${fmt(d.q)}개${d.ok ? ' — 결제 합계와 상품 합계 일치' : ` — 🔺 결제 ${won(d.s)} ≠ 상품 ${won(d.si)}`}${d.exists ? '<br>🔸 이미 올린 날짜입니다. 저장하면 덮어씁니다.' : ''}</span></div>`).join('')}
+    <div class="alerts">${pv.days.map(d => `<div class="al"><span class="ic">${d.ok ? '✔' : '🔺'}</span><span class="tx"><b>${fd(d.date)}</b> 매출 ${won(d.s)} · ${fmt(d.p)}건 · 상품 ${d.items}종 ${fmt(d.q)}개${d.ok ? ' — 결제 합계와 상품 합계 일치' : ` — 🔺 결제 ${won(d.s)} ≠ 상품 ${won(d.si)}`}${d.exists ? '<br>🔸 이미 올린 날짜입니다. 저장하면 덮어씁니다.' : ''}</span></div>`).join('')}
     ${pv.match ? `<div class="al"><span class="ic">${pv.unmatched.length ? '🔸' : '✔'}</span><span class="tx">재고 차감: 상품 <b>${fmt(pv.matchN)}종</b> 찾음${pv.newDays.length ? ` · 뺄 수량 ${fmt(pv.matchQ)}개` : ''}${pv.unmatched.length ? ` · 못 찾은 상품 <b>${pv.unmatched.length}종</b> (${fmt(pv.unmatched.reduce((a, b) => a + b.q, 0))}개) — 아래에서 이어 주지 않으면 재고에서 빼지 않습니다` : ''}</span></div>` : ''}</div>
     ${pv.unmatched.length ? `<details class="posun" ${pv.unmatched.length <= 12 ? 'open' : ''}><summary>못 찾은 상품 ${pv.unmatched.length}종 모두 보기 · 상품 이어 주기</summary>
       <div class="tw"><table><thead><tr><th>POS 상품명</th><th class="n">판매</th><th>재고 상품으로 이어 주기</th></tr></thead><tbody>${pv.unmatched.map((u, i) => `<tr><td class="nm">${esc(u.name)}${u.multi ? '<div style="font-size:12px;color:var(--warn)">🔸 같은 이름 상품이 여러 개</div>' : ''}</td><td class="n">${fmt(u.q)}</td><td>${u.cands.length ? `<select class="inp" data-posln="${i}" aria-label="${esc(u.name)} 이을 상품"><option value="">— 빼지 않음 —</option>${u.cands.map(p => `<option value="${esc(p.id)}">${esc(p.name)} · ${esc(p.barcode || p.sku)} · 재고 ${fmt(stockOf(pv.store, p.id))}</option>`).join('')}</select>` : '<span class="muted" style="font-size:12px">비슷한 상품 없음 — 관리 › 상품 목록에 등록</span>'}</td></tr>`).join('')}</tbody></table></div>
@@ -2035,7 +2042,7 @@ function posDrawer() {
     ${Object.keys(pv.links).length ? `<div class="note" style="font-size:12.5px">✔ 이어 준 상품 ${Object.keys(pv.links).length}종: ${Object.entries(pv.links).map(([n, id]) => `${esc(n)} → <b>${esc(S.P[id].name)}</b>`).join(' · ')}</div>` : ''}
     ${pv.deduct && pv.neg.length ? `<div class="note bad">🔺 <b>재고가 마이너스가 되는 상품 ${pv.neg.length}종</b> — 실제 재고보다 많이 팔린 것으로 나옵니다. 입고·이동 누락이 없는지 확인해 주세요.<ul style="margin:6px 0 0;padding-left:18px;font-size:12.5px">${pv.neg.slice(0, 10).map(x => `<li>${esc(S.P[x.pid].name)} · 지금 ${fmt(x.now)} → <b class="qty-neg">${fmt(x.after)}</b></li>`).join('')}${pv.neg.length > 10 ? `<li>외 ${pv.neg.length - 10}종</li>` : ''}</ul>
       <label class="ck" style="margin-top:8px"><input type="checkbox" id="posNegOk" ${pv.negOk ? 'checked' : ''}><span class="t">확인했습니다. 마이너스로 두고 저장합니다</span></label></div>` : ''}
-    <label class="ck"><input type="checkbox" id="posDeduct" ${pv.deduct ? 'checked' : ''} ${pv.newDays && pv.newDays.length ? '' : 'disabled'}><span><span class="t">판매 수량을 재고에서 빼기${pv.newDays && pv.newDays.length ? ` — ${pv.newDays.length === 1 ? md(pv.newDays[0]) : md(pv.newDays[0]) + '~' + md(pv.newDays[pv.newDays.length - 1])} ${pv.newDays.length}일치만` : ''}</span><span class="s" style="display:block">${pv.lastPos ? `${md(pv.lastPos)}까지는 이미 재고에서 뺐습니다. ${pv.newDays.length ? '그 뒤 날짜만 빼서 두 번 빠지지 않습니다.' : '새로 뺄 날짜가 없습니다 (매출만 저장).'}` : "찾은 상품만 '판매'로 재고에서 뺍니다."}</span></span></label>
+    <label class="ck"><input type="checkbox" id="posDeduct" ${pv.deduct ? 'checked' : ''} ${pv.newDays && pv.newDays.length ? '' : 'disabled'}><span><span class="t">판매 수량을 재고에서 빼기${pv.newDays && pv.newDays.length ? ` — ${pv.newDays.length === 1 ? md(pv.newDays[0]) : md(pv.newDays[0]) + ' ~ ' + md(pv.newDays[pv.newDays.length - 1])} ${pv.newDays.length}일치만` : ''}</span><span class="s" style="display:block">${pv.lastPos ? `${md(pv.lastPos)}까지는 이미 재고에서 뺐습니다. ${pv.newDays.length ? '그 뒤 날짜만 빼서 두 번 빠지지 않습니다.' : '새로 뺄 날짜가 없습니다 (매출만 저장).'}` : "찾은 상품만 '판매'로 재고에서 뺍니다."}</span></span></label>
     <div class="row" style="justify-content:flex-end;margin-top:10px"><button class="btn pri" id="posSave" ${pv.days.every(d => d.ok) && !(pv.deduct && pv.neg.length && !pv.negOk) ? '' : 'disabled'}>매출 저장</button></div></div>` : ''}`;
 }
 // POS 상품명 → 재고 상품 찾기 (+ 화면에서 직접 이어 준 상품). 못 찾은 상품은 판매 수량·비슷한 상품 후보와 함께
@@ -2188,7 +2195,7 @@ function settleView() {
     <div class="tile"><span class="lb">온인터 배분</span><span class="v big${String(fmt(T('onin'))).length>9?' long':''}">${fmt(T('onin'))}<small>원</small></span></div>
     <div class="tile"><span class="lb">크리에이티브 지급</span><span class="v big${String(fmt(-T('creative'))).length>9?' long':''}">${fmt(-T('creative'))}<small>원</small></span></div>
     <div class="tile"><span class="lb">순수익 (${/확정/.test(st) ? '✔ 확정' : '🔸 예상'})</span><span class="v big${String(fmt(T('net'))).length>9?' long':''}">${fmt(T('net'))}<small>원</small></span><span class="d muted">시공비 차감 포함</span></div></div>
-  <div class="note" style="font-size:12.5px">${/확정/.test(st) ? '✔ 홀딩스 정산서와 맞춘 확정 금액입니다.' : `🔸 예상 금액 · 매출 <b>${esc(lastDate)}</b>까지 반영 · 토스포스 파일을 올리면 바로 다시 계산됩니다.${S.settleRules ? '' : ' (정산 요율이 아직 등록되지 않아 마지막으로 넣은 자료를 보여 줍니다)'}`}</div>
+  <div class="note" style="font-size:12.5px">${/확정/.test(st) ? '✔ 홀딩스 정산서와 맞춘 확정 금액입니다.' : `🔸 예상 금액 · 매출 <b>${esc(/^\d{4}-\d{2}-\d{2}$/.test(lastDate || '') ? fd(lastDate) : lastDate)}</b>까지 반영 · 토스포스 파일을 올리면 바로 다시 계산됩니다.${S.settleRules ? '' : ' (정산 요율이 아직 등록되지 않아 마지막으로 넣은 자료를 보여 줍니다)'}`}</div>
   ${unknown.length ? `<div class="note bad">🔺 요율이 정해지지 않은 IP ${unknown.length}개: ${unknown.map(r => esc(r.ip)).join(', ')} — 순수익 합계에서 빠져 있습니다.</div>` : ''}
   <div class="card"><h2>IP별 · 기계</h2><div class="tw"><table><thead><tr><th>IP</th><th class="hide-s">공급</th><th class="n">판매 금액</th><th class="n">요율</th><th class="n">온인터 배분</th><th class="n hide-s">크리에이티브 지급</th><th class="n">순수익</th></tr></thead><tbody>
   ${ipRows.map(r => `<tr><td class="nm">${esc(r.ip)}</td><td class="hide-s nowrap muted">${esc(r.supplier)}</td><td class="n">${fmt(r.sales)}</td><td class="n">${r.rate === '' ? '-' : Math.round(r.rate * 100) + '%'}</td><td class="n">${fmt(r.onin)}</td><td class="n hide-s">${r.creative ? fmt(-r.creative) : '-'}</td><td class="n" style="font-weight:700">${fmt(r.net)}</td></tr>`).join('')}
@@ -2230,7 +2237,7 @@ function pendingView() {
   S.ui.draft ||= {};
   return P.map(u => {
     const p = S.ui.draft[u.uid] ||= recPerms(u);
-    return `<div class="card"><h2>${esc(u.name)} <span class="pill p-warn">🔸 승인 대기</span><span class="r">${esc(u.createdAt || '')} 신청</span></h2>
+    return `<div class="card"><h2>${esc(u.name)} <span class="pill p-warn">🔸 승인 대기</span><span class="r">${esc(fdt(u.createdAt))} 신청</span></h2>
     <dl class="kv" style="margin-bottom:12px"><dt>이메일</dt><dd>${esc(u.email)}</dd><dt>소속</dt><dd>${esc(u.company)}${u.companyOther ? ` · ${esc(u.companyOther)}` : ''}</dd><dt>직급</dt><dd>${esc(u.position)}</dd><dt>근무 매장</dt><dd>${esc((u.places || []).join(', '))}</dd>${u.memo ? `<dt>메모</dt><dd>${esc(u.memo)}</dd>` : ''}</dl>
     <div style="display:flex;flex-direction:column;gap:12px">${permEditor(u, p, u.uid)}</div>
     <div class="row" style="justify-content:flex-end;margin-top:12px"><button class="btn" data-reject="${u.uid}">거절</button><button class="btn pri" data-approve="${u.uid}" ${p.stores.length ? '' : 'disabled'}>승인</button></div></div>`;
@@ -2302,7 +2309,7 @@ function moreView() {
   const nav = NAV.filter(n => n.show()); const ids = nav.map(n => n.id); const main = TAB_MAIN.filter(id => ids.includes(id)).slice(0, 4);
   const pendingN = can('approve') ? S.users.filter(u => u.status === 'pending').length : 0;
   const rest = nav.filter(n => !main.includes(n.id));
-  return `${head('설정', `앱 업데이트 ${APP_VERSION}`)}
+  return `${head('설정', `앱 업데이트 ${fd(APP_VERSION.slice(0, 10))} ${APP_VERSION.slice(11)}`)}
   <div class="card"><h2>설정</h2>${textSizeBox()}</div>`;
 }
 
@@ -2453,7 +2460,7 @@ function lineChart(pts, o = {}) {
   return `<div class="chartbox"><svg class="trend lc" viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="${esc(o.aria || '추이 그래프')}">${g}</svg><div class="ctip" hidden></div>
     <div class="chint muted">점을 누르면 날짜·금액·건수가 나옵니다${step > 1 ? ` · 날짜는 ${step}칸마다 표시` : ''} · <span class="sat-t">토</span> <span class="sun-t">일</span> 바탕색</div></div>`;
 }
-function dayPt(d, v, extra) { return { lab: md(d), sub: `(${wd(d)})`, d, v, tip: `${md(d)}(${wd(d)}) · ${fmt(v)}원${extra || ''}` }; }
+function dayPt(d, v, extra) { return { lab: mdc(d), sub: `(${wd(d)})`, d, v, tip: `${md(d)} · ${fmt(v)}원${extra || ''}` }; }
 // 누르거나 마우스를 올리면 말풍선
 function chartTip(ev) {
   const r = ev.target.closest && ev.target.closest('.chit'); const boxes = document.querySelectorAll('.chartbox .ctip');
@@ -2611,17 +2618,17 @@ function collabView() {
   const last = latestSalesDate([st0]) || today();
   if (!S.ui.cb || S.ui.cb.store !== st0 || !plans.find(r => r.id === S.ui.cb.id)) { const cur = plans.filter(r => r.start <= last).slice(-1)[0] || plans[0]; S.ui.cb = { store: st0, id: cur ? cur.id : '', a: cur ? cur.start : last, b: cur ? cur.end : last }; }
   const cb = S.ui.cb, r = plans.find(x => x.id === cb.id);
-  const top = `${head('콜라보 분석', `IP 콜라보 기간의 입고 · 판매 · 재고 · 매출 · ${esc(shortName(st0))} ${last ? `매출 ${last} 마감` : ''}`)}
+  const top = `${head('콜라보 분석', `IP 콜라보 기간의 입고 · 판매 · 재고 · 매출 · ${esc(shortName(st0))} ${last ? `매출 ${fd(last)} 마감` : ''}`)}
   <div class="card"><div class="flt">
     ${mine.length > 1 ? `<div class="fg"><div class="fl">매장</div><div class="fseg">${mine.map(s => `<button class="${s === st0 ? 'on' : ''}" data-cbst="${s}">${esc(shortName(s))}</button>`).join('')}</div></div>` : ''}
-    <div class="fg"><div class="fl"><label for="cbPlan">콜라보</label></div><select class="inp" id="cbPlan">${plans.map(x => `<option value="${x.id}" ${x.id === cb.id ? 'selected' : ''}>${esc(x.ip)} · ${x.start.slice(2).replace(/-/g, '.')}~${x.end.slice(5).replace('-', '.')}</option>`).join('')}</select></div>
+    <div class="fg"><div class="fl"><label for="cbPlan">콜라보</label></div><select class="inp" id="cbPlan">${plans.map(x => `<option value="${x.id}" ${x.id === cb.id ? 'selected' : ''}>${esc(x.ip)} · ${fr(x.start, x.end)}</option>`).join('')}</select></div>
     <div class="fg"><div class="fl">기간</div><div class="frange"><div class="fd"><span>시작</span>${dateSel('cba', cb.a)}</div><span class="fsep">~</span><div class="fd"><span>종료</span>${dateSel('cbb', cb.b)}</div></div></div>
   </div></div>`;
   if (!r) return top + '<div class="empty">이 매장에 등록된 IP 일정이 없습니다. IP 현황에서 일정을 추가해 주세요.</div>';
   const a = cb.a, b = cb.b, R = collabCalc(st0, r, a, b), T = R.T;
   const days = daysBetween(a, b) + 1, cats = catsOf(r);
   const eq = `<div class="card eqcard" id="cbTot" data-in="${T.in}" data-sold="${T.sold}" data-etc="${T.etc}" data-now="${T.now}">
-    <h2>${esc(r.ip)} <span class="r">${md(a)}(${wd(a)}) ~ ${md(b)}(${wd(b)}) · ${days}일 · 토스포스 카테고리 ${cats.map(esc).join(', ')}</span></h2>
+    <h2>${esc(r.ip)} <span class="r">${md(a)} ~ ${md(b)} · ${days}일 · 토스포스 카테고리 ${cats.map(esc).join(', ')}</span></h2>
     <div class="eq"><div class="eqi"><span class="k">입고</span><b class="num">${fmt(T.in)}</b></div><span class="op">−</span>
       <div class="eqi"><span class="k">판매 차감</span><b class="num">${fmt(T.sold)}</b></div><span class="op">${T.etc < 0 ? '−' : '+'}</span>
       <div class="eqi"><span class="k">기타</span><b class="num">${fmt(Math.abs(T.etc))}</b></div>${T.rest ? `<span class="op">${T.rest < 0 ? '−' : '+'}</span><div class="eqi"><span class="k">기초·미기록</span><b class="num">${fmt(Math.abs(T.rest))}</b></div>` : ''}<span class="op">=</span>
@@ -2635,7 +2642,7 @@ function collabView() {
     </tbody><tfoot><tr class="tot"><td>합계</td><td class="n">${fmt(sp.inN + sp.noN)}종</td><td class="n">${fmt(sp.inQ + sp.noQ)}</td><td class="n">${fmt(sp.inS + sp.noS)}</td><td class="n">100%</td></tr></tfoot></table></div>
     ${sp.noList.length ? `<div class="muted" style="font-size:12.5px;margin-top:8px">🔸 입고 기록 없이 팔린 상품: ${sp.noList.slice(0, 5).map(([n, x]) => `${esc(n.replace(/^에바30주년팝업_/, ''))} ${fmt(x.q)}개`).join(' · ')}${sp.noList.length > 5 ? ` 외 ${sp.noList.length - 5}종` : ''} — 입고 등록이 빠졌거나 상품 목록에 없는 이름입니다.</div>` : ''}</div>`;
   const etc = `<div class="card"><h2>기타 내역 <span class="r">이동 · 창고 · 반품 · 폐기 · 실사 조정</span></h2>${R.etcList.length ? `<div class="tw"><table><thead><tr><th>날짜</th><th>구분</th><th>상품명</th><th class="n">수량</th><th class="hide-s">메모</th></tr></thead><tbody>
-    ${R.etcList.map(m => `<tr><td class="nowrap num">${md(m.date)}(${wd(m.date)})</td><td>${typePill(m.type)}</td><td class="nm">${esc((S.P[m.pid] || {}).name || m.pid)}</td><td class="n"><b>${m.qty > 0 ? '+' : ''}${fmt(m.qty)}</b></td><td class="hide-s muted">${esc(m.memo || '')}</td></tr>`).join('')}</tbody></table></div>` : '<div class="empty">기타 내역 없음 — 입고와 판매 차감만 있습니다</div>'}</div>`;
+    ${R.etcList.map(m => `<tr><td class="nowrap num">${md(m.date)}</td><td>${typePill(m.type)}</td><td class="nm">${esc((S.P[m.pid] || {}).name || m.pid)}</td><td class="n"><b>${m.qty > 0 ? '+' : ''}${fmt(m.qty)}</b></td><td class="hide-s muted">${esc(m.memo || '')}</td></tr>`).join('')}</tbody></table></div>` : '<div class="empty">기타 내역 없음 — 입고와 판매 차감만 있습니다</div>'}</div>`;
   const sku = `<div class="card"><h2>상품별 <span class="r">${R.rows.length}종 · 판매 많은 순</span></h2><div class="tw"><table class="cbsku"><thead><tr><th>상품명</th><th class="n">입고</th><th class="n">판매</th><th class="n hide-s">기타</th><th class="n">현재고</th><th class="n">판매율</th><th class="n hide-s">매출</th></tr></thead><tbody>
     ${R.rows.map(x => `<tr data-pid="${x.pid}"><td class="nm">${esc(x.p.name.replace(/^에바30주년팝업_/, ''))}<div class="muted code" style="font-size:11.5px">${esc(x.p.sku || x.p.barcode || '')}</div></td><td class="n">${fmt(x.in)}</td><td class="n"><b>${fmt(x.sold)}</b></td><td class="n hide-s">${x.etc ? fmt(x.etc) : '-'}</td><td class="n ${x.now < 0 ? 'qty-neg' : ''}"><b>${fmt(x.now)}</b>${x.now === 0 ? ' <span class="pill p-mute">품절</span>' : ''}</td><td class="n">${x.rate == null ? '-' : x.rate.toFixed(1) + '%'}</td><td class="n hide-s">${fmt(x.ps.s)}</td></tr>`).join('')}
     </tbody><tfoot><tr class="tot"><td>합계</td><td class="n">${fmt(T.in)}</td><td class="n">${fmt(T.sold)}</td><td class="n hide-s">${fmt(T.etc)}</td><td class="n">${fmt(T.now)}</td><td class="n">${T.in ? (T.sold / T.in * 100).toFixed(1) + '%' : '-'}</td><td class="n hide-s">${fmt(R.rows.reduce((s, x) => s + x.ps.s, 0))}</td></tr></tfoot></table></div></div>`;
@@ -2768,7 +2775,7 @@ function bind() {
     if (t.id === 'impUse') { S.ui.entry.file = S.ui.imp.src; for (const r of S.ui.imp.rows) if (r.pid && r.qty > 0 && !(r.dup && S.ui.imp.dupMode === 'first')) addLine(r.pid, r.qty, r.dup ? `파일 ${r.dup}줄과 같은 상품 — 수량 합침` : null); S.ui.imp = null; S.ui.entry.mode = 'hand'; render(); return; }
     if (t.id === 'cSave') { const st = S.stores[0], c = S.ui.counts[st] || {}; const df = Object.keys(c).filter(pid => c[pid] !== stockOf(st, pid)).map(pid => ({ pid, b: stockOf(st, pid), v: c[pid] })).sort((a, b) => Math.abs(b.v - b.b) - Math.abs(a.v - a.b));
       const plus = df.filter(x => x.v > x.b).reduce((a, x) => a + x.v - x.b, 0), minus = df.filter(x => x.v < x.b).reduce((a, x) => a + x.b - x.v, 0), amt = df.reduce((a, x) => a + (x.v - x.b) * ((S.P[x.pid] || {}).price || 0), 0);
-      confirmDrawer('실사 결과를 재고에 반영', `<p style="margin:0 0 8px">${esc(storeName(st))} · ${today()}(${wd(today())}) — 장부 수량을 세어 본 수량으로 바꿉니다. 반영한 뒤에는 '재고 조정' 기록으로 남습니다.</p>
+      confirmDrawer('실사 결과를 재고에 반영', `<p style="margin:0 0 8px">${esc(storeName(st))} · ${fd(today())} — 장부 수량을 세어 본 수량으로 바꿉니다. 반영한 뒤에는 '재고 조정' 기록으로 남습니다.</p>
         <div class="kv"><dt>바뀌는 상품</dt><dd class="num"><b>${df.length}종</b></dd><dt>늘어남</dt><dd class="num" style="color:var(--ok);font-weight:700">+${fmt(plus)}개</dd><dt>줄어듦</dt><dd class="num qty-neg">−${fmt(minus)}개</dd>${amt ? `<dt>금액 차이</dt><dd class="num"><b>${amt > 0 ? '+' : ''}${won(amt)}</b></dd>` : ''}</div>
         <div class="tw" style="margin-top:10px"><table><thead><tr><th>상품명</th><th class="n">장부</th><th class="n">실사</th><th class="n">차이</th></tr></thead><tbody>${df.slice(0, 15).map(x => `<tr><td class="nm">${esc(S.P[x.pid].name)}</td><td class="n">${fmt(x.b)}</td><td class="n">${fmt(x.v)}</td><td class="n" style="font-weight:700;color:${x.v < x.b ? 'var(--bad)' : 'var(--ok)'}">${x.v > x.b ? '+' : ''}${fmt(x.v - x.b)}</td></tr>`).join('')}</tbody></table></div>${df.length > 15 ? `<p class="muted" style="font-size:12.5px;margin:6px 0 0">차이 큰 순 15종만 보여 줍니다 (전체 ${df.length}종 반영)</p>` : ''}`, `${df.length}종 반영`, async () => { await saveCount(); S.ui.cntMsg = null; }); return; }
     if (t.id === 'cntTpl') { countTemplate(); return; }
@@ -2840,7 +2847,7 @@ function bind() {
     if (d.ip != null) { const r = S.ui.imp.rows[+d.ip]; r.pid = t.value; render(); return; }
     if (d.cnt) { const st = S.stores[0]; const v = t.value === '' ? null : Math.max(0, parseInt(t.value, 10)); if (v == null) delete S.ui.counts[st][d.cnt]; else S.ui.counts[st][d.cnt] = v; render(); return; }
     if (t.id === 'ra' || t.id === 'rb') { let a = $('#ra').value, b = $('#rb').value; if (!a || !b) return; let msg = '';
-      if (a > b) { if (t.id === 'ra') { b = a; msg = `시작일이 종료일보다 늦어서 종료일도 ${md(a)}(${wd(a)})로 맞췄습니다`; } else { a = b; msg = `종료일이 시작일보다 빨라서 시작일도 ${md(b)}(${wd(b)})로 맞췄습니다`; } }
+      if (a > b) { if (t.id === 'ra') { b = a; msg = `시작일이 종료일보다 늦어서 종료일도 ${md(a)}로 맞췄습니다`; } else { a = b; msg = `종료일이 시작일보다 빨라서 시작일도 ${md(b)}로 맞췄습니다`; } }
       if (b > today()) { b = today(); if (a > b) a = b; msg = '앞으로 올 날짜는 고를 수 없어 오늘까지로 맞췄습니다'; }
       S.ui.range = { unit: S.ui.salesUnit, ab: [a, b] }; render(); if (msg) toast(msg); return; }
     if (d.sum) { const cur = (S.sumStores || S.stores).filter(s => s !== d.sum); if (t.checked) cur.push(d.sum); S.sumStores = cur.length ? cur : [d.sum]; render(); return; }
@@ -2912,8 +2919,8 @@ const KR_HOLIDAYS = {
   const el = document.createElement('div'); el.className = 'kclock'; el.setAttribute('aria-label', '현재 시간');
   el.innerHTML = '<div class="kr1"><span class="kd"></span><b class="kw"></b></div><div class="kh"></div><div class="kt"><span></span></div><div class="kr2"><span class="kz"></span><span class="kk"></span></div>';
   const q = c => el.querySelector(c), W = ['일요일', '월요일', '화요일', '수요일', '목요일', '금요일', '토요일'], p2 = n => String(n).padStart(2, '0');
-  const kF = new Intl.DateTimeFormat('ko-KR', { timeZone: 'Asia/Seoul', month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false });
-  const kst2 = d => { const o = Object.fromEntries(kF.formatToParts(d).map(x => [x.type, x.value])); return `${o.month}/${o.day} ${o.hour}:${o.minute}`; };
+  const kF = new Intl.DateTimeFormat('ko-KR', { timeZone: 'Asia/Seoul', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false });
+  const kst2 = d => { const o = Object.fromEntries(kF.formatToParts(d).map(x => [x.type, x.value])); return `${o.year}.${o.month}.${o.day}(${'일월화수목금토'[new Date(`${o.year}-${o.month}-${o.day}T00:00:00Z`).getUTCDay()]}) ${o.hour}:${o.minute}`; };
   let zone = ''; try { zone = Intl.DateTimeFormat().resolvedOptions().timeZone.split('/').pop().replace(/_/g, ' '); } catch (e) { }
   const fit = () => {   // 컴퓨터: 시간 글씨가 상자 가로를 꽉 채우게
     const sp = q('.kt span'), box = q('.kt');

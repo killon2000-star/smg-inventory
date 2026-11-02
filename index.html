@@ -429,8 +429,9 @@ tr.flag td{background:var(--warn-bg)}
 .field label{font-size:12px;color:var(--muted);font-weight:600}
 .inp,select.inp,textarea.inp{border:1px solid var(--line);background:var(--surface);border-radius:7px;padding:8px 10px;min-height:38px;width:100%}
 .inp:focus{border-color:var(--ink-2);outline:none}
-.dsel{display:flex;gap:4px;min-width:0}
-.dsel select.inp{width:auto;flex:1 0 auto;min-width:4.9em;padding-left:8px;padding-right:20px;font-variant-numeric:tabular-nums}
+/* 년·월·일 칸: 자리가 모자라면 겹치지 않고 아랫줄로 내려감 (11/3) */
+.dsel{display:flex;flex-wrap:wrap;gap:4px;min-width:0;max-width:100%}
+.dsel select.inp{width:auto;flex:1 1 auto;min-width:4.9em;padding-left:8px;padding-right:20px;font-variant-numeric:tabular-nums}
 .dsel select.inp:first-of-type{flex:1.3 0 auto;min-width:6.3em}
 .inp.qty{text-align:right;font-variant-numeric:tabular-nums;width:90px}
 .search{position:relative;flex:1;min-width:200px}
@@ -439,6 +440,10 @@ tr.flag td{background:var(--warn-bg)}
 .chips{display:flex;gap:6px;flex-wrap:wrap}
 .chip{border:1px solid var(--line);background:var(--surface);border-radius:16px;padding:4px 12px;font-size:13px;font-weight:600;color:var(--ink-2);white-space:nowrap}
 .chip.on{background:var(--ink);color:var(--surface);border-color:var(--ink)}
+.formgrid > *{min-width:0}
+@media (min-width:761px){.formgrid .field:has(> .dsel){grid-column:span 2}}
+#app{font-variant-numeric:tabular-nums}
+.dt{white-space:nowrap;font-variant-numeric:tabular-nums}
 .formgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px}
 .checks{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:8px}
 .ck{display:flex;align-items:flex-start;gap:8px;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--surface)}
@@ -484,6 +489,7 @@ tr.flag td{background:var(--warn-bg)}
 .posun summary{font-weight:700;cursor:pointer;min-height:32px;display:flex;align-items:center}
 .posun select.inp{min-width:200px;font-size:13px}
 .x{margin-left:auto;background:none;border:1px solid var(--line);border-radius:7px;width:36px;height:36px;font-size:18px;flex:none}
+@media (pointer:coarse){.x{width:44px;height:44px}}
 .toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(var(--tabh,0px) + 16px + env(safe-area-inset-bottom,0px));z-index:90;background:var(--ink);color:var(--surface);padding:10px 16px;border-radius:8px;font-weight:600;box-shadow:var(--shadow);max-width:calc(100vw - 32px)}
 .kv{display:grid;grid-template-columns:auto 1fr;gap:4px 14px;font-size:13px}
 .kv dt{color:var(--muted);white-space:nowrap}
@@ -503,7 +509,8 @@ tr.flag td{background:var(--warn-bg)}
   .notice{order:9;flex:1 0 100%;margin:0;height:34px;justify-content:flex-start;font-size:13px}
   .tabbar{display:block;position:fixed;left:0;right:0;bottom:0;z-index:55;background:var(--surface);border-top:1px solid var(--line);
     padding-bottom:env(safe-area-inset-bottom,0px);padding-left:env(safe-area-inset-left,0px);padding-right:env(safe-area-inset-right,0px)}
-  .tabgrid{display:grid}
+  .tabgrid{display:grid;width:100%}
+  .tabbar{max-width:100vw;overflow:hidden}
   main{padding-bottom:calc(var(--tabh,64px) + 20px)}
   .tabgrid.two button{min-height:46px;padding:4px 1px 3px}
   .tabbar button{position:relative;background:none;border:0;min-height:52px;justify-content:center;padding:7px 1px 5px;display:flex;flex-direction:column;align-items:center;gap:2px;font-size:11px;font-weight:600;color:var(--muted);white-space:nowrap;min-width:0}
@@ -585,7 +592,7 @@ tr.flag td{background:var(--warn-bg)}
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 <script src="config.js"></script>
 <script src="firebase.js?v=30"></script>
-<script src="app.js?v=64"></script>
+<script src="app.js?v=65"></script>
 <script>if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});</script>
 
 </body></html>

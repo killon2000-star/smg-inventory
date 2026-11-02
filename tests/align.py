@@ -24,7 +24,7 @@ JS = r"""() => {
       if (sp > 1 || fss.size > 1) bad.push({ table: ti, slot: k, spread: +sp.toFixed(2), fontSizes: [...fss], sample: a.slice(0, 3).map(o => o.txt) }); }
   });
   // 앱 전체 날짜 형식 검사
-  document.querySelectorAll('#page .dt').forEach(d => { if (!/^(\d{4}-\d{2}(-\d{2}( \d{2}:\d{2}:\d{2})?)?)$/.test(d.textContent)) bad.push({ slot: 'date-format', sample: [d.textContent] }); });
+  document.querySelectorAll('#page .dt').forEach(d => { if (!/^\d{4}\.\d{2}(\.\d{2}\([일월화수목금토]\)( \d{2}:\d{2})?)?$/.test(d.textContent)) bad.push({ slot: 'date-format', sample: [d.textContent] }); });
   return { checked: n, dates: nd, bad };
 }"""
 def check(page, label, ok, need_slots=True):
