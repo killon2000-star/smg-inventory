@@ -40,7 +40,7 @@ const PERM_DEF = [
 ];
 
 const DEFAULT_ORDER = STORES.map(s => s.id);
-const APP_VERSION = '2026-11-02 13:20';   // 앱 화면을 마지막으로 고친 시각 (한국 시간)
+const APP_VERSION = '2026-11-02 15:10';   // 앱 화면을 마지막으로 고친 시각 (한국 시간)
 /* ───────── 작은 도구 ───────── */
 const $ = (s, el = document) => el.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -860,16 +860,138 @@ function stockDocMeta(o, n) {
   const isToday = o.date >= today();
   return { title: `재고 현황 · ${stTxt}`, cond: `${md(o.date)}(${wd(o.date)}) ${isToday ? '현재' : '마감 기준'} · ${ipTxt} · ${f} · ${n}종`, made: kst(new Date().toISOString()), who: whoText(S.user.name, userCo(S.user)), stTxt, ipTxt };
 }
+// 상품에 판매가가 없으면 토스포스 판매 기록(매출 ÷ 수량)으로 채움
+function posPriceMap() {
+  const k = S.moves.length + ':' + Object.keys(S.sales).length; if (posPriceMap._k === k) return posPriceMap._m;
+  const A = {}; for (const st of Object.keys(S.sales || {})) for (const mon of Object.values(S.sales[st] || {})) for (const r of Object.values(mon.days || {})) for (const [nm, v] of Object.entries(r.pr || {})) { const x = A[norm(nm)] ||= [0, 0]; x[0] += v[0] || 0; x[1] += v[1] || 0; }
+  const M = {}; for (const [k2, [q, sm]] of Object.entries(A)) if (q > 0 && sm > 0) M[k2] = Math.round(sm / q / 100) * 100;
+  posPriceMap._k = k; posPriceMap._m = M; return M;
+}
+const priceOf = p => p.price || posPriceMap()[norm(p.name)] || 0;
+/* ───────── 재고 흐름표: 입고·판매·기타 → 남은 재고 (대표 지시 2026-11-02: 하이큐 10/31 재고표 양식으로 출력) ───────── */
+function flowRows(o) {
+  const from = o.from || o.date.slice(0, 8) + '01', to = o.date, A = {};
+  for (const st of o.stores) {
+    const sumAll = {};
+    for (const m of S.moves) {
+      if (m.store !== st) continue;
+      sumAll[m.pid] = (sumAll[m.pid] || 0) + m.qty;
+      if (m.date > to) continue;
+      const x = A[m.pid] ||= { preIn: 0, preSale: 0, preOth: 0, inQ: 0, sale: 0, oth: 0, base: 0 };
+      const pre = m.date < from, sale = m.type === '판매', cnt = m.type === COUNT_TYPE;
+      if (sale) { if (pre) x.preSale -= m.qty; else x.sale -= m.qty; }
+      else if (!cnt && m.qty > 0) { if (pre) x.preIn += m.qty; else x.inQ += m.qty; }
+      else { if (pre) x.preOth += m.qty; else x.oth += m.qty; }
+    }
+    // 앱에 기록이 생기기 전부터 있던 재고 = 지금 재고 − 기록 합계 → 이전 입고에 넣음
+    for (const pid of Object.keys(S.stock[st] || {})) { const x = A[pid] ||= { preIn: 0, preSale: 0, preOth: 0, inQ: 0, sale: 0, oth: 0, base: 0 }; x.base += stockOf(st, pid) - (sumAll[pid] || 0); }
+  }
+  let rows = S.products.filter(p => (!o.ips.length || o.ips.includes(p.ip)) && o.stores.some(st => (S.stock[st] || {})[p.id] != null)).map(p => {
+    const x = A[p.id] || { preIn: 0, preSale: 0, preOth: 0, inQ: 0, sale: 0, oth: 0, base: 0 };
+    const preIn = x.preIn + Math.max(0, x.base), preOth = x.preOth + Math.min(0, x.base);
+    const start = preIn - x.preSale + preOth, t = start + x.inQ - x.sale + x.oth;
+    return { p, preIn, preSale: x.preSale, preOth: -preOth, start, inQ: x.inQ, sale: x.sale, oth: -x.oth, t, base: x.base };   // 이동·실사 칸: 빠진 수량은 +, 실사로 늘어난 수량은 −
+  });
+  if (o.f === 'in') rows = rows.filter(r => r.t > 0); if (o.f === 'out') rows = rows.filter(r => r.t === 0); if (o.f === 'neg') rows = rows.filter(r => r.t < 0);
+  rows.sort((a, b) => (a.p.ip || '').localeCompare(b.p.ip || '', 'ko') || a.p.name.localeCompare(b.p.name, 'ko'));
+  return { rows, from, to };
+}
+const flowStatus = t => t < 0 ? '마이너스' : t === 0 ? '품절' : t <= 10 ? '10개 이하' : '';
+function flowMeta(o, rows, from, to) {
+  const M = stockDocMeta(o, rows.length), pd = addDays(from, -1);
+  const ipName = o.ips.length === 1 ? o.ips[0] : M.ipTxt;
+  return { ...M, pd, title: `${ipName} — 남은 재고 (${md(to)} ${to >= today() ? '현재' : '영업 마감 기준'})`, eyebrow: `${M.stTxt} · 재고 확인`,
+    basis: `기준 자료: ${md(pd)} 마감 재고 + ${md(from)}~${md(to)} 입고·판매·기타(이동·실사 조정) · ${o.stores.length > 1 ? `${o.stores.length}개 매장 합계` : M.stTxt}`,
+    heads: ['NO.', ...(o.ips.length === 1 ? [] : ['IP']), '상품명', '입고\n~' + md(pd), '판매\n~' + md(pd), '이동·실사·\n기타 ~' + md(pd), '재고\n' + md(pd) + ' 마감', '추가 입고\n' + md(from) + '~' + md(to), '판매\n' + md(from) + '~' + md(to), '이동·실사\n' + md(from) + '~' + md(to), md(to) + '\n남은 재고', '상태', '판매가', '재고 금액\n(판매가×남은 재고)'] };
+}
+function flowNotes(rows, from) {
+  const N = [];
+  const neg = rows.filter(r => r.t < 0); if (neg.length) N.push(['bad', `마이너스 ${neg.length}종: ${neg.slice(0, 5).map(r => r.p.name).join(', ')}${neg.length > 5 ? ' 외' : ''} — 입고 등록이 빠졌거나 다른 상품으로 찍힌 판매가 있을 수 있습니다. 실사로 맞춰 주세요.`]);
+  const out = rows.filter(r => r.t === 0); if (out.length) N.push(['', `품절 ${out.length}종`]);
+  if (rows.some(r => r.base)) N.push(['', '앱에 기록이 생기기 전부터 있던 재고는 "입고" 칸에 포함했습니다.']);
+  N.push(['', '남은 재고 = 재고 + 추가 입고 − 판매 − 이동·실사. 이동·실사 칸은 다른 곳으로 보낸 수량·실사로 줄어든 수량이 +, 실사로 늘어난 수량은 −로 들어갑니다. 받은 수량은 입고 칸에 들어갑니다.']);
+  N.push(['', '재고 금액 = 판매가 × 남은 재고 (마이너스는 0으로 계산)']);
+  return N;
+}
+async function exportFlow(o) {
+  try { if (!window.XLSX || !XLSX.__styled) { await loadScript('https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js'); XLSX.__styled = true; } } catch (e) { /* 꾸밈 없는 엑셀로라도 받기 */ }
+  const { rows, from, to } = flowRows(o), M = flowMeta(o, rows, from, to), oneIp = o.ips.length === 1;
+  const H = M.heads, nc = H.length, off = oneIp ? 0 : 1;   // IP 칸이 있으면 한 칸씩 밀림
+  const col = i => XLSX.utils.encode_col(i);
+  const C = { pin: 2 + off, psale: 3 + off, poth: 4 + off, st: 5 + off, inq: 6 + off, sale: 7 + off, oth: 8 + off, t: 9 + off, stat: 10 + off, pr: 11 + off, amt: 12 + off };
+  const R0 = 4, ws = {};
+  const F = { name: '맑은 고딕', sz: 10 }, bd = { bottom: { style: 'thin', color: { rgb: 'E6E7EE' } } };
+  const put = (r, c, v, st = {}) => { const ref = col(c) + (r + 1); const cell = typeof v === 'object' && v && v.f ? { t: 'n', f: v.f } : { t: typeof v === 'number' ? 'n' : 's', v: v ?? '' }; cell.s = st; ws[ref] = cell; return cell; };
+  put(0, 0, M.eyebrow, { font: { ...F, bold: true, color: { rgb: '2563C9' } } });
+  put(1, 0, M.title, { font: { ...F, sz: 16, bold: true } });
+  put(2, 0, M.basis, { font: { ...F, sz: 9.5, color: { rgb: '555555' } } });
+  H.forEach((h, i) => put(R0, i, h, { font: { ...F, bold: true }, fill: { fgColor: { rgb: i === C.t ? 'DFE8F8' : 'F1F2F6' } }, alignment: { horizontal: i === 0 || i === C.stat ? 'center' : i <= 1 + off ? 'left' : 'right', vertical: 'center', wrapText: true }, border: { bottom: { style: 'medium', color: { rgb: 'C9CCD8' } } } }));
+  rows.forEach((r, k) => {
+    const R = R0 + 1 + k, ex = R + 1, flag = r.t < 0 ? 'FFD45C' : r.inQ ? 'FFF1C7' : null;
+    const base = (c, extra = {}) => ({ font: F, border: bd, alignment: { horizontal: c === 0 || c === C.stat ? 'center' : c <= 1 + off ? 'left' : 'right', vertical: 'center' }, numFmt: '#,##0;-#,##0;', ...(flag ? { fill: { fgColor: { rgb: flag } } } : {}), ...extra });
+    put(R, 0, k + 1, base(0)); if (!oneIp) put(R, 1, r.p.ip || '', base(1)); put(R, 1 + off, r.p.name + (r.t < 0 ? '  [마이너스]' : ''), base(1 + off, r.t < 0 ? { font: { ...F, bold: true } } : {}));
+    put(R, C.pin, r.preIn, base(C.pin)); put(R, C.psale, r.preSale, base(C.psale)); put(R, C.poth, r.preOth, base(C.poth));
+    put(R, C.st, { f: `${col(C.pin)}${ex}-${col(C.psale)}${ex}-${col(C.poth)}${ex}` }, base(C.st));
+    put(R, C.inq, r.inQ, base(C.inq)); put(R, C.sale, r.sale, base(C.sale)); put(R, C.oth, r.oth, base(C.oth));
+    put(R, C.t, { f: `${col(C.st)}${ex}+${col(C.inq)}${ex}-${col(C.sale)}${ex}-${col(C.oth)}${ex}` }, base(C.t, { font: { ...F, bold: true }, fill: { fgColor: { rgb: flag || 'EEF3FC' } } }));
+    ws[col(C.st) + ex].v = r.start; ws[col(C.t) + ex].v = r.t;
+    put(R, C.stat, { f: `IF(${col(C.t)}${ex}<0,"마이너스",IF(${col(C.t)}${ex}=0,"품절",IF(${col(C.t)}${ex}<=10,"10개 이하","")))` }, base(C.stat, { font: { ...F, bold: true, color: { rgb: 'B3261E' } } })); ws[col(C.stat) + ex].t = 's'; ws[col(C.stat) + ex].v = flowStatus(r.t);
+    put(R, C.pr, priceOf(r.p), base(C.pr));
+    put(R, C.amt, { f: `MAX(${col(C.t)}${ex},0)*${col(C.pr)}${ex}` }, base(C.amt)); ws[col(C.amt) + ex].v = Math.max(0, r.t) * priceOf(r.p);
+  });
+  const TR = R0 + 1 + rows.length, top = { top: { style: 'medium', color: { rgb: 'C9CCD8' } } };
+  put(TR, 1 + off, `합계 ${rows.length}종`, { font: { ...F, bold: true }, border: top });
+  for (const c of [C.pin, C.psale, C.poth, C.st, C.inq, C.sale, C.oth, C.t, C.amt]) { const cell = put(TR, c, { f: `SUM(${col(c)}${R0 + 2}:${col(c)}${TR})` }, { font: { ...F, bold: true }, numFmt: '#,##0', border: top, alignment: { horizontal: 'right' }, ...(c === C.t ? { fill: { fgColor: { rgb: 'EEF3FC' } } } : {}) }); const key = Object.keys(C).find(k => C[k] === c); cell.v = rows.reduce((a, r) => a + (key === 'amt' ? Math.max(0, r.t) * priceOf(r.p) : key === 'st' ? r.start : r[{ pin: 'preIn', psale: 'preSale', poth: 'preOth', inq: 'inQ', sale: 'sale', oth: 'oth', t: 't' }[key]]), 0); }
+  const N = flowNotes(rows, from); const merges = [];
+  N.forEach(([lv, t], i) => { const R = TR + 2 + i; put(R, 0, (lv === 'bad' ? '▲ ' : '◆ ') + t, { font: { ...F, bold: lv === 'bad' }, fill: { fgColor: { rgb: 'E9F0FB' } } }); for (let c = 1; c < nc; c++) put(R, c, '', { fill: { fgColor: { rgb: 'E9F0FB' } } }); merges.push({ s: { r: R, c: 0 }, e: { r: R, c: nc - 1 } }); });
+  const FR = TR + 3 + N.length; put(FR, 0, `기준: ${o.date}(${wd(o.date)}) ${o.date >= today() ? '현재' : '영업 마감'} · 출력 ${M.made} · ${M.who}`, { font: { ...F, sz: 9, color: { rgb: '888888' } } });
+  ws['!ref'] = `A1:${col(nc - 1)}${FR + 1}`; ws['!merges'] = merges;
+  ws['!cols'] = [{ wch: 6 }, ...(oneIp ? [] : [{ wch: 16 }]), { wch: 42 }, { wch: 9 }, { wch: 9 }, { wch: 11 }, { wch: 11 }, { wch: 11 }, { wch: 11 }, { wch: 11 }, { wch: 11 }, { wch: 10 }, { wch: 9 }, { wch: 15 }];
+  ws['!rows'] = []; ws['!rows'][R0] = { hpt: 34 };
+  ws['!freeze'] = { xSplit: 2 + off, ySplit: R0 + 1 };
+  const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, '재고');
+  XLSX.writeFile(wb, `재고흐름_${M.stTxt.replace(/[\s,]+/g, '_')}_${oneIp ? o.ips[0].replace(/[\\/:*?"<>|\s]+/g, '') + '_' : ''}${from.replace(/-/g, '').slice(2)}-${to.replace(/-/g, '').slice(2)}.xlsx`);
+  toast(`엑셀로 받았습니다 · ${rows.length}종`);
+}
+function printFlow(o) {
+  const { rows, from, to } = flowRows(o), M = flowMeta(o, rows, from, to), oneIp = o.ips.length === 1;
+  const e = v => String(v ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  const n = v => v ? v.toLocaleString() : '';
+  const T = k => rows.reduce((a, r) => a + r[k], 0), tm = rows.reduce((a, r) => a + Math.max(0, r.t) * priceOf(r.p), 0);
+  const th = M.heads.map((h, i) => `<th class="${i === 0 || h === '상태' ? 'c' : (i <= (oneIp ? 1 : 2) ? 'l' : 'r')}${h.includes('남은 재고') ? ' now' : ''}">${e(h).replace('\n', '<br><span class="g">')}${h.includes('\n') ? '</span>' : ''}</th>`).join('');
+  const html = `<!doctype html><html lang="ko"><head><meta charset="utf-8"><title>${e(M.title)}</title><style>
+    @page{size:A4 landscape;margin:10mm}body{font-family:"Noto Sans KR","Malgun Gothic","Apple SD Gothic Neo",sans-serif;color:#1b1a22;margin:0;font-size:10px}
+    .t1{color:#2563c9;font-weight:700;font-size:10.5px}h1{font-size:18px;margin:3px 0}.s{font-size:10px;color:#555;margin-bottom:8px}
+    table{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums}th{background:#f1f2f6;padding:5px 4px;border-bottom:2px solid #c9ccd8;font-size:9.5px;line-height:1.25;vertical-align:bottom}th.l{text-align:left}th.r{text-align:right}th.c{text-align:center}.g{color:#6b6878;font-weight:400}
+    td{padding:4px 4px;border-bottom:1px solid #e6e7ee;font-size:10px}td.r{text-align:right}td.c{text-align:center}td.now{font-weight:700;background:#eef3fc}th.now{background:#dfe8f8}
+    tr.a td{background:#ffd45c;font-weight:700}tr.b td{background:#fff1c7}td.st{color:#b3261e;font-weight:700}
+    thead{display:table-header-group}tr{page-break-inside:avoid}tfoot{display:table-row-group}tfoot td{font-weight:700;border-top:2px solid #c9ccd8}
+    .nt{margin-top:10px;background:#e9f0fb;border-left:4px solid #2563c9;padding:7px 12px;font-size:10px;line-height:1.7}.ft{margin-top:6px;font-size:9px;color:#888}
+  </style></head><body>
+  <div class="t1">${e(M.eyebrow)}</div><h1>${e(M.title)}</h1><div class="s">${e(M.basis)}</div>
+  <table><thead><tr>${th}</tr></thead><tbody>
+  ${rows.map((r, i) => `<tr class="${r.t < 0 ? 'a' : r.inQ ? 'b' : ''}"><td class="c">${i + 1}</td>${oneIp ? '' : `<td>${e(r.p.ip)}</td>`}<td>${e(r.p.name)}</td><td class="r">${n(r.preIn)}</td><td class="r">${n(r.preSale)}</td><td class="r">${n(r.preOth)}</td><td class="r">${r.start.toLocaleString()}</td><td class="r">${n(r.inQ)}</td><td class="r">${n(r.sale)}</td><td class="r">${n(r.oth)}</td><td class="r now">${r.t.toLocaleString()}</td><td class="c st">${flowStatus(r.t)}</td><td class="r">${n(priceOf(r.p))}</td><td class="r">${n(Math.max(0, r.t) * priceOf(r.p))}</td></tr>`).join('')}
+  </tbody><tfoot><tr><td></td>${oneIp ? '' : '<td></td>'}<td>합계 ${rows.length}종</td><td class="r">${n(T('preIn'))}</td><td class="r">${n(T('preSale'))}</td><td class="r">${n(T('preOth'))}</td><td class="r">${T('start').toLocaleString()}</td><td class="r">${n(T('inQ'))}</td><td class="r">${n(T('sale'))}</td><td class="r">${n(T('oth'))}</td><td class="r now">${T('t').toLocaleString()}</td><td></td><td></td><td class="r">${tm.toLocaleString()}</td></tr></tfoot></table>
+  <div class="nt">${flowNotes(rows, from).map(([lv, t]) => `${lv === 'bad' ? '🔺 <b>' : '🔸 '}${e(t)}${lv === 'bad' ? '</b>' : ''}`).join('<br>')}</div>
+  <div class="ft">기준: ${o.date}(${wd(o.date)}) ${o.date >= today() ? '현재' : '영업 마감'} · 출력 ${e(M.made)} · ${e(M.who)}</div>
+  </body></html>`;
+  printHtml(html);
+}
 function stockDocDrawer() {
   const o = S.ui.sdoc; const mine = myStores();
   const ips = [...new Set(S.products.filter(p => o.stores.some(st => (S.stock[st] || {})[p.id] != null)).map(p => p.ip))].sort((a, b) => a.localeCompare(b, 'ko'));
   const fq = norm(o.ipq || ''); const shownIps = ips.filter(i => !fq || norm(i).includes(fq));
-  const { rows, warn } = stockDocRows(o);
-  const tq = rows.reduce((a, r) => a + r.t, 0);
+  const { rows, warn } = stockDocRows(o); const flow = o.form !== 'simple';
+  const fr = flow ? flowRows(o) : null; const tq = (flow ? fr.rows : rows).reduce((a, r) => a + r.t, 0); const nShow = (flow ? fr.rows : rows).length;
+  const oldest = o.stores.map(st => stockAtMap(st, o.date).oldest).filter(Boolean).sort()[0] || o.date;
+  const ipRun = o.ips.length === 1 ? ipPlan().filter(x => o.stores.includes(x.store) && (norm(x.ip).includes(norm(o.ips[0])) || norm(o.ips[0]).includes(norm(x.ip))) && x.start <= o.date).sort((a, b) => b.start.localeCompare(a.start))[0] : null;
   return `<div class="hd"><h3>재고 문서 출력</h3><button class="x" data-close aria-label="닫기">×</button></div>
   <div class="card sdoc" style="display:flex;flex-direction:column;gap:14px">
-    <div class="field"><label>매장 <span class="muted" style="font-weight:400">· 여러 곳 고르면 매장별 수량과 합계</span></label>
+    <div class="field"><label>양식</label><div class="sgrid" style="grid-template-columns:1fr 1fr"><button class="sbtn ${flow ? 'on' : ''}" data-sdform="flow">재고 흐름표<br><span class="muted" style="font-size:11.5px;font-weight:400">입고 · 판매 · 이동 → 남은 재고</span></button><button class="sbtn ${!flow ? 'on' : ''}" data-sdform="simple">재고 수량표<br><span class="muted" style="font-size:11.5px;font-weight:400">매장별 남은 재고만</span></button></div></div>
+    <div class="field"><label>매장 <span class="muted" style="font-weight:400">· ${flow ? '여러 곳 고르면 합계로 계산' : '여러 곳 고르면 매장별 수량과 합계'}</span></label>
       <div class="sgrid"><button class="sbtn ${o.stores.length === mine.length ? 'on' : ''}" data-sdst="__all">전체 매장</button>${mine.map(st => `<button class="sbtn ${o.stores.includes(st) ? 'on' : ''}" data-sdst="${st}"><span class="dot" style="background:${storeColor(st)}"></span>${esc(shortName(st))}</button>`).join('')}</div></div>
+    ${flow ? `<div class="field"><label for="sdFrom">시작 날짜 <span class="muted" style="font-weight:400">· 이날부터 기준 날짜까지 입고·판매를 따로 보여 줌</span></label>${dateSel('sdFrom', fr.from)}
+      <div class="chips" style="margin-top:6px"><button class="chip ${fr.from === o.date.slice(0, 8) + '01' ? 'on' : ''}" data-sdfrom="${o.date.slice(0, 8)}01">이번 달 1일</button><button class="chip ${fr.from === addDays(o.date, -6) ? 'on' : ''}" data-sdfrom="${addDays(o.date, -6)}">최근 7일</button>${ipRun ? `<button class="chip ${fr.from === ipRun.start ? 'on' : ''}" data-sdfrom="${ipRun.start}">${esc(ipRun.ip)} 시작일 ${md(ipRun.start)}</button>` : ''}<button class="chip ${fr.from === oldest ? 'on' : ''}" data-sdfrom="${oldest}">앱 기록 처음부터</button></div></div>` : ''}
     <div class="field"><label for="sdDate">기준 날짜 <span class="muted" style="font-weight:400">· 그날 영업 마감 기준 재고</span></label>${dateSel('sdDate', o.date)}
       ${warn.length ? `<div class="note warn" style="margin-top:6px">🔸 ${esc(warn.join(', '))}: 이 날짜 이전 기록이 앱에 없어 정확하지 않을 수 있습니다 (앱 자료 시작일 이후 날짜를 골라 주세요)</div>` : ''}</div>
     <div class="field"><label>IP <span class="muted" style="font-weight:400">· 여러 개 고를 수 있음 · 아무것도 안 고르면 전체</span></label>
@@ -877,9 +999,9 @@ function stockDocDrawer() {
       ${o.ips.length ? `<div class="chips" style="margin-top:6px">${o.ips.map(i => `<button class="chip on" data-sdip="${esc(i)}">${esc(i)} ✕</button>`).join('')}</div>` : ''}
       <div class="iplist">${shownIps.map(i => `<label class="ipck"><input type="checkbox" data-sdipc="${esc(i)}" ${o.ips.includes(i) ? 'checked' : ''}><span>${esc(i)}</span></label>`).join('') || '<span class="muted">찾는 IP가 없습니다</span>'}</div></div>
     <div class="field"><label>상품 범위</label><div class="sgrid">${[['all', '재고 등록 전체'], ['in', '재고 있음'], ['out', '품절'], ['neg', '마이너스']].map(([k, t]) => `<button class="sbtn ${o.f === k ? 'on' : ''}" data-sdf="${k}">${t}</button>`).join('')}</div></div>
-    <div class="note" style="font-size:13px"><b>${esc(stockDocMeta(o, rows.length).title)}</b><br>${esc(stockDocMeta(o, rows.length).cond)} · 재고 합계 <b>${fmt(tq)}</b>개</div>
+    <div class="note" style="font-size:13px"><b>${esc(flow ? flowMeta(o, fr.rows, fr.from, fr.to).title : stockDocMeta(o, rows.length).title)}</b><br>${esc(flow ? flowMeta(o, fr.rows, fr.from, fr.to).basis : stockDocMeta(o, rows.length).cond)} · ${fmt(nShow)}종 · 남은 재고 합계 <b>${fmt(tq)}</b>개</div>
   </div>
-  <div class="sgrid" style="grid-template-columns:1fr 1fr"><button class="btn" id="sdXls" ${rows.length ? '' : 'disabled'}>엑셀로 받기</button><button class="btn pri" id="sdPrint" ${rows.length ? '' : 'disabled'}>인쇄 · PDF</button></div>`;
+  <div class="sgrid" style="grid-template-columns:1fr 1fr"><button class="btn" id="sdXls" ${nShow ? '' : 'disabled'}>엑셀로 받기</button><button class="btn pri" id="sdPrint" ${nShow ? '' : 'disabled'}>인쇄 · PDF</button></div>`;
 }
 function exportStock(o) {
   const { rows } = stockDocRows(o), M = stockDocMeta(o, rows.length), multi = o.stores.length > 1;
@@ -917,6 +1039,9 @@ function printStock(o) {
   </tbody><tfoot><tr><td colspan="${showBc ? 4 : 3}">합계 ${rows.length.toLocaleString()}종</td>${multi ? o.stores.map((s, i) => `<td class="n">${rows.reduce((a, r) => a + r.per[i], 0).toLocaleString()}</td>`).join('') : ''}<td class="n">${tq.toLocaleString()}</td><td class="n"></td><td class="n">${tm.toLocaleString()}원</td></tr></tfoot></table>
   <p style="font-size:9px;color:#666;margin-top:6px">재고 금액 = 판매가 × 남은 재고 (마이너스 재고는 0으로 계산)</p>
   </body></html>`;
+  printHtml(html);
+}
+function printHtml(html) {
   let fr = document.getElementById('printFrame'); if (fr) fr.remove();
   fr = document.createElement('iframe'); fr.id = 'printFrame'; fr.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0;visibility:hidden';
   document.body.appendChild(fr);
@@ -2165,8 +2290,10 @@ function bind() {
     if (d.sdst) { const o = S.ui.sdoc, mine = myStores(); if (d.sdst === '__all') o.stores = [...mine]; else { o.stores = o.stores.includes(d.sdst) ? o.stores.filter(x => x !== d.sdst) : [...o.stores, d.sdst]; if (!o.stores.length) o.stores = [d.sdst]; o.stores = mine.filter(x => o.stores.includes(x)); } render(); return; }
     if (d.sdip) { const o = S.ui.sdoc; o.ips = d.sdip === '__none' ? [] : o.ips.filter(x => x !== d.sdip); render(); return; }
     if (d.sdf) { S.ui.sdoc.f = d.sdf; render(); return; }
-    if (t.id === 'sdXls') { exportStock(S.ui.sdoc); return; }
-    if (t.id === 'sdPrint') { printStock(S.ui.sdoc); return; }
+    if (d.sdform) { S.ui.sdoc.form = d.sdform; render(); return; }
+    if (d.sdfrom) { S.ui.sdoc.from = d.sdfrom; render(); return; }
+    if (t.id === 'sdXls') { if (S.ui.sdoc.form === 'simple') exportStock(S.ui.sdoc); else await exportFlow(S.ui.sdoc); return; }
+    if (t.id === 'sdPrint') { if (S.ui.sdoc.form === 'simple') printStock(S.ui.sdoc); else printFlow(S.ui.sdoc); return; }
     if (t.id === 'noticeBtn') { S.ui.drawer = noticeDrawer; render(); return; }
     if (t.id === 'ntSave' && isOwner()) { const v = (document.getElementById('ntText') || {}).value || ''; S.ui.drawer = null; await saveNotice(v); toast(v.trim() ? '공지를 올렸습니다' : '공지를 내렸습니다'); return; }
     if (t.id === 'ntClear' && isOwner()) { S.ui.drawer = null; await saveNotice(''); toast('공지를 내렸습니다'); return; }
@@ -2297,7 +2424,8 @@ function bind() {
     if (t.id === 'ePlace') { S.ui.entry.place = t.value; render(); return; }
     if (t.id === 'eFrom') { S.ui.entry.from = t.value; render(); return; }
     if (d.sdipc != null) { const o = S.ui.sdoc; o.ips = t.checked ? [...new Set([...o.ips, d.sdipc])] : o.ips.filter(x => x !== d.sdipc); render(); return; }
-    if (t.id === 'sdDate') { S.ui.sdoc.date = t.value; render(); return; }
+    if (t.id === 'sdDate') { S.ui.sdoc.date = t.value; if (S.ui.sdoc.from && S.ui.sdoc.from > t.value) S.ui.sdoc.from = t.value; render(); return; }
+    if (t.id === 'sdFrom') { S.ui.sdoc.from = t.value > S.ui.sdoc.date ? S.ui.sdoc.date : t.value; render(); return; }
     if (t.id === 'sdIpq') { S.ui.sdoc.ipq = t.value; return; }
     if (t.id === 'machStore') { S.ui.machStore = t.value; S.ui.machPv = null; render(); return; }
     if (t.id === 'ipPast') { S.ui.ipPast = t.checked; render(); return; }
