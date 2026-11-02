@@ -2246,10 +2246,10 @@ function pendingView() {
 function usersView() {
   const U = S.users.filter(u => u.status !== 'pending');
   const lab = { active: '<span class="pill p-ok">사용 중</span>', suspended: '<span class="pill p-warn">🔸 일시 정지</span>', resigned: '<span class="pill p-mute">퇴사</span>' };
-  return `<div class="card" style="padding:8px 12px"><div class="tw"><table><thead><tr><th>이름</th><th>직급</th><th class="hide-s">소속</th><th>매장</th><th>권한</th><th>상태</th><th></th></tr></thead><tbody>
+  return `<div class="card" style="padding:8px 12px"><div class="tw"><table><thead><tr><th>이름</th><th>직급</th><th class="hide-s">소속</th><th>매장</th><th>권한</th><th>상태</th><th>구분</th><th class="ac">권한</th><th class="ac">정지</th><th class="ac">퇴사·복구</th></tr></thead><tbody>
   ${U.map(u => `<tr><td class="nowrap"><b>${esc(u.name)}</b><div class="code">${esc(u.email)}</div></td><td class="nowrap">${esc(u.position)}</td><td class="hide-s">${esc(u.company)}</td><td style="font-size:12px">${(u.perms && u.perms.stores.length === STORES.length) ? '전체' : esc((u.perms ? u.perms.stores : []).map(storeName).join(', '))}</td>
     <td style="font-size:12px">${u.limited ? '수량만' : PERM_DEF.filter(d => u.perms && u.perms[d.k]).map(d => d.t.replace(' 등록', '').replace('실재고 입력·수정', '실재고').replace('사용자 승인', '승인')).join(' · ') || '보기만'}${u.owner ? ' · 정산' : ''}</td><td>${lab[u.status]}</td>
-    <td class="nowrap">${u.owner ? '<span class="muted" style="font-size:12px">대표</span>' : u.status === 'active' ? `<button class="btn sm" data-edit="${u.uid}">권한</button> <button class="btn sm" data-susp="${u.uid}">정지</button> <button class="btn sm" data-resign="${u.uid}">퇴사 처리</button>` : `<button class="btn sm" data-restore="${u.uid}">복구</button>`}</td></tr>`).join('')}
+    <td class="nowrap">${u.owner ? '대표' : '직원'}</td>${u.owner ? '<td class="ac"></td><td class="ac"></td><td class="ac"></td>' : u.status === 'active' ? `<td class="ac"><button class="btn sm" data-edit="${u.uid}">권한</button></td><td class="ac"><button class="btn sm" data-susp="${u.uid}">정지</button></td><td class="ac"><button class="btn sm" data-resign="${u.uid}">퇴사 처리</button></td>` : `<td class="ac"></td><td class="ac"></td><td class="ac"><button class="btn sm" data-restore="${u.uid}">복구</button></td>`}</tr>`).join('')}
   </tbody></table></div></div>
   <div class="note">퇴사 처리하면 그 직원은 앱을 켜 둔 상태에서도 바로 로그아웃되고, 서버에서 모든 자료 읽기가 막힙니다. 그 직원이 남긴 기록은 이름 그대로 남습니다.</div>`;
 }
@@ -2264,9 +2264,9 @@ function editDrawer(uid) {
   render();
 }
 function storesAdmin() {
-  return `<div class="grid2"><div class="card"><h2>매장</h2><table><tbody>${STORES.map((s, i) => `<tr><td class="n muted" style="width:1%">${i + 1}</td><td><span class="dot" style="background:${storeColor(s.id)};display:inline-block;margin-right:6px"></span>${esc(s.name)}</td><td class="n">${fmt(Object.keys(S.stock[s.id] || {}).length)}종</td></tr>`).join('')}</tbody></table>
+  return `<div class="grid2"><div class="card"><h2>매장</h2><div class="tw"><table><thead><tr><th class="n">번호</th><th>매장 이름</th><th class="n">상품 종류</th></tr></thead><tbody>${STORES.map((s, i) => `<tr><td class="n muted" style="width:1%">${i + 1}</td><td><span class="dot" style="background:${storeColor(s.id)};display:inline-block;margin-right:6px"></span>${esc(s.name)}</td><td class="n">${fmt(Object.keys(S.stock[s.id] || {}).length)}종</td></tr>`).join('')}</tbody></table></div>
     <div class="row" style="margin-top:10px"><input class="inp" placeholder="새 매장 이름" style="flex:1" id="newStore"><button class="btn" id="addStore">매장 추가</button></div></div>
-    <div class="card"><h2>신청 때 고르는 소속 회사</h2><table><tbody>${COMPANIES.map((c, i) => `<tr><td class="n muted" style="width:1%">${i + 1}</td><td>${esc(c)}${c.startsWith('기타') ? ' <span class="pill p-warn">수량 보기만</span>' : ''}</td></tr>`).join('')}</tbody></table>
+    <div class="card"><h2>신청 때 고르는 소속 회사</h2><div class="tw"><table><thead><tr><th class="n">번호</th><th>회사 이름</th><th>제한</th></tr></thead><tbody>${COMPANIES.map((c, i) => `<tr><td class="n muted" style="width:1%">${i + 1}</td><td>${esc(c)}</td><td>${c.startsWith('기타') ? '<span class="pill p-warn">수량 보기만</span>' : ''}</td></tr>`).join('')}</tbody></table></div>
     <h2 style="margin-top:14px">직급</h2><div class="chips">${POSITIONS.map(p => `<span class="chip">${esc(p)}${SALES_REC.has(p) ? ' · 매출 추천' : ''}</span>`).join('')}</div></div></div>`;
 }
 function pwView() {

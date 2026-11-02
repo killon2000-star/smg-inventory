@@ -400,6 +400,8 @@ main{min-width:0;padding-block:18px 96px;padding-left:max(16px,env(safe-area-ins
 
 /* tables */
 .tw{overflow-x:auto;margin:0 -4px}
+td.ac,th.ac{white-space:nowrap;width:1%}
+td.ac .btn{min-width:64px}
 table{width:100%;border-collapse:collapse}
 th,td{padding:8px 8px;border-bottom:1px solid var(--line-2);text-align:left;vertical-align:baseline}
 th{font-size:12px;color:var(--muted);font-weight:600;white-space:nowrap;background:var(--surface)}
@@ -592,7 +594,7 @@ tr.flag td{background:var(--warn-bg)}
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 <script src="config.js"></script>
 <script src="firebase.js?v=30"></script>
-<script src="app.js?v=65"></script>
+<script src="app.js?v=66"></script>
 <script>if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});</script>
 
 </body></html>

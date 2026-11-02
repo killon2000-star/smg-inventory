@@ -6,7 +6,7 @@ B='http://127.0.0.1:18931/index.html'; OUT=sys.argv[1] if len(sys.argv)>1 else '
 os.makedirs(OUT,exist_ok=True)
 DEV0=[('360x780',360,780,True),('390x844',390,844,True),('430x932',430,932,True),('768x1024',768,1024,True),('1024x1366',1024,1366,True),('1366x768',1366,768,False),('1440x900',1440,900,False),('1920x1080',1920,1080,False),('932x430',932,430,True)]
 DEV=[d for d in DEV0 if not os.environ.get('DEVONLY') or d[0] in os.environ['DEVONLY'].split(',')]
-VIEWS=['home','ipnow','products','entry','count','inbound','transfer','records','files','sales','collab','settle','admin','more','ibnew','ipform','placeform','sales_week','sales_month','sales_year','sales_ip','admin_users','admin_stores','admin_products','home_drawer','cmp_drawer','product_drawer']
+VIEWS=[v for v in ['home','ipnow','products','entry','count','inbound','transfer','records','files','sales','collab','settle','admin','more','ibnew','ipform','placeform','sales_week','sales_month','sales_year','sales_ip','admin_users','admin_stores','admin_products','home_drawer','cmp_drawer','product_drawer'] if not os.environ.get('VIEWONLY') or v in os.environ['VIEWONLY'].split(',')]
 # 화면 이름 → 여는 방법 (입력 양식·서랍)
 OPEN={'ibnew':"SMGApp.S.view='inbound';SMGApp.S.ui.ib='new';SMGApp.S.ui.drawer=null;SMGApp.render()",
  'ipform':"SMGApp.S.view='ipnow';SMGApp.S.ui.drawer=null;SMGApp.render();document.querySelector('#ipAdd').click()",
