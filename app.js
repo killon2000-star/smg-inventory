@@ -29,6 +29,7 @@ const TYPES = [
   { id: '폐기', sign: -1, d: '파손·불량으로 폐기' },
 ];
 const COUNT_TYPE = '실사 조정';
+const LOW_QTY = 100, LOW_DAYS = 14;   // 품절 임박: 재고 LOW_QTY개 이하 + 지금 판매 속도면 LOW_DAYS일 안에 품절 (대표 지시 11/3: 100개)
 const PLACE_KINDS = ['행사장', '팝업', '창고', '거래처', '기타'];   // 물류창고(국대출판물류)는 재고 위치로 따로 관리
 // 늘 쓰는 고정 장소 (대표 지시 2026-11-01: SMG 홀딩스가 계약해 쓰는 물류창고). 보낸·받은 수량은 places/{id}.q 에 쌓임
 const FIXED_PLACES = [];   // 국대출판물류는 11/2부터 6번째 재고 위치(STORES 'gukdae', 물류창고)로 관리 — 예전 places/P-GUKDAE 자료가 있으면 일반 외부 장소로 계속 보임
@@ -287,13 +288,11 @@ const TAB = { home: ['홈', 'home'], ipnow: ['IP현황', 'star'], products: ['�
 const TAB_MAIN = ['home', 'products', 'entry', 'transfer', 'sales', 'count'];
 function tabbar(nav) {
   const pendingN = can('approve') ? S.users.filter(u => u.status === 'pending').length : 0;
-  // 한 줄 5칸: 자주 쓰는 4개 + 더보기 (나머지 메뉴·설정은 더보기 화면에)
-  const ids = nav.map(n => n.id); const main = TAB_MAIN.filter(id => ids.includes(id)).slice(0, 4);
-  const out = [...main, 'more']; const restOn = !main.includes(S.view) && S.view !== 'home' ? true : S.view === 'more';
-  return `<div class="tabgrid" style="grid-template-columns:repeat(${out.length},1fr)">` + out.map(id => {
-    const [t, i] = id === 'more' ? ['더보기', 'more'] : (TAB[id] || [id, 'more']);
-    const on = id === 'more' ? restOn && !main.includes(S.view) : S.view === id;
-    return `<button data-nav="${id}" class="${on ? 'on' : ''}">${ic(i, 20)}<span>${t}</span>${id === 'more' && pendingN ? `<b class="tcnt">${pendingN}</b>` : ''}</button>`;
+  // 대표 지시 11/3: 숨김 메뉴 없이 모든 메뉴를 아래에 다 보이게 (최대 두 줄, 같은 크기 칸)
+  const out = [...nav.map(n => n.id), 'more'], cols = out.length <= 6 ? out.length : Math.ceil(out.length / 2);
+  return `<div class="tabgrid ${out.length > 6 ? 'two' : ''}" style="grid-template-columns:repeat(${cols},minmax(0,1fr))">` + out.map(id => {
+    const [t, i] = id === 'more' ? ['설정', 'more'] : (TAB[id] || [id, 'more']);
+    return `<button data-nav="${id}" class="${S.view === id ? 'on' : ''}">${ic(i, 18)}<span>${t}</span>${id === 'admin' && pendingN ? `<b class="tcnt">${pendingN}</b>` : ''}</button>`;
   }).join('') + '</div>';
 }
 function applyStoreOrder(order) {
@@ -546,9 +545,9 @@ function ipListTable() {
   const L = ipPlan().filter(r => f === 'all' || r.store === f).filter(r => S.ui.ipPast || r.end >= t);
   return `<div class="card"><div class="row" style="justify-content:space-between;align-items:center"><h2 style="margin:0">전체 일정표</h2>${canIpEdit() ? '<button class="btn sm pri" id="ipAdd">+ 일정 추가</button>' : ''}</div>
     <div class="chips" style="margin-top:10px"><button class="chip ${f === 'all' ? 'on' : ''}" data-ipf="all">전체</button>${STORES.map(s => `<button class="chip ${f === s.id ? 'on' : ''}" data-ipf="${s.id}">${esc(shortName(s.id))}</button>`).join('')}<label class="ck" style="margin-left:auto"><input type="checkbox" id="ipPast" ${S.ui.ipPast ? 'checked' : ''}><span class="t">지난 일정도</span></label></div>
-    <div class="tw"><table class="tb"><thead><tr><th>매장</th><th>구분</th><th>IP</th><th>기간</th><th class="r">일수</th><th>상태</th>${canIpEdit() ? '<th></th>' : ''}</tr></thead><tbody>
+    <div class="tw"><table class="tb"><thead><tr><th>매장</th><th>구분</th><th>IP</th><th>기간</th><th class="n">일수</th><th>상태</th>${canIpEdit() ? '<th></th>' : ''}</tr></thead><tbody>
     ${L.map(r => { const st = r.end < t ? '<span class="pill p-mute">종료</span>' : r.start <= t ? '<span class="pill p-bad">진행 중</span>' : `<span class="pill p-ok">D-${dDiff(t, r.start)}</span>`;
-      return `<tr><td class="nowrap"><span class="dot" style="background:${storeColor(r.store)};display:inline-block;margin-right:6px"></span>${esc(shortName(r.store))}</td><td class="nowrap">${esc(r.kind)}</td><td style="min-width:140px"><b>${esc(r.ip)}</b>${r.host ? ` <span class="muted">· ${esc(r.host)}</span>` : ''}${r.note ? `<div class="muted" style="font-size:12px">🔸 ${esc(r.note)}</div>` : ''}</td><td class="nowrap">${mdw(r.start)} ~ ${mdw(r.end)}</td><td class="r num">${dDiff(r.start, r.end) + 1}</td><td>${st}</td>${canIpEdit() ? `<td><button class="btn sm" data-ipe="${r.id}">고치기</button></td>` : ''}</tr>`; }).join('') || `<tr><td colspan="7" class="muted">일정이 없습니다</td></tr>`}
+      return `<tr><td class="nowrap"><span class="dot" style="background:${storeColor(r.store)};display:inline-block;margin-right:6px"></span>${esc(shortName(r.store))}</td><td class="nowrap">${esc(r.kind)}</td><td style="min-width:140px"><b>${esc(r.ip)}</b>${r.host ? ` <span class="muted">· ${esc(r.host)}</span>` : ''}${r.note ? `<div class="muted" style="font-size:12px">🔸 ${esc(r.note)}</div>` : ''}</td><td class="nowrap">${mdw(r.start)} ~ ${mdw(r.end)}</td><td class="n">${dDiff(r.start, r.end) + 1}</td><td>${st}</td>${canIpEdit() ? `<td><button class="btn sm" data-ipe="${r.id}">고치기</button></td>` : ''}</tr>`; }).join('') || `<tr><td colspan="7" class="muted">일정이 없습니다</td></tr>`}
     </tbody></table></div></div>`;
 }
 function ipView() {
@@ -637,14 +636,14 @@ function todoBox(st) {
   const pos = ss.map(s => { const l = latestSalesDate([s]); return { s, l, d: l ? daysBetween(l, today()) : null }; }).sort((a, b) => (b.d ?? 999) - (a.d ?? 999));
   const worst = pos[0];
   const V = velocity(ss);
-  let neg = 0, low = 0; for (const p of S.products) { const has = st.some(s => (S.stock[s] || {})[p.id] != null); if (!has) continue; const t = st.reduce((a, s) => a + stockOf(s, p.id), 0); if (t < 0) neg++; else if (t > 0 && t <= 50 && V.v[p.id] > 0 && stockDays(t, V.v[p.id], V.days) <= 14) low++; }
+  let neg = 0, low = 0; for (const p of S.products) { const has = st.some(s => (S.stock[s] || {})[p.id] != null); if (!has) continue; const t = st.reduce((a, s) => a + stockOf(s, p.id), 0); if (t < 0) neg++; else if (t > 0 && t <= LOW_QTY && V.v[p.id] > 0 && stockDays(t, V.v[p.id], V.days) <= LOW_DAYS) low++; }
   const it = (ic, lb, v, sub, go, bad) => `<button class="todo ${bad ? 'bad' : ''}" ${go}><span class="ti">${ic}</span><span class="tl">${lb}<small>${sub}</small></span><b class="tv">${v}</b></button>`;
   return `<div class="card todobox"><h2>오늘 할 일 <span class="r">${today().slice(5).replace('-', '/')}(${wd(today())}) 기준</span></h2><div class="todos">
     ${it('🚚', '받기 확인 안 한 이동', `${pend.length}건`, pend.length ? `${fmt(pendQ)}개 · 가장 오래된 ${md(pend.map(t => t.date).sort()[0])}` : '없음', can('move') ? 'data-nav="transfer"' : '', pend.length)}
     ${it('📦', '확정 안 한 입고', `${ibs.length}건`, ibs.length ? ibs.slice(0, 2).map(x => esc(x.title)).join(', ') : '없음', can('move') ? 'data-nav="inbound"' : '', ibs.length)}
     ${ss.length ? it('🧾', 'POS 매출 마지막 반영', worst && worst.d != null ? (worst.d === 0 ? '오늘' : `${worst.d}일 전`) : '자료 없음', pos.map(x => `${esc(shortName(x.s))} ${x.l ? md(x.l) : '-'}`).join(' · '), can('sales') ? 'data-nav="sales"' : '', worst && (worst.d == null || worst.d > 2)) : ''}
     ${it('🔺', '마이너스 재고', `${neg}종`, '실사로 맞춰야 함', 'data-hd="neg"', neg)}
-    ${it('⏳', '품절 임박', `${low}종`, V.stores.length ? `50개 이하 · 지금 속도면 2주 안에 품절` : '판매 기록 없음', 'data-pfgo="low"', low)}
+    ${it('⏳', '품절 임박', `${low}종`, V.stores.length ? `${LOW_QTY}개 이하 · 지금 속도면 ${LOW_DAYS}일 안에 품절` : '판매 기록 없음', 'data-pfgo="low"', low)}
   </div></div>`;
 }
 function ceoKpi(st) {
@@ -923,7 +922,7 @@ function productRows() {
   if (S.ui.f === 'out') rows = rows.filter(r => r.t === 0);
   if (S.ui.f === 'neg') rows = rows.filter(r => r.t < 0 || r.per.some(x => x < 0));
   if (S.ui.f === 'in') rows = rows.filter(r => r.t > 0);
-  if (S.ui.f === 'low') rows = rows.filter(r => r.t > 0 && r.t <= 50 && r.sold > 0 && r.days <= 14);
+  if (S.ui.f === 'low') rows = rows.filter(r => r.t > 0 && r.t <= LOW_QTY && r.sold > 0 && r.days <= LOW_DAYS);
   if (S.ui.f === 'dead') rows = rows.filter(r => r.dead);
   if (S.ui.f === 'risk') rows = rows.filter(r => r.sold > 0 || r.t < 0);
   if (['risk', 'low'].includes(S.ui.f)) rows.sort((a, b) => a.days - b.days || b.sold - a.sold);
@@ -939,7 +938,7 @@ function productsView() {
   <div class="card" style="display:flex;flex-direction:column;gap:10px">
     <div class="row"><div class="search">${ic('search')}<input class="inp" id="pq" type="search" placeholder="상품명, 바코드, 품번, IP" value="${esc(S.ui.q)}" autocomplete="off"></div>
       <select class="inp" id="pip" style="width:auto;min-width:160px" aria-label="IP"><option value="">IP 전체</option>${ips.map(i => `<option ${S.ui.ip === i ? 'selected' : ''}>${esc(i)}</option>`).join('')}</select></div>
-    <div class="chips">${[['all', '재고 등록 상품'], ['in', '재고 있음'], ['out', '품절'], ['neg', '마이너스'], ['risk', '품절 위험순'], ['low', '품절 임박 (50개↓·2주 내)'], ['dead', '악성재고']].map(([k, t]) => `<button class="chip ${S.ui.f === k ? 'on' : ''}" data-pf="${k}">${t}</button>`).join('')}</div>
+    <div class="chips">${[['all', '재고 등록 상품'], ['in', '재고 있음'], ['out', '품절'], ['neg', '마이너스'], ['risk', '품절 위험순'], ['low', `품절 임박 (${LOW_QTY}개↓·${LOW_DAYS}일 내)`], ['dead', '악성재고']].map(([k, t]) => `<button class="chip ${S.ui.f === k ? 'on' : ''}" data-pf="${k}">${t}</button>`).join('')}</div>
     ${deadNote(st)}
   </div>
   <div class="card" style="padding:8px 12px">
@@ -2303,8 +2302,7 @@ function moreView() {
   const nav = NAV.filter(n => n.show()); const ids = nav.map(n => n.id); const main = TAB_MAIN.filter(id => ids.includes(id)).slice(0, 4);
   const pendingN = can('approve') ? S.users.filter(u => u.status === 'pending').length : 0;
   const rest = nav.filter(n => !main.includes(n.id));
-  return `${head('더보기', `모든 메뉴 · 앱 업데이트 ${APP_VERSION}`)}
-  <div class="moregrid">${rest.map(n => { const [t, i] = TAB[n.id] || [n.t, 'more']; return `<button class="mbtn" data-nav="${n.id}">${ic(i, 22)}<span>${esc(n.t)}</span>${n.id === 'admin' && pendingN ? `<b class="tcnt">${pendingN}</b>` : ''}</button>`; }).join('')}</div>
+  return `${head('설정', `앱 업데이트 ${APP_VERSION}`)}
   <div class="card"><h2>설정</h2>${textSizeBox()}</div>`;
 }
 

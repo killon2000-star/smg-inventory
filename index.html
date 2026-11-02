@@ -37,6 +37,17 @@
 }
 .eqi.res .opm{color:#fff}
 .eqi .opm{display:none;font-style:normal;font-weight:800;margin-right:4px;color:var(--ink)}
+
+/* 터치 기기: 누르는 곳은 모두 44px 이상 (대표 지시 11/3 기기별 최적화) */
+@media (pointer:coarse){
+  #app button:not(.x),#app select,#app input:not([type=checkbox]):not([type=radio]):not([type=file]),#app a[href]{min-height:44px;min-width:44px}
+  #app .chip{display:inline-flex;align-items:center}
+  #app .seg button,#app .fseg button,#app .tabs button{height:auto;min-height:44px}
+  #app .tw table tbody button,#app .tw table tbody input,#app .tw table tbody select{min-height:0;min-width:0}
+}
+
+/* 가로로 눕힌 휴대폰(높이 낮음): 시계가 옆 메뉴를 가리지 않게 숨기고 옆 메뉴는 끝까지 스크롤 */
+@media (max-height:520px){ .kclock{display:none!important} .side{padding-bottom:16px} }
 </style>
 <title>SMG 재고관리</title>
 <meta name="claude:viewport-fit-sides" content="cover">
@@ -315,7 +326,7 @@ table.tb tr.click.sel td:first-child{box-shadow:inset 3px 0 0 var(--red)}
   .pha{flex:1 1 100%;display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px}
   .pha > *{width:100%;justify-content:center}
   #page .seg{display:grid;grid-template-columns:repeat(auto-fit,minmax(96px,1fr));width:100%}
-  #page .seg button{min-height:40px;border-left:0;box-shadow:inset -1px -1px 0 var(--line)}
+  #page .seg button{min-height:44px;border-left:0;box-shadow:inset -1px -1px 0 var(--line)}
 }
 .sdoc .sgrid,.sgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(124px,1fr));gap:8px}
 .sbtn{white-space:nowrap}
@@ -494,7 +505,8 @@ tr.flag td{background:var(--warn-bg)}
     padding-bottom:env(safe-area-inset-bottom,0px);padding-left:env(safe-area-inset-left,0px);padding-right:env(safe-area-inset-right,0px)}
   .tabgrid{display:grid}
   main{padding-bottom:calc(var(--tabh,64px) + 20px)}
-  .tabbar button{position:relative;background:none;border:0;padding:7px 1px 5px;display:flex;flex-direction:column;align-items:center;gap:2px;font-size:11px;font-weight:600;color:var(--muted);white-space:nowrap;min-width:0}
+  .tabgrid.two button{min-height:46px;padding:4px 1px 3px}
+  .tabbar button{position:relative;background:none;border:0;min-height:52px;justify-content:center;padding:7px 1px 5px;display:flex;flex-direction:column;align-items:center;gap:2px;font-size:11px;font-weight:600;color:var(--muted);white-space:nowrap;min-width:0}
   .kclock{display:none!important}
   .moregrid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
   .mbtn{position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;min-height:76px;border:1px solid var(--line);border-radius:10px;background:var(--surface);font-weight:700;font-size:13px;color:var(--ink)}

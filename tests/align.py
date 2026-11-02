@@ -61,14 +61,14 @@ LJS = r"""() => {
   const vis = el => el && el.offsetParent !== null && getComputedStyle(el).visibility !== 'hidden';
   const firstText = el => { const w = document.createTreeWalker(el, NodeFilter.SHOW_TEXT, { acceptNode: t => t.textContent.trim() && vis(t.parentElement) && !t.parentElement.closest('option,select') ? 1 : 3 }); return w.nextNode(); };
   const contentBox = el => { const r = document.createRange(); r.selectNodeContents(el); const rs = [...r.getClientRects()].filter(x => x.width > 0 && x.height > 0); if (!rs.length) return null; return { l: Math.min(...rs.map(x => x.left)), r: Math.max(...rs.map(x => x.right)) }; };
-  const baseline = el => { const t = firstText(el); if (!t) return null; const m = document.createElement('span'); m.style.cssText = 'display:inline-block;width:0;height:0;padding:0;margin:0;border:0'; t.parentNode.insertBefore(m, t); const y = m.getBoundingClientRect().bottom; m.remove(); return y; };
+  const baseline = el => { const t = firstText(el); if (!t) return null; const m = document.createElement('span'); m.style.cssText = 'display:inline-block;width:0;height:0;padding:0;margin:0;border:0'; let at = t; while (at.parentElement && /flex|grid/.test(getComputedStyle(at.parentElement).display) && at.parentElement.tagName !== 'TD') at = at.parentElement; at.parentNode.insertBefore(m, at); const y = m.getBoundingClientRect().bottom; m.remove(); return y; };
   const spread = a => a.length < 2 ? 0 : Math.max(...a) - Math.min(...a);
   const push = (kind, where, vals, samp) => { n += vals.length; const s = spread(vals); if (s > T) bad.push({ kind, where, spread: +s.toFixed(2), sample: samp.slice(0, 3) }); };
   document.querySelectorAll('#page table:not(.raw)').forEach((t, ti) => { if (!vis(t)) return;
     const head = t.querySelector('thead'); const desk = head && getComputedStyle(head).display !== 'none';
     const rows = [...t.querySelectorAll('tbody tr, tfoot tr')].filter(vis);
     const cols = {};
-    rows.forEach((tr, ri) => { const cells = [...tr.children].filter(c => !c.hasAttribute('colspan') && c.textContent.trim());
+    rows.forEach((tr, ri) => { const cells = [...tr.children].filter(c => !c.hasAttribute('colspan') && c.textContent.trim() && getComputedStyle(c).display !== 'none');
       if (desk && cells.length > 1) { const bl = cells.map(baseline).filter(v => v != null); push('행 기준선', `표${ti} 행${ri}`, bl, cells.map(c => c.textContent.trim().slice(0, 15))); }
       [...tr.children].forEach((td, ci) => { if (td.hasAttribute('colspan') || !td.textContent.trim()) return; const cs = getComputedStyle(td); const num = td.classList.contains('n');
         const c = cols[ci] ||= { num, L: [], R: [], P: [], s: [] };
