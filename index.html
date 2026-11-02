@@ -185,6 +185,17 @@ body:not(.in-app) .kclock{display:none!important}
 .chg.flat{color:var(--muted)}
 :root[data-theme="dark"] .chg.dn{color:#6FA8FF}
 @media (prefers-color-scheme: dark){:root:not([data-theme="light"]) .chg.dn{color:#6FA8FF}}
+.dr.wide{width:min(980px,100%)}
+.hk{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px}
+@media (max-width:480px){.hk{grid-template-columns:1fr 1fr}.hk>div:nth-child(3):last-child{grid-column:1/-1}}
+.hk>div{display:flex;flex-direction:column;gap:2px;padding:10px 12px;border:1px solid var(--line);border-radius:10px;min-width:0}
+.hk span{font-size:12px;color:var(--muted)}
+.hk b{font-size:clamp(17px,4.6vw,22px);font-variant-numeric:tabular-nums;line-height:1.2;white-space:nowrap}
+.hk b small{font-size:12px;font-weight:500;margin-left:2px;color:var(--muted)}
+.hbar{display:block;height:8px;border-radius:4px;background:var(--line);overflow:hidden}
+.hbar i{display:block;height:100%;background:var(--red);border-radius:4px}
+table.tb tr.click.sel td{background:color-mix(in srgb,var(--red) 12%,transparent)}
+table.tb tr.click.sel td:first-child{box-shadow:inset 3px 0 0 var(--red)}
 .tbtn{text-align:left;font:inherit;color:inherit;cursor:pointer;width:100%}
 .tbtn:hover{border-color:var(--red)}
 .tbtn .lb{display:flex;align-items:center;gap:6px}
@@ -460,7 +471,7 @@ tr.flag td{background:var(--warn-bg)}
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 <script src="config.js"></script>
 <script src="firebase.js?v=27"></script>
-<script src="app.js?v=58"></script>
+<script src="app.js?v=59"></script>
 <script>if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});</script>
 
 </body></html>

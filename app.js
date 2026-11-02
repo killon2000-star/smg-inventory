@@ -40,7 +40,7 @@ const PERM_DEF = [
 ];
 
 const DEFAULT_ORDER = STORES.map(s => s.id);
-const APP_VERSION = '2026-11-02 02:15';   // 앱 화면을 마지막으로 고친 시각 (한국 시간)
+const APP_VERSION = '2026-11-02 12:40';   // 앱 화면을 마지막으로 고친 시각 (한국 시간)
 /* ───────── 작은 도구 ───────── */
 const $ = (s, el = document) => el.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -265,7 +265,7 @@ function render() {
     <main><div class="page" id="page">${pageView()}</div></main>
   </div>
   <nav class="tabbar" aria-label="아래 메뉴">${tabbar(nav)}</nav>
-  ${S.ui.drawer ? `<div class="ov" id="ov"><div class="dr" role="dialog" aria-modal="true">${S.ui.drawer()}</div></div>` : ''}
+  ${S.ui.drawer ? `<div class="ov" id="ov"><div class="dr${S.ui.drawer.wide ? ' wide' : ''}" role="dialog" aria-modal="true">${S.ui.drawer()}</div></div>` : ''}
   ${S.ui.toast ? `<div class="toast" role="status">${esc(S.ui.toast)}</div>` : ''}`;
   bind(); pinTabbar();
   // 왼쪽 메뉴 아래가 시계에 가려지지 않게: 시계 높이만큼 아래 여백 (글자 크기 목록은 위로 펼침)
@@ -615,7 +615,7 @@ function homeView() {
       const m1 = last.slice(0, 8) + '01'; const posM = st.reduce((a, x) => { let t = 0; for (let d = m1; d <= last; d = addDays(d, 1)) { const r = dayRec(x, d); if (r) t += r.s; } return a + t; }, 0);
       const mEnd = addDays(addDays(m1, 40).slice(0, 8) + '01', -1); const ML = machAgg(st, m1, mEnd);
       const macM = ML.reduce((a, m) => a + m.s, 0), machLast = ML.reduce((a, m) => (m.last > a ? m.last : a), '');
-      salesBlock = `<button class="tile tbtn" data-nav="sales"><span class="lb">${+last.slice(5, 7)}월 총매출 <span class="go">매출 ›</span></span><span class="v big${String(fmt(posM + macM)).length > 9 ? ' long' : ''}">${fmt(posM + macM)}<small>원</small></span><span class="d muted">토스포스 ${md(last)}까지 ${man(posM)} + 기계 ${machLast ? md(machLast) + '까지 ' : ''}${man(macM)}</span></button>` + `<div class="tile"><span class="lb">매출 · ${md(last)}(${wd(last)})</span><span class="v big${String(fmt(s)).length>9?' long':''}">${fmt(s)}<small>원</small></span><span class="d ${ch == null ? 'muted' : ch >= 0 ? '' : ''}">${ch == null ? '지난주 같은 요일 자료 없음' : `${chg(ch)} 지난주 같은 요일 대비`} · ${fmt(p)}건</span></div>`;
+      salesBlock = `<button class="tile tbtn" data-nav="sales"><span class="lb">${+last.slice(5, 7)}월 총매출 <span class="go">매출 ›</span></span><span class="v big${String(fmt(posM + macM)).length > 9 ? ' long' : ''}">${fmt(posM + macM)}<small>원</small></span><span class="d muted">토스포스 ${md(last)}까지 ${man(posM)} + 기계 ${machLast ? md(machLast) + '까지 ' : ''}${man(macM)}</span></button>` + `<button class="tile tbtn" data-hday="${last}"><span class="lb">매출 · ${md(last)}(${wd(last)}) <span class="go">상세 ›</span></span><span class="v big${String(fmt(s)).length>9?' long':''}">${fmt(s)}<small>원</small></span><span class="d ${ch == null ? 'muted' : ch >= 0 ? '' : ''}">${ch == null ? '지난주 같은 요일 자료 없음' : `${chg(ch)} 지난주 같은 요일 대비`} · ${fmt(p)}건</span></button>`;
     }
   }
   return `${head(multi ? `${st.length}개 매장 요약` : storeName(st[0]), `${freshLine(st) || '아직 반영된 자료가 없습니다'}${limited() ? ' · 재고 수량만 볼 수 있는 계정입니다' : ''}`, installBtn('sm'))}
@@ -623,9 +623,9 @@ function homeView() {
   <div class="note" style="font-size:12.5px">ℹ︎ 실시간 자료가 아닙니다. 판매는 <b>토스포스 매출 파일</b>을 올려야, 입고·이동은 <b>등록</b>해야 재고에 반영됩니다. 위 시각을 확인해 주세요.</div>
   ${ipStrip()}
   <div class="tiles">
-    <div class="tile"><span class="lb">현재 재고</span><span class="v big${String(fmt(tot.qty)).length>9?' long':''}">${fmt(tot.qty)}<small>개</small></span><span class="d muted">재고 있는 상품 ${fmt(tot.kinds)}종</span></div>
-    <div class="tile"><span class="lb">품절 (재고 0)</span><span class="v big${String(fmt(tot.out)).length>9?' long':''}">${fmt(tot.out)}<small>종</small></span><span class="d muted">진열·품절 안내 확인</span></div>
-    <div class="tile ${tot.neg ? 'alert' : ''}"><span class="lb">마이너스 재고</span><span class="v big${String(fmt(tot.neg)).length>9?' long':''}">${fmt(tot.neg)}<small>종</small></span><span class="d ${tot.neg ? '' : 'muted'}">${tot.neg ? '🔺 실사로 맞춰야 함' : '✔ 없음'}</span></div>
+    <button class="tile tbtn" data-hd="all"><span class="lb">현재 재고 <span class="go">상세 ›</span></span><span class="v big${String(fmt(tot.qty)).length>9?' long':''}">${fmt(tot.qty)}<small>개</small></span><span class="d muted">재고 있는 상품 ${fmt(tot.kinds)}종</span></button>
+    <button class="tile tbtn" data-hd="out"><span class="lb">품절 (재고 0) <span class="go">상세 ›</span></span><span class="v big${String(fmt(tot.out)).length>9?' long':''}">${fmt(tot.out)}<small>종</small></span><span class="d muted">진열·품절 안내 확인</span></button>
+    <button class="tile tbtn ${tot.neg ? 'alert' : ''}" data-hd="neg"><span class="lb">마이너스 재고 <span class="go">상세 ›</span></span><span class="v big${String(fmt(tot.neg)).length>9?' long':''}">${fmt(tot.neg)}<small>종</small></span><span class="d ${tot.neg ? '' : 'muted'}">${tot.neg ? '🔺 실사로 맞춰야 함' : '✔ 없음'}</span></button>
     ${salesBlock}
   </div>
   ${multi ? `<div class="card"><h2>매장별</h2><div class="tw"><table><thead><tr><th>매장</th><th class="n">현재 재고</th><th class="n">상품</th><th class="n">품절</th><th class="n">마이너스</th></tr></thead><tbody>
@@ -640,6 +640,72 @@ function homeView() {
   </div>`;
 }
 
+/* ───────── 홈 칸 상세 (현재 재고 · 품절 · 마이너스) ───────── */
+// 판매 기록(POS)으로 상품별 최근 판매 수량과 마지막 판매일을 셉니다
+function saleStats(stores, ref) {
+  const d7 = addDays(ref, -6), d30 = addDays(ref, -29), o = {};
+  for (const m of S.moves) {
+    if (m.type !== '판매' || !stores.includes(m.store)) continue;
+    const k = m.store + '|' + m.pid, x = o[k] ||= { q7: 0, q30: 0, last: '' };
+    if (m.date >= d7 && m.date <= ref) x.q7 -= m.qty;
+    if (m.date >= d30 && m.date <= ref) x.q30 -= m.qty;
+    if (m.date > x.last) x.last = m.date;
+  }
+  return o;
+}
+const HD_T = { all: ['현재 재고', '재고가 남아 있는 상품입니다. IP를 누르면 그 IP만 봅니다.'], out: ['품절 (재고 0)', '최근 30일 동안 많이 팔린 품절 상품부터 보여 줍니다. 위쪽일수록 재입고나 매장 이동을 먼저 검토하세요.'], neg: ['마이너스 재고', '판매가 입고보다 많이 잡힌 상품입니다. 입고 등록이 빠졌거나 바코드가 다른 상품으로 찍혔을 수 있습니다. 실사로 맞춰 주세요.'] };
+function homeDrawer() {
+  const o = S.ui.hd, st = S.stores, multi = st.length > 1, ref = latestSalesDate(st) || today();
+  const ss = saleStats(st, ref), sg = (s, pid) => ss[s + '|' + pid] || { q7: 0, q30: 0, last: '' };
+  const [title, desc] = HD_T[o.k];
+  let rows = [];
+  if (o.k === 'all') {
+    rows = S.products.map(p => { const per = st.map(s => stockOf(s, p.id)); const t = per.reduce((a, b) => a + Math.max(0, b), 0); const q30 = st.reduce((a, s) => a + sg(s, p.id).q30, 0); return { p, per, t, q30, amt: (p.price || 0) * t }; }).filter(r => r.t > 0);
+  } else {
+    for (const s of st) for (const [pid, q] of Object.entries(S.stock[s] || {})) { const p = S.P[pid]; if (!p) continue; if (o.k === 'out' ? q === 0 : q < 0) rows.push({ p, s, q, ...sg(s, pid), other: st.filter(x => x !== s).reduce((a, x) => a + Math.max(0, stockOf(x, pid)), 0) }); }
+  }
+  const ipAgg = {}; for (const r of rows) { const x = ipAgg[r.p.ip || '(IP 없음)'] ||= { n: 0, q: 0, amt: 0 }; x.n++; x.q += o.k === 'all' ? r.t : r.q; x.amt += r.amt || 0; }
+  const ips = Object.entries(ipAgg).sort((a, b) => o.k === 'all' ? b[1].q - a[1].q : b[1].n - a[1].n);
+  const view = o.ip ? rows.filter(r => (r.p.ip || '(IP 없음)') === o.ip) : rows;
+  if (o.k === 'all') view.sort((a, b) => b.t - a.t); else if (o.k === 'out') view.sort((a, b) => b.q30 - a.q30 || (b.last || '').localeCompare(a.last || '')); else view.sort((a, b) => a.q - b.q);
+  const LIM = 300, shown = view.slice(0, LIM);
+  const totQ = rows.reduce((a, r) => a + (o.k === 'all' ? r.t : r.q), 0), totAmt = rows.reduce((a, r) => a + (r.amt || 0), 0);
+  const kpi = o.k === 'all'
+    ? `<div class="hk"><div><span>재고 수량</span><b>${fmt(totQ)}<small>개</small></b></div><div><span>상품</span><b>${fmt(rows.length)}<small>종</small></b></div>${limited() ? '' : `<div><span>재고 금액 (판매가 기준)</span><b>${fmt(totAmt)}<small>원</small></b></div>`}</div>`
+    : `<div class="hk"><div><span>${o.k === 'out' ? '품절 상품' : '마이너스 상품'}</span><b>${fmt(rows.length)}<small>종</small></b></div>${o.k === 'neg' ? `<div><span>모자라는 수량 합계</span><b class="qty-neg">${fmt(totQ)}<small>개</small></b></div>` : `<div><span>최근 7일에 팔린 품절 상품</span><b>${fmt(rows.filter(r => r.q7 > 0).length)}<small>종</small></b></div>`}${multi && o.k === 'out' ? `<div><span>다른 매장엔 재고 있음</span><b>${fmt(rows.filter(r => r.other > 0).length)}<small>종</small></b></div>` : ''}</div>`;
+  const ipTable = `<div class="card"><h2>IP별 <span class="r">${ips.length}개 IP</span></h2><div class="tw"><table class="tb"><thead><tr><th>IP</th><th class="n">상품</th><th class="n">${o.k === 'out' ? '' : '수량'}</th>${o.k === 'all' && !limited() ? '<th class="n">재고 금액</th><th class="hide-s" style="width:22%">비중</th>' : ''}</tr></thead><tbody>
+    <tr class="click ${!o.ip ? 'sel' : ''}" data-hdip=""><td><b>전체</b></td><td class="n">${fmt(rows.length)}</td><td class="n">${o.k === 'out' ? '' : fmt(totQ)}</td>${o.k === 'all' && !limited() ? `<td class="n">${fmt(totAmt)}</td><td class="hide-s"></td>` : ''}</tr>
+    ${ips.map(([ip, x]) => `<tr class="click ${o.ip === ip ? 'sel' : ''}" data-hdip="${esc(ip)}"><td>${esc(ip)}</td><td class="n">${fmt(x.n)}</td><td class="n ${o.k === 'neg' ? 'qty-neg' : ''}">${o.k === 'out' ? '' : fmt(x.q)}</td>${o.k === 'all' && !limited() ? `<td class="n">${fmt(x.amt)}</td><td class="hide-s"><span class="hbar"><i style="width:${totQ ? Math.max(1, x.q / totQ * 100).toFixed(1) : 0}%"></i></span></td>` : ''}</tr>`).join('')}
+  </tbody></table></div></div>`;
+  const sd = s => multi ? `<td class="nowrap">${sdot(s)}${esc(shortName(s))}</td>` : '';
+  const lastTxt = d => d ? `${md(d)}<span class="muted hide-s"> · ${daysBetween(d, ref)}일 전</span>` : '<span class="muted">없음</span>';
+  let list;
+  if (o.k === 'all') list = `<thead><tr><th>상품명</th><th class="hide-s">IP</th>${multi ? st.map(s => `<th class="n">${esc(shortName(s))}</th>`).join('') : ''}<th class="n">재고</th>${limited() ? '' : '<th class="n hide-s">판매가</th><th class="n">재고 금액</th>'}<th class="n">30일 판매</th></tr></thead><tbody>
+    ${shown.map(r => `<tr class="click" data-pid="${esc(r.p.id)}"><td class="nm">${esc(r.p.name)}</td><td class="hide-s nowrap">${esc(r.p.ip)}</td>${multi ? r.per.map(x => `<td class="n ${x < 0 ? 'qty-neg' : x === 0 ? 'muted' : ''}">${fmt(x)}</td>`).join('') : ''}<td class="n"><b>${fmt(r.t)}</b></td>${limited() ? '' : `<td class="n hide-s">${r.p.price ? fmt(r.p.price) : '-'}</td><td class="n">${r.amt ? fmt(r.amt) : '-'}</td>`}<td class="n">${r.q30 ? fmt(r.q30) : '<span class="muted">0</span>'}</td></tr>`).join('')}</tbody>`;
+  else if (o.k === 'out') list = `<thead><tr><th>상품명</th><th class="hide-s">IP</th>${multi ? '<th>매장</th>' : ''}<th>마지막 판매</th><th class="n hide-s">7일</th><th class="n">30일</th>${multi ? '<th class="n">다른 매장</th>' : ''}</tr></thead><tbody>
+    ${shown.map(r => `<tr class="click" data-pid="${esc(r.p.id)}"><td class="nm">${esc(r.p.name)}${r.q7 > 0 ? ' <span class="pill p-warn">최근 판매</span>' : ''}</td><td class="hide-s nowrap">${esc(r.p.ip)}</td>${sd(r.s)}<td class="nowrap">${lastTxt(r.last)}</td><td class="n hide-s">${r.q7 ? fmt(r.q7) : '<span class="muted">0</span>'}</td><td class="n"><b>${r.q30 ? fmt(r.q30) : '<span class="muted">0</span>'}</b></td>${multi ? `<td class="n">${r.other ? `<b style="color:var(--ok)">${fmt(r.other)}</b>` : '<span class="muted">0</span>'}</td>` : ''}</tr>`).join('')}</tbody>`;
+  else list = `<thead><tr><th>상품명</th><th class="hide-s">IP</th>${multi ? '<th>매장</th>' : ''}<th class="n">현재 재고</th><th>마지막 판매</th><th class="n">30일 판매</th></tr></thead><tbody>
+    ${shown.map(r => `<tr class="click" data-pid="${esc(r.p.id)}"><td class="nm">${esc(r.p.name)}<div class="code">${esc(r.p.barcode || r.p.sku || '')}</div></td><td class="hide-s nowrap">${esc(r.p.ip)}</td>${sd(r.s)}<td class="n qty-neg"><b>${fmt(r.q)}</b></td><td class="nowrap">${lastTxt(r.last)}</td><td class="n">${r.q30 ? fmt(r.q30) : '<span class="muted">0</span>'}</td></tr>`).join('')}</tbody>`;
+  const acts = `<div class="row" style="flex-wrap:wrap">${o.k === 'neg' && can('count') ? '<button class="btn pri" data-hdgo="count">실사 하러 가기</button>' : ''}<button class="btn" data-hdgo="products">상품·재고에서 보기</button><button class="btn" id="stockDoc">재고 문서 출력</button></div>`;
+  return `<div class="hd"><div><div class="muted" style="font-size:12px">${multi ? `${st.length}개 매장` : esc(storeName(st[0]))} · 판매 반영 ${md(ref)}까지</div><h3>${title}</h3></div><button class="x" data-close aria-label="닫기">×</button></div>
+  <div class="card" style="display:flex;flex-direction:column;gap:12px">${kpi}<p class="muted" style="margin:0;font-size:13px">${desc}</p>${acts}</div>
+  ${rows.length ? ipTable : ''}
+  <div class="card"><h2>${o.ip ? esc(o.ip) : '전체'} 상품 <span class="r">${fmt(view.length)}종${view.length > LIM ? ` · 위 ${LIM}종만 표시` : ''}</span></h2>${view.length ? `<div class="tw"><table class="tb">${list}</table></div>` : `<div class="empty">✔ ${o.k === 'neg' ? '마이너스 재고가 없습니다' : o.k === 'out' ? '품절 상품이 없습니다' : '재고가 없습니다'}</div>`}</div>`;
+}
+homeDrawer.wide = true; cmpDrawer.wide = true;
+// 이 기간에 많이 팔린 상품 (POS 판매 기록 기준) — 매출 비교 창 아래에 붙입니다
+function topSold(stores, a, b, pa, pb) {
+  const cur = {}, pre = {};
+  for (const m of S.moves) { if (m.type !== '판매' || !stores.includes(m.store)) continue; if (m.date >= a && m.date <= b) cur[m.pid] = (cur[m.pid] || 0) - m.qty; else if (m.date >= pa && m.date <= pb) pre[m.pid] = (pre[m.pid] || 0) - m.qty; }
+  const L = Object.entries(cur).filter(([, q]) => q > 0).map(([pid, q]) => ({ p: S.P[pid] || { name: pid, ip: '' }, pid, q, pq: pre[pid] || 0 })).sort((x, y) => y.q - x.q || (y.p.price || 0) - (x.p.price || 0));
+  if (!L.length) return '';
+  const ipA = {}; for (const r of L) { const x = ipA[r.p.ip || '(IP 없음)'] ||= { q: 0, amt: 0 }; x.q += r.q; x.amt += (r.p.price || 0) * r.q; }
+  const ipL = Object.entries(ipA).sort((x, y) => y[1].amt - x[1].amt), tA = ipL.reduce((t, [, x]) => t + x.amt, 0);
+  return `<div class="card"><h2>IP별 판매 <span class="r">판매가 × 수량 기준</span></h2><div class="tw"><table class="tb"><thead><tr><th>IP</th><th class="n">수량</th><th class="n">금액</th><th class="hide-s" style="width:26%">비중</th></tr></thead><tbody>
+    ${ipL.map(([ip, x]) => `<tr><td>${esc(ip)}</td><td class="n">${fmt(x.q)}</td><td class="n">${fmt(x.amt)}</td><td class="hide-s"><span class="hbar"><i style="width:${tA ? Math.max(1, x.amt / tA * 100).toFixed(1) : 0}%"></i></span></td></tr>`).join('')}</tbody></table></div></div>
+  <div class="card"><h2>많이 팔린 상품 <span class="r">${fmt(L.length)}종 중 위 30개</span></h2><div class="tw"><table class="tb"><thead><tr><th>상품명</th><th class="hide-s">IP</th><th class="n">이번</th><th class="n">비교</th><th class="n">금액</th></tr></thead><tbody>
+    ${L.slice(0, 30).map(r => `<tr class="click" data-pid="${esc(r.pid)}"><td class="nm">${esc(r.p.name)}</td><td class="hide-s nowrap">${esc(r.p.ip)}</td><td class="n"><b>${fmt(r.q)}</b></td><td class="n muted">${fmt(r.pq)}</td><td class="n">${r.p.price ? fmt(r.p.price * r.q) : '-'}</td></tr>`).join('')}</tbody></table></div></div>`;
+}
 /* ───────── 상품·재고 ───────── */
 function productRows() {
   const q = norm(S.ui.q), st = S.stores;
@@ -765,7 +831,7 @@ function productDrawer(pid) {
   const p = S.P[pid]; if (!p) return '';
   const rows = STORES.filter(s => myStores().includes(s.id)).map(s => ({ s, q: stockOf(s.id, pid), has: (S.stock[s.id] || {})[pid] != null }));
   const mv = limited() ? [] : S.moves.filter(m => m.pid === pid && myStores().includes(m.store)).slice(-30).reverse();
-  return `<div class="hd"><div><div class="muted" style="font-size:12px">${esc(p.ip)}${p.cat ? ' · ' + esc(p.cat) : ''}</div><h3>${esc(p.name)}</h3></div><button class="x" data-close aria-label="닫기">×</button></div>
+  return `<div class="hd"><div><div class="muted" style="font-size:12px">${esc(p.ip)}${p.cat ? ' · ' + esc(p.cat) : ''}</div><h3>${esc(p.name)}</h3></div>${S.ui.prevDrawer ? '<button class="btn sm" data-hback="1">← 목록</button>' : ''}<button class="x" data-close aria-label="닫기">×</button></div>
   <div class="card"><dl class="kv"><dt>바코드</dt><dd class="num" style="text-align:left">${esc(p.barcode || '-')}</dd><dt>품번</dt><dd>${esc(p.sku || '-')}</dd>${!limited() && p.price ? `<dt>판매가</dt><dd>${won(p.price)}</dd>` : ''}${S.warehouse[pid] ? `<dt>창고 보관</dt><dd>${fmt(S.warehouse[pid])}개</dd>` : ''}${allPlaces().filter(pl => (pl.q || {})[pid]).map(pl => `<dt>외부 · ${esc(pl.kind)}</dt><dd>${esc(placeLabel(pl))} — ${fmt(pl.q[pid])}개</dd>`).join('')}</dl></div>
   <div class="card"><h2>매장별 재고</h2><table><tbody>${rows.map(r => `<tr><td class="nowrap"><span class="dot" style="background:${storeColor(r.s.id)};display:inline-block;margin-right:6px"></span>${esc(r.s.name)}</td><td class="n big ${r.q < 0 ? 'qty-neg' : ''}" style="font-size:18px">${r.has ? fmt(r.q) : '-'}</td><td style="width:1%">${r.has ? statusPill(r.q) : '<span class="pill p-mute">미등록</span>'}</td></tr>`).join('')}</tbody></table></div>
   ${can('move') ? `<div class="row"><button class="btn pri" data-quick="입고" data-qp="${esc(pid)}">입고 등록</button><button class="btn" data-quick="매장 이동" data-qp="${esc(pid)}">매장 이동</button>${can('count') ? `<button class="btn" data-quick="count" data-qp="${esc(pid)}">실사 입력</button>` : ''}</div>` : ''}
@@ -1332,10 +1398,11 @@ function cmpDrawer() {
   <div class="card"><div class="tw"><table class="tb cmp-t"><thead><tr><th></th><th class="n">이번</th><th class="n">비교</th><th class="n">차이</th><th class="n">증감</th></tr></thead><tbody>
     ${Object.entries(CMP_M).map(([k, [t, u]]) => `<tr class="${k === m ? 'sel' : ''}" data-cmpk="${k}"><td><b>${t}</b></td><td class="n"><b>${fmt(cs[k])}</b>${u}</td><td class="n">${fmt(ps[k])}${u}</td><td class="n">${cs[k] - ps[k] >= 0 ? '+' : ''}${fmt(cs[k] - ps[k])}</td><td class="n">${chg(pct(cs[k], ps[k]))}</td></tr>`).join('')}
   </tbody></table></div></div>
-  <div class="card"><h2>${mt} 흐름 <span class="r"><span class="lg cur"></span>이번 <span class="lg pre"></span>비교</span></h2>${svg}</div>
+  ${n > 1 ? `<div class="card"><h2>${mt} 흐름 <span class="r"><span class="lg cur"></span>이번 <span class="lg pre"></span>비교</span></h2>${svg}</div>` : ''}
   <div class="card"><h2>날짜별 ${mt}</h2><div class="tw"><table class="tb cmp-t"><thead><tr><th>이번</th><th class="n">${mt}</th><th>비교</th><th class="n">${mt}</th><th class="n">증감</th></tr></thead><tbody>
     ${Array.from({ length: n }, (_, i) => { const x = C[i], y = P[i]; return `<tr><td class="nowrap">${x ? `${md(x.d)}(${wd(x.d)})` : ''}</td><td class="n">${x ? (x.has ? `<b>${fmt(x[m])}</b>` : '<span class="muted">-</span>') : ''}</td><td class="nowrap muted">${y ? `${md(y.d)}(${wd(y.d)})` : ''}</td><td class="n">${y ? (y.has ? fmt(y[m]) : '<span class="muted">-</span>') : ''}</td><td class="n">${x && y && x.has && y.has ? chg(pct(x[m], y[m]), 0) : ''}</td></tr>`; }).join('')}
-  </tbody></table></div></div>`;
+  </tbody></table></div></div>
+  ${topSold(stores, a, b, r.pa, r.pb)}`;
 }
 /* ───────── 자판기·기계 매출 (POS 밖 매출: 카드 단말기 PDF·엑셀) ───────── */
 // 단말기 번호 → 이름. 처음 보는 단말기는 '기계 번호'로 넣고, 올릴 때 이름을 바꿀 수 있음
@@ -1891,7 +1958,7 @@ function loginView() {
     ${installBtn()}
     ${S.mode === 'demo' ? '<button class="btn" id="backDemo">미리보기로 돌아가기</button>' : ''}
   </div></div>
-  ${S.ui.drawer ? `<div class="ov" id="ov"><div class="dr" role="dialog" aria-modal="true">${S.ui.drawer()}</div></div>` : ''}`;
+  ${S.ui.drawer ? `<div class="ov" id="ov"><div class="dr${S.ui.drawer.wide ? ' wide' : ''}" role="dialog" aria-modal="true">${S.ui.drawer()}</div></div>` : ''}`;
 }
 function bindLogin() {
   const f = S.ui.apply; const on = (id, ev, fn) => { const el = $(id); if (el) el.addEventListener(ev, fn); };
@@ -1977,18 +2044,23 @@ function onScanned(code) {
   else if (S.view === 'count') { S.ui.countQ = code; render(); }
   else openProduct(c[0].id);
 }
-function openProduct(pid) { S.ui.drawer = () => productDrawer(pid); render(); resetZoom(); }
+function openProduct(pid) { S.ui.prevDrawer = (S.ui.drawer === homeDrawer || S.ui.drawer === cmpDrawer) ? S.ui.drawer : null; S.ui.drawer = () => productDrawer(pid); render(); resetZoom(); }
 
 /* ───────── 이벤트 ───────── */
 function bind() {
   const app = $('#app');
   app.onclick = async ev => {
-    const t = ev.target.closest('button,[data-pid],[data-cmpk],label,input'); if (!t) return;
+    const t = ev.target.closest('button,[data-pid],[data-cmpk],[data-hdip],label,input'); if (!t) return;
     const d = t.dataset;
     if (d.install != null) { doInstall(); return; }
     if (d.openext != null) { openExternal(); return; }
     if (d.copylink != null) { copyLink(); return; }
     if (t.closest && t.closest('#navBack')) { try { history.back(); } catch (e) { goBack(); } return; }
+    if (d.hd) { S.ui.hd = { k: d.hd, ip: '' }; S.ui.drawer = homeDrawer; render(); return; }
+    if (d.hdip != null && S.ui.hd) { S.ui.hd.ip = d.hdip; render(); return; }
+    if (d.hdgo) { const k = S.ui.hd ? S.ui.hd.k : 'all'; S.view = d.hdgo; if (d.hdgo === 'products') { S.ui.f = k === 'all' ? 'in' : k; S.ui.ip = S.ui.hd && S.ui.hd.ip && S.ui.hd.ip !== '(IP 없음)' ? S.ui.hd.ip : ''; } S.ui.drawer = null; render(); goTop(); return; }
+    if (d.hday) { S.ui.cmp = { a: d.hday, b: d.hday, stores: [...S.stores], metric: 's', mode: 'auto' }; S.ui.drawer = cmpDrawer; render(); return; }
+    if (d.hback) { S.ui.drawer = S.ui.prevDrawer || null; S.ui.prevDrawer = null; render(); return; }
     if (d.cmp) { S.ui.cmp = { ...S.ui.cmpCtx, metric: d.cmp, mode: S.ui.cmpMode || 'auto' }; S.ui.drawer = cmpDrawer; render(); return; }
     if (d.cmpk) { S.ui.cmp.metric = d.cmpk; render(); return; }
     if (d.cmpm) { S.ui.cmp.mode = d.cmpm; S.ui.cmpMode = d.cmpm; render(); return; }
@@ -2274,3 +2346,4 @@ async function start() {
 window.SMGApp = { S, render, indexProducts, setUser };
 start();
 })();
+
