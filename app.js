@@ -10,8 +10,9 @@ const STORES = [
   { id: 'museum', name: 'SMG MUSEUM_홍대' },
   { id: 'omake', name: 'CAFE 오마케' },
   { id: 'limission', name: '리밋션_홍대' },
+  { id: 'gukdae', name: '국대출판물류', type: 'warehouse' },   // SMG 홀딩스 물류창고 (대표 지시 11/2)
 ];
-const COMPANIES = ['SMG 홀딩스', 'SMG 크리에이티브', '온인터내셔널', 'SMG STORE_수원', 'BOX CAFE', 'SMG MUSEUM_홍대', 'CAFE 오마케', '리밋션_홍대', '기타(직접 입력)'];
+const COMPANIES = ['SMG 홀딩스', 'SMG 크리에이티브', '온인터내셔널', 'SMG STORE_수원', 'BOX CAFE', 'SMG MUSEUM_홍대', 'CAFE 오마케', '리밋션_홍대', '국대출판물류', '기타(직접 입력)'];
 const POSITIONS = ['대표', '전무', '상무', '본부장', '편집장', '부장', '차장', '과장', '대리', '수석팀장', '팀장', '부팀장', '매니저', '사원'];
 const SALES_REC = new Set(['대표', '전무', '상무', '본부장', '편집장', '부장', '차장', '과장', '대리', '수석팀장', '팀장', '부팀장']);   // 부팀장 이상 (대표 지시 2026-10-30)     // 팀장 이상 → 매출 보기 추천
 const COUNT_REC = new Set(['대표', '전무', '상무', '본부장', '편집장', '부장', '차장', '과장', '대리', '수석팀장', '팀장', '부팀장', '매니저']); // 매장 책임자 → 실재고 추천
@@ -30,7 +31,7 @@ const TYPES = [
 const COUNT_TYPE = '실사 조정';
 const PLACE_KINDS = ['행사장', '팝업', '물류창고', '창고', '거래처', '기타'];
 // 늘 쓰는 고정 장소 (대표 지시 2026-11-01: SMG 홀딩스가 계약해 쓰는 물류창고). 보낸·받은 수량은 places/{id}.q 에 쌓임
-const FIXED_PLACES = [{ id: 'P-GUKDAE', name: '국대출판물류', kind: '물류창고', addr: 'SMG 홀딩스 계약 물류창고', fixed: true }];
+const FIXED_PLACES = [];   // 국대출판물류는 11/2부터 6번째 재고 위치(STORES 'gukdae', 물류창고)로 관리 — 예전 places/P-GUKDAE 자료가 있으면 일반 외부 장소로 계속 보임
 const allPlaces = () => FIXED_PLACES.map(f => ({ ...f, q: ((S.places || []).find(p => p.id === f.id) || {}).q || {} })).concat((S.places || []).filter(p => !FIXED_PLACES.some(f => f.id === p.id)));
 const PERM_DEF = [
   { k: 'move', t: '입출고 등록', s: '입고·이동·창고·폐기 등록, 파일·링크로 올리기' },
@@ -59,7 +60,7 @@ const daysBetween = (a, b) => Math.round((Date.parse(b) - Date.parse(a)) / 864e5
 const norm = s => String(s || '').toLowerCase().replace(/^에바30주년팝업_/, '').replace(/[\s\[\]()!_\-.,~·&]/g, '');
 const storeName = id => (STORES.find(s => s.id === id) || {}).name || id;
 const storeColor = id => `var(--s-${id})`;
-const SHORT = { suwon: '수원', boxcafe: 'BOX CAFE', museum: 'MUSEUM 홍대', omake: 'CAFE 오마케', limission: '리밋션 홍대' };   // 오마케는 온라인쇼핑몰과 헷갈리지 않게 항상 'CAFE 오마케' (대표 지시 11/2)
+const SHORT = { suwon: '수원', boxcafe: 'BOX CAFE', museum: 'MUSEUM 홍대', omake: 'CAFE 오마케', limission: '리밋션 홍대', gukdae: '국대출판물류' };   // 오마케는 온라인쇼핑몰과 헷갈리지 않게 항상 'CAFE 오마케' (대표 지시 11/2)
 const shortName = id => SHORT[id] || storeName(id);
 const sdot = id => `<span class="dot" style="background:${storeColor(id)};display:inline-block;margin-right:4px;vertical-align:1px"></span>`;
 const ICON = {
@@ -106,12 +107,12 @@ const DemoBackend = {
     const r = await fetch('demo-data.json'); const d = await r.json();
     S.asof = d.asof;
     S.products = d.products;
-    S.stock = { suwon: d.stock.suwon, boxcafe: {}, museum: {}, omake: {}, limission: {} };
+    S.stock = { suwon: d.stock.suwon, boxcafe: {}, museum: {}, omake: {}, limission: {}, gukdae: {} };
     S.moves = d.moves;
     S.incoming = [];
     if (d.incoming && d.incoming.length) S.inbounds.push({ id: 'IB-261112-AOT', store: 'suwon', date: d.incoming[0].date, title: '진격의 거인 팝업 입고 예정 (SMG 상품리스트)', ip: '진격의 거인', from: 'SMG 홀딩스', status: 'planned', by: '', at: '2026-10-29',
       items: d.incoming.map(x => { const p = d.products.find(q => q.id === x.pid) || {}; return { key: 'p:' + x.pid, pid: x.pid, name: p.name || x.pid, code: p.barcode || p.sku || x.pid, plan: x.qty, price: p.price || null, actual: null }; }), extra: [] });
-    S.sales = { suwon: d.sales.suwon, boxcafe: {}, museum: {}, omake: {}, limission: {} };
+    S.sales = { suwon: d.sales.suwon, boxcafe: {}, museum: {}, omake: {}, limission: {}, gukdae: {} };
     S.settle = d.settle; S.settleRules = d.settleRules || null;
     S.users = demoUsers();
   },
@@ -458,8 +459,8 @@ function storeStats(st) {
 }
 /* ───────── IP 현황 (전 매장 팝업·전시·카페 운영 일정) ───────── */
 const IP_KINDS = ['팝업', '전시', '카페'];
-const STORE_KIND = { suwon: '팝업', limission: '팝업', museum: '전시', boxcafe: '카페', omake: '카페' };
-const STORE_PLACE = { suwon: 'AK PLAZA 수원 5F', limission: 'AK PLAZA 홍대 4F', museum: 'AK PLAZA 홍대 4F', boxcafe: 'AK PLAZA 홍대 3F', omake: '현대백화점 신촌 B2' };
+const STORE_KIND = { suwon: '팝업', limission: '팝업', museum: '전시', boxcafe: '카페', omake: '카페', gukdae: '물류창고' };
+const STORE_PLACE = { suwon: 'AK PLAZA 수원 5F', limission: 'AK PLAZA 홍대 4F', museum: 'AK PLAZA 홍대 4F', boxcafe: 'AK PLAZA 홍대 3F', omake: '현대백화점 신촌 B2', gukdae: 'SMG 홀딩스 물류창고' };
 // 처음 값: SMG NOW 26년 11월 소식(11/1)으로 진행 중 일정 확정, 그 밖은 SMG 홀딩스 전체 개최 일정(10/20 받은 표) 기준. 관리자가 앱에서 고치면 그 값이 우선합니다.
 const IP_PLAN_DEFAULT = [
   ['suwon', '하이큐!! 쉬는시간', '2026-09-24', '2026-10-13', 'SMG-C', ''],
