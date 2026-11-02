@@ -100,7 +100,7 @@ window.SMG_FIREBASE = function (S, X) {
             const to = (m.memo.match(/→ ([^·]+)/) || [])[1]; const toId = (X.STORES.find(s => s.name === (to || '').trim()) || {}).id;
             if (toId) b.set(db.collection('transfers').doc(m.id), { pid: m.pid, qty: -m.qty, from: m.store, to: toId, date: m.date, by: m.by, status: 'sent', at: m.at });
           }
-          if (m.type === '매장 이동(받음)' && m.tid) b.update(db.collection('transfers').doc(m.tid), { status: 'received', recvDate: m.date, recvBy: m.by });
+          if (m.type === '매장 이동(받음)' && m.tid) b.update(db.collection('transfers').doc(m.tid), { status: 'received', recvDate: m.date, recvBy: m.by, recvQty: m.qty });
         }
         await b.commit();
       }

@@ -20,16 +20,16 @@ const WORK_PLACES = STORES.map(s => s.name).concat(['본사', '창고']);
 const TYPES = [
   { id: '입고', sign: +1, d: '상품이 매장에 들어옴' },
   { id: '판매', sign: -1, d: 'POS 밖에서 판매한 수량 (POS 판매는 매출 파일로 자동 차감)' },
-  { id: '매장 이동', sign: -1, d: '다른 매장·국대출판물류(물류창고)·외부 장소로 보냄 — 받는 매장이 확인하면 그 매장 재고에 더해짐', to: true },
-  { id: '창고 보관', sign: -1, d: '판매 종료 후 창고로 보냄' },
-  { id: '창고에서 가져옴', sign: +1, d: '창고에 보관하던 상품을 다시 매장으로' },
-  { id: '외부에서 돌아옴', sign: +1, d: '국대출판물류(물류창고)·행사장·팝업 등에 보냈던 상품이 매장으로 돌아옴', from: true },
+  { id: '매장 이동', sign: -1, d: '다른 매장이나 국대출판물류로 보냄 — 받는 쪽이 받기 확인을 하면 그쪽 재고에 더해짐. 행사장·팝업 같은 외부 장소로도 보낼 수 있음', to: true },
+  { id: '창고 보관', sign: -1, d: '판매가 끝난 상품을 매장 안·근처 보관 창고로 옮김 (국대출판물류로 보낼 땐 ‘매장 이동’)' },
+  { id: '창고에서 가져옴', sign: +1, d: '보관 창고에 두었던 상품을 다시 매장으로 (국대출판물류에서 받을 땐 ‘이동’ 화면에서 받기 확인)' },
+  { id: '외부에서 돌아옴', sign: +1, d: '행사장·팝업·거래처 같은 외부 장소에 보냈던 상품이 매장으로 돌아옴 (국대출판물류에서 오는 상품은 ‘이동’ 화면에서 받기 확인)', from: true },
   { id: '타 업체 이동', sign: -1, d: '다른 회사로 보냄', partner: true },
   { id: '반품', sign: -1, d: '공급처로 돌려보냄', partner: true },
   { id: '폐기', sign: -1, d: '파손·불량으로 폐기' },
 ];
 const COUNT_TYPE = '실사 조정';
-const PLACE_KINDS = ['행사장', '팝업', '물류창고', '창고', '거래처', '기타'];
+const PLACE_KINDS = ['행사장', '팝업', '창고', '거래처', '기타'];   // 물류창고(국대출판물류)는 재고 위치로 따로 관리
 // 늘 쓰는 고정 장소 (대표 지시 2026-11-01: SMG 홀딩스가 계약해 쓰는 물류창고). 보낸·받은 수량은 places/{id}.q 에 쌓임
 const FIXED_PLACES = [];   // 국대출판물류는 11/2부터 6번째 재고 위치(STORES 'gukdae', 물류창고)로 관리 — 예전 places/P-GUKDAE 자료가 있으면 일반 외부 장소로 계속 보임
 const allPlaces = () => FIXED_PLACES.map(f => ({ ...f, q: ((S.places || []).find(p => p.id === f.id) || {}).q || {} })).concat((S.places || []).filter(p => !FIXED_PLACES.some(f => f.id === p.id)));
@@ -284,13 +284,16 @@ function render() {
 }
 // 아래 메뉴: 권한 있는 메뉴를 모두 보여 줌 (6개 넘으면 두 줄)
 const TAB = { home: ['홈', 'home'], ipnow: ['IP현황', 'star'], products: ['상품', 'box'], entry: ['입출고', 'plus'], count: ['실사', 'check'], inbound: ['입고확인', 'truck'], transfer: ['매장이동', 'swap'], records: ['기록', 'list'], files: ['파일', 'list'], sales: ['매출', 'chart'], collab: ['콜라보', 'star'], settle: ['정산', 'won'], admin: ['관리', 'user'], more: ['설정', 'gear'] };
+const TAB_MAIN = ['home', 'products', 'entry', 'transfer', 'sales', 'count'];
 function tabbar(nav) {
   const pendingN = can('approve') ? S.users.filter(u => u.status === 'pending').length : 0;
-  const out = [...nav.map(n => n.id), 'more'];
-  const cols = out.length <= 5 ? out.length : Math.ceil(out.length / 2);
-  return `<div class="tabgrid${out.length > 5 ? ' two' : ''}" style="grid-template-columns:repeat(${cols},1fr)">` + out.map(id => {
-    const [t, i] = TAB[id] || [id, 'more'];
-    return `<button data-nav="${id}" class="${S.view === id ? 'on' : ''}">${ic(i, 20)}<span>${t}</span>${id === 'admin' && pendingN ? `<b class="tcnt">${pendingN}</b>` : ''}</button>`;
+  // 한 줄 5칸: 자주 쓰는 4개 + 더보기 (나머지 메뉴·설정은 더보기 화면에)
+  const ids = nav.map(n => n.id); const main = TAB_MAIN.filter(id => ids.includes(id)).slice(0, 4);
+  const out = [...main, 'more']; const restOn = !main.includes(S.view) && S.view !== 'home' ? true : S.view === 'more';
+  return `<div class="tabgrid" style="grid-template-columns:repeat(${out.length},1fr)">` + out.map(id => {
+    const [t, i] = id === 'more' ? ['더보기', 'more'] : (TAB[id] || [id, 'more']);
+    const on = id === 'more' ? restOn && !main.includes(S.view) : S.view === id;
+    return `<button data-nav="${id}" class="${on ? 'on' : ''}">${ic(i, 20)}<span>${t}</span>${id === 'more' && pendingN ? `<b class="tcnt">${pendingN}</b>` : ''}</button>`;
   }).join('') + '</div>';
 }
 function applyStoreOrder(order) {
@@ -606,14 +609,106 @@ async function saveNotice(text) {
   if (DB.saveNotice) await DB.saveNotice(n).catch(e => { toast('저장하지 못했습니다: ' + e.message); });
 }
 
+/* ───────── 대표 판단용 요약 (실제 자료만 · 목표치 설정이 없으면 지난달과만 비교) ───────── */
+const isWh = id => (STORES.find(s => s.id === id) || {}).type === 'warehouse';
+const saleSt = st => st.filter(s => !isWh(s));
+function salesSum(stores, a, b) { let s = 0, p = 0, q = 0; for (const st of stores) for (let d = a; d <= b; d = addDays(d, 1)) { const r = dayRec(st, d); if (r) { s += r.s; p += r.p; q += r.q; } } return { s, p, q }; }
+// 이번 달 누적 · 지난달 같은 기간 · 월말 예상 (토스포스 기준)
+function monthKpi(stores) {
+  const last = latestSalesDate(stores); if (!last) return null;
+  const m1 = last.slice(0, 8) + '01', n = +last.slice(8), dim = new Date(Date.UTC(+last.slice(0, 4), +last.slice(5, 7), 0)).getUTCDate();
+  const pm1 = addMonths(m1, -1), pdim = new Date(Date.UTC(+pm1.slice(0, 4), +pm1.slice(5, 7), 0)).getUTCDate(), pEnd = pm1.slice(0, 8) + String(Math.min(n, pdim)).padStart(2, '0');
+  const cur = salesSum(stores, m1, last), prev = salesSum(stores, pm1, pEnd), prevFull = salesSum(stores, pm1, pm1.slice(0, 8) + String(pdim).padStart(2, '0'));
+  return { last, m1, n, dim, pm1, pEnd, cur, prev, prevFull, fc: cur.s / n * dim, ch: prev.s ? pct(cur.s, prev.s) : null };
+}
+function stockValue(stores) { let t = 0, n = 0; for (const s of stores) for (const [pid, q] of Object.entries(S.stock[s] || {})) if (q > 0 && S.P[pid]) { const v = priceOf(S.P[pid]); if (v) t += v * q; else n++; } return { t, noPrice: n }; }
+// 판매 속도: 최근 28일 POS 판매 차감 기록 (판매 자료가 있는 매장만)
+function velocity(stores, days = 28) {
+  const last = latestSalesDate(stores) || today(), a = addDays(last, -(days - 1)), v = {}, has = new Set();
+  for (const m of S.moves) if (m.type === '판매' && stores.includes(m.store)) { has.add(m.store); if (m.date >= a && m.date <= last) v[m.pid] = (v[m.pid] || 0) - m.qty; }
+  return { v, last, a, days, stores: stores.filter(s => has.has(s)) };
+}
+function stockDays(t, sold, days) { if (t <= 0) return 0; if (!sold) return Infinity; return t / (sold / days); }
+const daysTxt = d => d === Infinity ? '판매 없음' : d >= 365 ? '1년 이상' : `${Math.round(d)}일`;
+function todoBox(st) {
+  const ss = saleSt(st);
+  const pend = S.transfers.filter(t => t.status === 'sent' && st.includes(t.to)), pendQ = pend.reduce((a, t) => a + t.qty, 0);
+  const ibs = S.inbounds.filter(x => st.includes(x.store) && x.status !== 'received');
+  const pos = ss.map(s => { const l = latestSalesDate([s]); return { s, l, d: l ? daysBetween(l, today()) : null }; }).sort((a, b) => (b.d ?? 999) - (a.d ?? 999));
+  const worst = pos[0];
+  const V = velocity(ss);
+  let neg = 0, low = 0; for (const p of S.products) { const has = st.some(s => (S.stock[s] || {})[p.id] != null); if (!has) continue; const t = st.reduce((a, s) => a + stockOf(s, p.id), 0); if (t < 0) neg++; else if (t > 0 && t <= 50 && V.v[p.id] > 0 && stockDays(t, V.v[p.id], V.days) <= 14) low++; }
+  const it = (ic, lb, v, sub, go, bad) => `<button class="todo ${bad ? 'bad' : ''}" ${go}><span class="ti">${ic}</span><span class="tl">${lb}<small>${sub}</small></span><b class="tv">${v}</b></button>`;
+  return `<div class="card todobox"><h2>오늘 할 일 <span class="r">${today().slice(5).replace('-', '/')}(${wd(today())}) 기준</span></h2><div class="todos">
+    ${it('🚚', '받기 확인 안 한 이동', `${pend.length}건`, pend.length ? `${fmt(pendQ)}개 · 가장 오래된 ${md(pend.map(t => t.date).sort()[0])}` : '없음', can('move') ? 'data-nav="transfer"' : '', pend.length)}
+    ${it('📦', '확정 안 한 입고', `${ibs.length}건`, ibs.length ? ibs.slice(0, 2).map(x => esc(x.title)).join(', ') : '없음', can('move') ? 'data-nav="inbound"' : '', ibs.length)}
+    ${ss.length ? it('🧾', 'POS 매출 마지막 반영', worst && worst.d != null ? (worst.d === 0 ? '오늘' : `${worst.d}일 전`) : '자료 없음', pos.map(x => `${esc(shortName(x.s))} ${x.l ? md(x.l) : '-'}`).join(' · '), can('sales') ? 'data-nav="sales"' : '', worst && (worst.d == null || worst.d > 2)) : ''}
+    ${it('🔺', '마이너스 재고', `${neg}종`, '실사로 맞춰야 함', 'data-hd="neg"', neg)}
+    ${it('⏳', '품절 임박', `${low}종`, V.stores.length ? `50개 이하 · 지금 속도면 2주 안에 품절` : '판매 기록 없음', 'data-pfgo="low"', low)}
+  </div></div>`;
+}
+function ceoKpi(st) {
+  const ss = saleSt(st); const K = can('sales') && ss.length ? monthKpi(ss) : null; const SV = stockValue(st);
+  if (!K && !can('sales')) return '';
+  const tile = (lb, v, unit, d, go = '') => `<button class="tile tbtn kpi" ${go}><span class="lb">${lb}</span><span class="v big${String(v).length > 9 ? ' long' : ''}">${v}<small>${unit}</small></span><span class="d">${d}</span></button>`;
+  return `<div class="tiles kpis">
+    ${K ? tile(`${+K.last.slice(5, 7)}월 누적 매출 <span class="go">매출 ›</span>`, fmt(K.cur.s), '원', `${chg(K.ch)} <span class="muted">지난달 같은 기간(${md(K.pm1)}~${md(K.pEnd)}) ${man(K.prev.s)}원</span>`, 'data-nav="sales"') : ''}
+    ${K ? tile(`${+K.last.slice(5, 7)}월 말 예상`, fmt(Math.round(K.fc / 1000) * 1000), '원', `<span class="muted">${K.n}일간 하루 평균 ${man(K.cur.s / K.n)}원 × ${K.dim}일${K.prevFull.s ? ` · 지난달 ${man(K.prevFull.s)}원` : ''}</span>`, 'data-nav="sales"') : ''}
+    ${tile('재고 금액 <span class="go">상품 ›</span>', fmt(SV.t), '원', `<span class="muted">판매가 × 재고 (마이너스 제외)${SV.noPrice ? ` · 가격 없는 ${SV.noPrice}종 빠짐` : ''}</span>`, 'data-nav="products"')}
+  </div>${K ? `<div class="muted" style="font-size:12px;margin-top:-8px">토스포스 매출 ${md(K.last)}(${wd(K.last)})까지 · ${ss.map(shortName).join(', ')}${st.some(isWh) ? ' · 국대출판물류(물류창고)는 매출 합계에서 뺌' : ''} · 목표 설정이 없어 지난달과 비교합니다</div>` : ''}`;
+}
+// 매출: TOP5·BOTTOM5 (상품·IP) · 매장 순위 · 이번 주 vs 지난 주 한 줄
+function ceoSales(per, sum, stores, a, b) {
+  const pr = {}, ip = {}; for (const s of sum) { for (const [k, [q, v, i]] of Object.entries(per[s].pr)) { const x = pr[k] ||= { q: 0, s: 0, ip: i }; x.q += q; x.s += v; } for (const [k, [q, v]] of Object.entries(per[s].ip)) { const x = ip[k] ||= { q: 0, s: 0 }; x.q += q; x.s += v; } }
+  const P = Object.entries(pr).filter(([, x]) => x.s > 0).sort((x, y) => y[1].s - x[1].s), I = Object.entries(ip).filter(([, x]) => x.s > 0).sort((x, y) => y[1].s - x[1].s);
+  const nm = k => esc(k.replace(/^에바30주년팝업_/, ''));
+  const list = (L, top, isP) => `<ol class="rk">${L.map(([k, x], i) => `<li><span class="rn">${top ? i + 1 : (isP ? P : I).length - i}</span><span class="rt">${nm(k)}${isP ? `<small>${esc(x.ip || '')}</small>` : ''}</span><span class="rq">${fmt(x.q)}개</span><b class="rv">${fmt(x.s)}</b></li>`).join('')}</ol>`;
+  const tb = (t, L) => L.length < 2 ? '' : `<div class="card"><h2>${t} <span class="r">${md(a)}~${md(b)} · 매출(원)</span></h2><div class="grid2 tb5"><div><div class="tbh up">▲ 잘 팔린 TOP 5</div>${list(L.slice(0, 5), true, L === P)}</div><div><div class="tbh dn">▼ 덜 팔린 BOTTOM 5 <span class="muted">(1개 이상 팔린 것 중)</span></div>${list(L.slice(-5).reverse(), false, L === P)}</div></div></div>`;
+  // 이번 주(최근 7일) vs 지난 주
+  const last = latestSalesDate(sum); let sent = '';
+  if (last) { const w1 = salesSum(sum, addDays(last, -6), last), w0 = salesSum(sum, addDays(last, -13), addDays(last, -7)); const c = w0.s ? pct(w1.s, w0.s) : null;
+    const ipW = {}; for (const s of sum) for (let d = addDays(last, -13); d <= last; d = addDays(d, 1)) { const r = dayRec(s, d); if (!r) continue; const cur = d > addDays(last, -7); for (const [k, [, v]] of Object.entries(r.ip || {})) { const x = ipW[k] ||= [0, 0]; x[cur ? 1 : 0] += v; } }
+    const best = Object.entries(ipW).sort((x, y) => (y[1][1] - y[1][0]) - (x[1][1] - x[1][0]))[0], worst = Object.entries(ipW).sort((x, y) => (x[1][1] - x[1][0]) - (y[1][1] - y[1][0]))[0];
+    sent = `<div class="card wk"><b>이번 주 한 줄 요약</b> — 최근 7일(${md(addDays(last, -6))}(${wd(addDays(last, -6))})~${md(last)}(${wd(last)})) 매출 <b class="ink">${won(w1.s)}</b>${c == null ? ', 그 전 주 자료가 없습니다.' : `, 지난 주보다 <b class="${c >= 0 ? 'up' : 'dn'}">${Math.abs(c).toFixed(1)}% ${c >= 0 ? '늘었습니다' : '줄었습니다'}</b> (지난 주 ${won(w0.s)}).`}${best && best[1][1] - best[1][0] > 0 ? ` 가장 많이 늘어난 IP는 <b>${esc(best[0])}</b>(+${man(best[1][1] - best[1][0])}원)` : ''}${worst && worst[1][1] - worst[1][0] < 0 ? `, 가장 많이 줄어든 IP는 <b>${esc(worst[0])}</b>(−${man(worst[1][0] - worst[1][1])}원)` : ''}${best || worst ? '입니다.' : ''}</div>`; }
+  const R = sum.map(s => [s, per[s].s]).sort((x, y) => y[1] - x[1]), mx = Math.max(1, ...R.map(x => x[1])), tot = R.reduce((t, x) => t + x[1], 0);
+  const rank = sum.length > 1 ? `<div class="card"><h2>매장 순위 <span class="r">${md(a)}~${md(b)} · 매출(원)</span></h2><div class="hb">${R.map(([s, v], i) => `<span class="k"><span class="muted num">${i + 1}</span> ${sdot(s)}${esc(shortName(s))}</span><span class="tr"><i style="width:${v / mx * 100}%;background:${i === 0 ? 'var(--red)' : 'var(--ink-2)'}"></i></span><span class="v">${fmt(v)}<span class="muted" style="font-weight:500"> · ${tot ? (v / tot * 100).toFixed(1) : 0}%</span></span>`).join('')}</div></div>` : '';
+  return sent + rank + tb('상품 TOP 5 · BOTTOM 5', P) + tb('IP TOP 5 · BOTTOM 5', I);
+}
+// 콜라보: 일평균 · 지금 속도면 종료일 예상 재고 · 추가 발주/이동 추천 · 지난 콜라보와 비교
+function collabForecast(st, r, a, b, R) {
+  const last = latestSalesDate([st]); if (!last || last < a) return '';
+  const end = b < last ? b : last, el = daysBetween(a, end) + 1, left = Math.max(0, daysBetween(last, b));
+  const daily = R.posS / el, soldPerDay = R.T.sold / el;
+  const rows = R.rows.map(x => { const v = x.sold / el, need = v * left; return { ...x, v, need, after: x.now - need, out: v > 0 ? (x.now <= 0 ? 0 : x.now / v) : Infinity }; });
+  const exp = rows.reduce((t, x) => t + Math.max(0, x.after), 0);
+  const recs = rows.filter(x => x.sold > 0 && (x.now <= 0 || (left && x.after < 0))).sort((x, y) => x.out - y.out || y.v - x.v).map(x => {
+    const lack = Math.max(1, Math.ceil(left ? x.need - x.now : x.v * 7)), src = myStores().filter(s => s !== st).map(s => [s, stockOf(s, x.pid)]).filter(([, q]) => q > 0).sort((p, q) => q[1] - p[1]);
+    return { ...x, lack, src };
+  });
+  const past = ipPlan().filter(p => p.id !== r.id && p.end < a && myStores().includes(p.store)).map(p => { const d = daysBetween(p.start, p.end) + 1; let s = 0, q = 0, nd = 0; for (let x = p.start; x <= p.end; x = addDays(x, 1)) { const rec = dayRec(p.store, x); if (!rec) continue; nd++; for (const [ip, [qq, ss]] of Object.entries(rec.ip || {})) if (catMatch(p, ip)) { s += ss; q += qq; } } return { p, d, s, q, nd }; }).filter(x => x.s > 0).sort((x, y) => y.p.start.localeCompare(x.p.start)).slice(0, 6);
+  return `<div class="card fc"><h2>지금 속도라면 <span class="r">${md(a)}~${md(end)} ${el}일 실적 기준${left ? ` · 종료까지 ${left}일 남음` : ' · 콜라보 종료'}</span></h2>
+    <div class="tiles">
+      <div class="tile"><span class="lb">일평균 매출</span><span class="v big">${fmt(daily)}<small>원</small></span><span class="d muted">하루 ${fmt(soldPerDay)}개 판매</span></div>
+      <div class="tile"><span class="lb">${left ? `종료일 ${md(b)}(${wd(b)}) 예상 매출` : '콜라보 총매출'}</span><span class="v big">${fmt(R.posS + daily * left)}<small>원</small></span><span class="d muted">${left ? `지금까지 ${man(R.posS)}원 + ${left}일 × ${man(daily)}원` : `${el}일 실적`}</span></div>
+      <div class="tile ${recs.length ? 'alert' : ''}"><span class="lb">${left ? '종료일 예상 잔여재고' : '남은 재고'}</span><span class="v big">${fmt(left ? exp : R.T.now)}<small>개</small></span><span class="d">${left ? `<span class="muted">지금 ${fmt(R.T.now)}개 − 예상 판매 ${fmt(R.T.now - exp)}개</span>` : '<span class="muted">반품·이동 판단용</span>'}</span></div>
+    </div>
+    ${recs.length ? `<h2 style="margin-top:14px">추가 발주 · 이동 추천 <span class="r">${recs.length}종 · 품절됐거나 ${left ? '종료 전 품절 예상' : ''}</span></h2><div class="tw"><table><thead><tr><th>상품명</th><th class="n">하루 판매</th><th class="n">현재고</th>${left ? '<th class="n">품절 예상</th>' : ''}<th class="n">필요</th><th>추천</th></tr></thead><tbody>
+      ${recs.slice(0, 12).map(x => `<tr data-pid="${x.pid}" class="click"><td class="nm">${esc(x.p.name.replace(/^에바30주년팝업_/, ''))}</td><td class="n">${x.v.toFixed(1)}</td><td class="n ${x.now <= 0 ? 'qty-neg' : ''}"><b>${fmt(x.now)}</b></td>${left ? `<td class="n nowrap">${x.now <= 0 ? '<span class="pill p-bad">품절</span>' : `${md(addDays(last, Math.floor(x.out)))}(${wd(addDays(last, Math.floor(x.out)))})`}</td>` : ''}<td class="n"><b>${fmt(x.lack)}</b></td><td class="rc nowrap">${x.src.length ? `<span class="pill p-info">이동</span> <span class="nowrap">${esc(shortName(x.src[0][0]))} ${fmt(x.src[0][1])}개</span>` : '<span class="pill p-warn">발주</span>'}</td></tr>`).join('')}</tbody></table></div>${recs.length > 12 ? `<p class="muted" style="font-size:12.5px">급한 순 12종만 보여 줍니다 (전체 ${recs.length}종)</p>` : ''}` : `<div class="note" style="margin-top:10px">✔ ${left ? '지금 속도면 종료일까지 품절될 상품이 없습니다.' : '품절된 상품이 없습니다.'}</div>`}
+    <div class="muted" style="font-size:12px;margin-top:8px">필요 수량 = 하루 판매 × 남은 날 − 현재고${left ? '' : ' (종료 후: 1주일치)'} · 이동 = 내 권한 매장 중 재고가 있는 곳</div>
+    ${past.length ? `<h2 style="margin-top:14px">지난 콜라보와 비교 <span class="r">토스포스 IP 매출</span></h2><div class="tw"><table><thead><tr><th>콜라보</th><th class="hide-s">매장</th><th class="n">기간</th><th class="n">매출</th><th class="n">일평균</th></tr></thead><tbody>
+      <tr class="sel"><td><b>${esc(r.ip)}</b> <span class="pill p-bad">이번</span></td><td class="hide-s nowrap">${esc(shortName(st))}</td><td class="n">${el}일</td><td class="n"><b>${fmt(R.posS)}</b></td><td class="n"><b>${fmt(daily)}</b></td></tr>
+      ${past.map(x => `<tr><td>${esc(x.p.ip)} <span class="muted" style="font-size:12px">${x.p.start.slice(2).replace(/-/g, '.')}~</span></td><td class="hide-s nowrap">${esc(shortName(x.p.store))}</td><td class="n">${x.nd}일</td><td class="n">${fmt(x.s)}</td><td class="n">${fmt(x.s / (x.nd || 1))} ${chg(pct(daily, x.s / (x.nd || 1)))}</td></tr>`).join('')}</tbody></table></div><div class="muted" style="font-size:12px;margin-top:6px">일평균 옆 ▲▼ = 이번 콜라보가 그 콜라보보다 높거나 낮은 정도 · 기간 = 매출 자료가 있는 날 수</div>` : '<div class="muted" style="font-size:12.5px;margin-top:10px">비교할 지난 콜라보 매출 자료가 없습니다.</div>'}
+  </div>`;
+}
 function homeView() {
   const st = S.stores;
   const al = alerts(st);
   const tot = st.map(storeStats).reduce((a, b) => ({ qty: a.qty + b.qty, kinds: a.kinds + b.kinds, out: a.out + b.out, neg: a.neg + b.neg }), { qty: 0, kinds: 0, out: 0, neg: 0 });
-  const recent = S.moves.filter(m => st.includes(m.store)).slice(-8).reverse();
+  const recent = byRecent(S.moves.filter(m => st.includes(m.store))).slice(0, 8);
   const multi = st.length > 1;
   let salesBlock = '';
-  if (can('sales')) {
+  if (can('sales') && saleSt(st).length) {
+    const st0 = st; { const st = saleSt(st0);
     const last = latestSalesDate(st);
     if (last) {
       const d = st.map(s => dayRec(s, last)).filter(Boolean);
@@ -624,11 +719,13 @@ function homeView() {
       const mEnd = addDays(addDays(m1, 40).slice(0, 8) + '01', -1); const ML = machAgg(st, m1, mEnd);
       const macM = ML.reduce((a, m) => a + m.s, 0), machLast = ML.reduce((a, m) => (m.last > a ? m.last : a), '');
       salesBlock = `<button class="tile tbtn" data-nav="sales"><span class="lb">${+last.slice(5, 7)}월 총매출 <span class="go">매출 ›</span></span><span class="v big${String(fmt(posM + macM)).length > 9 ? ' long' : ''}">${fmt(posM + macM)}<small>원</small></span><span class="d muted">토스포스 ${md(last)}까지 ${man(posM)} + 기계 ${machLast ? md(machLast) + '까지 ' : ''}${man(macM)}</span></button>` + `<button class="tile tbtn" data-hday="${last}"><span class="lb">매출 · ${md(last)}(${wd(last)}) <span class="go">상세 ›</span></span><span class="v big${String(fmt(s)).length>9?' long':''}">${fmt(s)}<small>원</small></span><span class="d ${ch == null ? 'muted' : ch >= 0 ? '' : ''}">${ch == null ? '지난주 같은 요일 자료 없음' : `${chg(ch)} 지난주 같은 요일 대비`} · ${fmt(p)}건</span></button>`;
-    }
+    } }
   }
   return `${head(multi ? `${st.length}개 매장 요약` : storeName(st[0]), `${freshLine(st) || '아직 반영된 자료가 없습니다'}${limited() ? ' · 재고 수량만 볼 수 있는 계정입니다' : ''}`, installBtn('sm'))}
   ${freshTable(st)}
   <div class="note" style="font-size:12.5px">ℹ︎ 실시간 자료가 아닙니다. 판매는 <b>토스포스 매출 파일</b>을 올려야, 입고·이동은 <b>등록</b>해야 재고에 반영됩니다. 위 시각을 확인해 주세요.</div>
+  ${ceoKpi(st)}
+  ${limited() ? '' : todoBox(st)}
   ${ipStrip()}
   <div class="tiles">
     <button class="tile tbtn" data-hd="all"><span class="lb">현재 재고 <span class="go">상세 ›</span></span><span class="v big${String(fmt(tot.qty)).length>9?' long':''}">${fmt(tot.qty)}<small>개</small></span><span class="d muted">재고 있는 상품 ${fmt(tot.kinds)}종</span></button>
@@ -808,19 +905,30 @@ function topSold(stores, a, b, pa, pb) {
     ${L.slice(0, 30).map(r => `<tr class="click" data-pid="${esc(r.pid)}"><td class="nm">${esc(r.p.name)}</td><td class="hide-s nowrap">${esc(r.p.ip)}</td><td class="n"><b>${fmt(r.q)}</b></td><td class="n muted">${fmt(r.pq)}</td><td class="n">${r.p.price ? fmt(r.p.price * r.q) : '-'}</td></tr>`).join('')}</tbody></table></div></div>`;
 }
 /* ───────── 상품·재고 ───────── */
+function deadNote(st) {
+  const V60 = velocity(saleSt(st), 60); if (!V60.stores.length) return '<div class="muted" style="font-size:12.5px">재고 일수·악성재고는 토스포스 판매 차감 기록이 있는 매장만 계산합니다 (지금 선택한 매장엔 기록 없음).</div>';
+  let amt = 0, n = 0, q = 0; for (const p of S.products) { if (V60.v[p.id]) continue; for (const s of V60.stores) { const x = stockOf(s, p.id); if (x > 0) { amt += x * priceOf(p); q += x; n++; } } }
+  return `<button class="deadbar" data-pf="dead"><span>악성재고 <small>60일간 안 팔린 재고 · ${V60.stores.map(shortName).join(', ')}</small></span><b>${fmt(amt)}<small>원</small></b><span class="muted">${fmt(n)}종 ${fmt(q)}개 ›</span></button>`;
+}
 function productRows() {
-  const q = norm(S.ui.q), st = S.stores;
+  const q = norm(S.ui.q), st = S.stores, V = velocity(saleSt(st)), V60 = velocity(saleSt(st), 60);
   let rows = S.products.map(p => {
     const per = st.map(s => stockOf(s, p.id)); const t = per.reduce((a, b) => a + b, 0);
     const has = st.some(s => (S.stock[s] || {})[p.id] != null);
-    return { p, per, t, has };
+    const sold = V.v[p.id] || 0, days = stockDays(t, sold, V.days), dead = t > 0 && !V60.v[p.id] && st.some(s => stockOf(s, p.id) > 0 && V60.stores.includes(s));
+    return { p, per, t, has, sold, days, dead };
   }).filter(r => r.has || S.ui.f === 'allp');
   if (q) rows = rows.filter(r => norm(r.p.name).includes(q) || (r.p.barcode || '').includes(S.ui.q.trim()) || norm(r.p.sku).includes(q) || norm(r.p.ip).includes(q));
   if (S.ui.ip) rows = rows.filter(r => r.p.ip === S.ui.ip);
   if (S.ui.f === 'out') rows = rows.filter(r => r.t === 0);
   if (S.ui.f === 'neg') rows = rows.filter(r => r.t < 0 || r.per.some(x => x < 0));
   if (S.ui.f === 'in') rows = rows.filter(r => r.t > 0);
-  rows.sort((a, b) => (a.p.ip || '').localeCompare(b.p.ip || '', 'ko') || a.p.name.localeCompare(b.p.name, 'ko'));
+  if (S.ui.f === 'low') rows = rows.filter(r => r.t > 0 && r.t <= 50 && r.sold > 0 && r.days <= 14);
+  if (S.ui.f === 'dead') rows = rows.filter(r => r.dead);
+  if (S.ui.f === 'risk') rows = rows.filter(r => r.sold > 0 || r.t < 0);
+  if (['risk', 'low'].includes(S.ui.f)) rows.sort((a, b) => a.days - b.days || b.sold - a.sold);
+  else if (S.ui.f === 'dead') rows.sort((a, b) => b.t * priceOf(b.p) - a.t * priceOf(a.p));
+  else rows.sort((a, b) => (a.p.ip || '').localeCompare(b.p.ip || '', 'ko') || a.p.name.localeCompare(b.p.name, 'ko'));
   return rows;
 }
 function productsView() {
@@ -831,12 +939,13 @@ function productsView() {
   <div class="card" style="display:flex;flex-direction:column;gap:10px">
     <div class="row"><div class="search">${ic('search')}<input class="inp" id="pq" type="search" placeholder="상품명, 바코드, 품번, IP" value="${esc(S.ui.q)}" autocomplete="off"></div>
       <select class="inp" id="pip" style="width:auto;min-width:160px" aria-label="IP"><option value="">IP 전체</option>${ips.map(i => `<option ${S.ui.ip === i ? 'selected' : ''}>${esc(i)}</option>`).join('')}</select></div>
-    <div class="chips">${[['all', '재고 등록 상품'], ['in', '재고 있음'], ['out', '품절'], ['neg', '마이너스']].map(([k, t]) => `<button class="chip ${S.ui.f === k ? 'on' : ''}" data-pf="${k}">${t}</button>`).join('')}</div>
+    <div class="chips">${[['all', '재고 등록 상품'], ['in', '재고 있음'], ['out', '품절'], ['neg', '마이너스'], ['risk', '품절 위험순'], ['low', '품절 임박 (50개↓·2주 내)'], ['dead', '악성재고']].map(([k, t]) => `<button class="chip ${S.ui.f === k ? 'on' : ''}" data-pf="${k}">${t}</button>`).join('')}</div>
+    ${deadNote(st)}
   </div>
   <div class="card" style="padding:8px 12px">
-    ${rows.length ? `<div class="tw"><table><thead><tr><th>상품명</th><th class="hide-s">IP</th><th class="hide-s">바코드·품번</th>${multi ? st.map(s => `<th class="n">${sdot(s)}${esc(shortName(s))}</th>`).join('') : ''}<th class="n">${multi ? '합계' : '재고'}</th><th class="hide-s">상태</th></tr></thead><tbody>
+    ${rows.length ? `<div class="tw"><table><thead><tr><th>상품명</th><th class="hide-s">IP</th><th class="hide-s">바코드·품번</th>${multi ? st.map(s => `<th class="n">${sdot(s)}${esc(shortName(s))}</th>`).join('') : ''}<th class="n">${multi ? '합계' : '재고'}</th><th class="n" title="재고 ÷ 최근 28일 하루 평균 판매">재고 일수</th><th class="hide-s">상태</th></tr></thead><tbody>
       ${shown.map(r => `<tr class="click" data-pid="${esc(r.p.id)}"><td class="nm">${esc(r.p.name)}</td><td class="hide-s nowrap">${esc(r.p.ip)}</td><td class="code hide-s">${esc(r.p.barcode || r.p.sku)}</td>
-        ${multi ? r.per.map(x => `<td class="n ${x < 0 ? 'qty-neg' : x === 0 ? 'qty-zero' : ''}">${fmt(x)}</td>`).join('') : ''}<td class="n big ${r.t < 0 ? 'qty-neg' : r.t === 0 ? 'qty-zero' : ''}" style="font-size:16px">${fmt(r.t)}</td><td class="hide-s">${statusPill(r.t)}</td></tr>`).join('')}
+        ${multi ? r.per.map(x => `<td class="n ${x < 0 ? 'qty-neg' : x === 0 ? 'qty-zero' : ''}">${fmt(x)}</td>`).join('') : ''}<td class="n big ${r.t < 0 ? 'qty-neg' : r.t === 0 ? 'qty-zero' : ''}" style="font-size:16px">${fmt(r.t)}</td><td class="n nowrap ${r.t > 0 && r.days <= 7 ? 'qty-neg' : r.dead ? 'muted' : ''}">${r.t <= 0 ? '–' : r.dead ? '<span class="pill p-warn">60일 무판매</span>' : daysTxt(r.days)}</td><td class="hide-s">${statusPill(r.t)}</td></tr>`).join('')}
     </tbody></table></div>${rows.length > 300 ? `<p class="muted" style="font-size:13px">앞 300종만 보여 줍니다. 검색으로 좁혀 주세요.</p>` : ''}` : '<div class="empty">찾는 상품이 없습니다</div>'}
   </div>`;
 }
@@ -1063,10 +1172,12 @@ function productDrawer(pid) {
   ${can('move') ? `<div class="row"><button class="btn pri" data-quick="입고" data-qp="${esc(pid)}">입고 등록</button><button class="btn" data-quick="매장 이동" data-qp="${esc(pid)}">매장 이동</button>${can('count') ? `<button class="btn" data-quick="count" data-qp="${esc(pid)}">실사 입력</button>` : ''}</div>` : ''}
   ${limited() ? '' : `<div class="card"><h2>입출고 기록 <span class="r">최근 30건</span></h2>${movesTable(mv, false, true)}</div>`}`;
 }
+// 최근 것부터: 날짜 → 같은 날이면 입력한 시각 순
+function byRecent(L) { return L.map((m, i) => [m, i]).sort((a, b) => (b[0].date || '').localeCompare(a[0].date || '') || (b[0].at || '').localeCompare(a[0].at || '') || b[1] - a[1]).map(x => x[0]); }
 function movesTable(list, withName = true, compact = false) {
   if (!list.length) return '<div class="empty">기록이 없습니다</div>';
   return `<div class="tw"><table><thead><tr><th>날짜</th>${S.stores.length > 1 || compact ? '<th>매장</th>' : ''}<th>구분</th>${withName ? '<th>상품명</th>' : ''}<th class="n">수량</th><th class="hide-s">메모</th></tr></thead><tbody>
-  ${list.map(m => `<tr><td class="nowrap num" style="text-align:left">${md(m.date)}</td>${S.stores.length > 1 || compact ? `<td class="nowrap">${sdot(m.store)}${esc(shortName(m.store))}</td>` : ''}<td>${typePill(m.type)}</td>${withName ? `<td class="nm">${esc((S.P[m.pid] || {}).name || m.pid)}</td>` : ''}<td class="n ${m.qty < 0 ? 'qty-neg' : ''}" style="font-weight:600">${m.qty > 0 ? '+' : ''}${fmt(m.qty)}</td><td class="hide-s muted" style="font-size:12px">${esc(m.memo || '')}${m.by && !/claude/i.test(m.by) ? ` · ${esc(m.by === '자동(POS)' ? (m.upBy ? `POS 파일 · ${whoText(m.upBy, m.co)}` : '자동(POS)') : whoText(m.by, m.co))}` : ''}${m.file ? `<br><span style="font-size:11px">📎 ${esc(m.file)}</span>` : ''}</td></tr>`).join('')}
+  ${list.map(m => `<tr><td class="nowrap num" style="text-align:left">${md(m.date)}(${wd(m.date)})</td>${S.stores.length > 1 || compact ? `<td class="nowrap">${sdot(m.store)}${esc(shortName(m.store))}</td>` : ''}<td>${typePill(m.type)}</td>${withName ? `<td class="nm">${esc((S.P[m.pid] || {}).name || m.pid)}</td>` : ''}<td class="n ${m.qty < 0 ? 'qty-neg' : ''}" style="font-weight:600">${m.qty > 0 ? '+' : ''}${fmt(m.qty)}</td><td class="hide-s muted" style="font-size:12px">${esc(m.memo || '')}${m.by && !/claude/i.test(m.by) ? ` · ${esc(m.by === '자동(POS)' ? (m.upBy ? `POS 파일 · ${whoText(m.upBy, m.co)}` : '자동(POS)') : whoText(m.by, m.co))}` : ''}${m.file ? `<br><span style="font-size:11px">📎 ${esc(m.file)}</span>` : ''}</td></tr>`).join('')}
   </tbody></table></div>`;
 }
 function typePill(t) { const pos = ['입고', '창고에서 가져옴', '매장 이동(받음)']; return `<span class="pill ${t === COUNT_TYPE ? 'p-info' : pos.includes(t) ? 'p-ok' : t === '판매' ? 'p-mute' : 'p-warn'}">${esc(t)}</span>`; }
@@ -1179,7 +1290,7 @@ function ibNewView() {
     ${noq ? `<div class="al"><span class="ic">🔺</span><span class="tx">수량이 비었거나 0인 줄 <b>${noq}</b>개</span></div>` : ''}
     ${dups ? `<div class="al"><span class="ic">🔸</span><span class="tx">같은 상품이 두 번 나온 경우 <b>${dups}</b>건 — 수량을 합쳐서 등록합니다.</span></div>` : ''}</div>
     <div class="tw"><table><thead><tr><th class="n">줄</th><th>상품명</th><th class="hide-s">바코드·품번</th><th class="n">예정 수량</th><th class="n hide-s">가격</th><th>상태</th></tr></thead><tbody>
-    ${P.map(r => `<tr class="${!r.pid || !(r.qty > 0) || dupK[itemKey(r)] > 1 ? 'flag' : ''}"><td class="n muted">${r.line}</td><td class="nm">${esc(r.pid ? S.P[r.pid].name : r.name)}</td><td class="code hide-s">${esc(r.bc || r.sku)}</td><td class="n" style="font-weight:700">${fmt(r.qty)}</td><td class="n hide-s">${r.price ? fmt(r.price) : '-'}</td><td>${!(r.qty > 0) ? '<span class="pill p-bad">🔺 수량</span>' : r.pid ? '<span class="pill p-ok">✔</span>' : '<span class="pill p-warn">🔸 새 상품</span>'}</td></tr>`).join('')}
+    ${P.map(r => `<tr class="${!r.pid || !(r.qty > 0) || dupK[itemKey(r)] > 1 ? 'flag' : ''}"><td class="n muted">${r.line}</td><td class="nm">${esc(r.pid ? S.P[r.pid].name : r.name)}</td><td class="code hide-s">${esc(r.bc || r.sku || (r.pid ? (S.P[r.pid].barcode || S.P[r.pid].sku || '') : '')) || '<span class="muted">없음</span>'}</td><td class="n" style="font-weight:700">${fmt(r.qty)}</td><td class="n hide-s">${r.price ? fmt(r.price) : '-'}</td><td>${!(r.qty > 0) ? '<span class="pill p-bad">🔺 수량</span>' : r.pid ? '<span class="pill p-ok">✔</span>' : '<span class="pill p-warn">🔸 새 상품</span>'}</td></tr>`).join('')}
     </tbody></table></div>
     <div class="row" style="justify-content:flex-end;margin-top:12px"><button class="btn pri" id="ibCreate">입고 예정으로 등록</button></div></div>`; })() : ''}`;
 }
@@ -1190,7 +1301,7 @@ function ibDetailView(ib) {
   <div class="tiles">
     <div class="tile"><span class="lb">예정</span><span class="v big">${fmt(st.plan)}<small>개</small></span><span class="d muted">${ib.items.length}종${st.planMoney ? ' · ' + man(st.planMoney) + '원' : ''}</span></div>
     <div class="tile"><span class="lb">실제 입고</span><span class="v big">${st.done ? fmt(st.act) : '-'}<small>개</small></span><span class="d muted">확인 ${st.done}종 · 남은 ${st.left}종</span></div>
-    <div class="tile ${st.diff ? 'alert' : ''}"><span class="lb">차이</span><span class="v big">${st.done ? (st.act - st.plan > 0 ? '+' : '') + fmt(st.act - st.plan) : '-'}<small>개</small></span><span class="d">${st.diff ? `🔸 다른 상품 ${st.diff}종` : st.done ? '✔ 차이 없음' : ''}</span></div>
+    <div class="tile ${st.diff ? 'alert' : ''}"><span class="lb">차이</span><span class="v big">${st.done ? (st.act - st.plan > 0 ? '+' : '') + fmt(st.act - st.plan) : '-'}<small>개</small></span><span class="d">${st.diff ? `🔸 차이 있는 상품 ${st.diff}종` : st.done ? '✔ 차이 없음' : ''}</span></div>
   </div>
   <div class="note" style="font-size:12.5px">📎 예정 리스트: ${esc(ib.src || ib.title)} · ${esc(whoText(ib.by, ib.co) || '-')} 올림${ib.at ? ' ' + kst(ib.at) : ''}${ib.actSrc ? `<br>📎 실제 입고: ${esc(ib.actSrc)} · ${esc(whoText(ib.actBy, ib.actCo))} 올림` : ''}</div>
   ${done ? `<div class="note">✔ ${esc(ib.receivedAt || '')} ${esc(whoText(ib.receivedBy || '', ib.receivedCo))} 입고 확정 — 실제 수량으로 재고에 더했습니다.</div>` : `<div class="card" style="display:flex;flex-direction:column;gap:10px"><h2>실제 입고 수량 넣기</h2>
@@ -1200,7 +1311,7 @@ function ibDetailView(ib) {
   <div class="card"><h2>상품별 예정 · 실제 · 차이 <span class="r">차이 있는 줄은 주황색</span></h2>
     <div class="chips" style="margin-bottom:8px">${[['all', '전체'], ['diff', '차이 있음'], ['left', '아직 안 넣음']].map(([k, t]) => `<button class="chip ${(S.ui.ibF || 'all') === k ? 'on' : ''}" data-ibf="${k}">${t}</button>`).join('')}</div>
     <div class="tw"><table><thead><tr><th>상품명</th><th class="hide-s">바코드·품번</th><th class="n">예정</th><th class="n">실제</th><th class="n">차이</th><th class="n hide-s">차이 금액</th></tr></thead><tbody>
-    ${rows.filter(r => S.ui.ibF === 'diff' ? r.d : S.ui.ibF === 'left' ? r.actual == null : true).map(r => `<tr class="${r.d ? 'flag' : ''}"><td class="nm">${esc(r.name)}${r.pid ? '' : '<div style="font-size:12px;color:var(--warn)">🔸 새 상품 — 확정 때 등록</div>'}</td><td class="code hide-s">${esc(r.code)}</td><td class="n">${fmt(r.plan)}</td>
+    ${rows.filter(r => S.ui.ibF === 'diff' ? r.d : S.ui.ibF === 'left' ? r.actual == null : true).map(r => `<tr class="${r.d ? 'flag' : ''}"><td class="nm">${esc(r.name)}${r.pid ? '' : '<div style="font-size:12px;color:var(--warn)">🔸 새 상품 — 확정 때 등록</div>'}</td><td class="code hide-s">${esc(r.code || (r.pid && S.P[r.pid] ? (S.P[r.pid].barcode || S.P[r.pid].sku || '') : ''))}</td><td class="n">${fmt(r.plan)}</td>
       <td class="n">${done ? fmt(r.actual) : `<input class="inp qty" type="number" inputmode="numeric" min="0" value="${r.actual ?? ''}" data-iba="${r.i}" aria-label="실제 수량">`}</td>
       <td class="n" style="font-weight:700">${r.d == null ? '' : r.d === 0 ? '<span class="muted">0</span>' : `<span style="color:${r.d < 0 ? 'var(--bad)' : 'var(--ok)'}">${r.d > 0 ? '+' : ''}${fmt(r.d)}</span>`}</td><td class="n hide-s">${r.d && r.price ? fmt(r.d * r.price) : ''}</td></tr>`).join('')}
     ${(ib.extra || []).map(r => `<tr class="flag"><td class="nm">${esc(r.name)}<div style="font-size:12px;color:var(--warn)">🔸 예정에 없던 상품</div></td><td class="code hide-s">${esc(r.code)}</td><td class="n">0</td><td class="n">${fmt(r.actual)}</td><td class="n" style="font-weight:700;color:var(--ok)">+${fmt(r.actual)}</td><td class="n hide-s">${r.price ? fmt(r.actual * r.price) : ''}</td></tr>`).join('')}
@@ -1264,7 +1375,7 @@ function entryView() {
       ${T.to ? `<div class="field"><label for="eTo">받는 곳</label><select class="inp" id="eTo"><option value="">선택</option>${STORES.filter(s => s.id !== e.store).map(s => `<option value="${s.id}" ${e.to === s.id ? 'selected' : ''}>${esc(s.name)}</option>`).join('')}${FIXED_PLACES.map(f => `<option value="__wh:${f.id}" ${e.to === '__custom' && e.place === f.id ? 'selected' : ''}>${esc(f.name)} (${esc(f.kind)})</option>`).join('')}<option value="__custom" ${e.to === '__custom' && !FIXED_PLACES.some(f => f.id === e.place) ? 'selected' : ''}>외부 장소 (행사장·팝업 등)</option></select></div>
       ${e.to === '__custom' && !FIXED_PLACES.some(f => f.id === e.place) ? placeSelect('ePlace', e.place, '외부 장소') : ''}` : ''}
       ${e.type === '입고' ? `<div class="field"><label for="eSrc">보낸 곳 (선택)</label><select class="inp" id="eSrc"><option value="">선택 안 함</option>${FIXED_PLACES.map(f => `<option value="${esc(f.name)}" ${e.src === f.name ? 'selected' : ''}>${esc(f.name)} (${esc(f.kind)})</option>`).join('')}<option value="SMG 홀딩스" ${e.src === 'SMG 홀딩스' ? 'selected' : ''}>SMG 홀딩스</option><option value="SMG 크리에이티브" ${e.src === 'SMG 크리에이티브' ? 'selected' : ''}>SMG 크리에이티브</option></select></div>` : ''}
-      ${T.from ? placeSelect('eFrom', e.from, '돌아온 곳 (물류창고·외부 장소)') : ''}
+      ${T.from ? placeSelect('eFrom', e.from, '돌아온 외부 장소') : ''}
       ${T.partner ? `<div class="field"><label for="ePartner">${e.type === '반품' ? '반품처' : '받는 업체'}</label><input class="inp" id="ePartner" value="${esc(e.partner)}" placeholder="업체 이름"></div>` : ''}
       <div class="field" style="grid-column:span 2;min-width:0"><label for="eMemo">메모</label><input class="inp" id="eMemo" value="${esc(e.memo)}" placeholder="예: 10/21 출고리스트, 파손 사유"></div>
     </div>
@@ -1289,7 +1400,7 @@ function lineIssues(e) {
   if (T.to && !e.to) out.push({ lv: 'bad', block: true, t: '받는 곳을 골라 주세요.' });
   if (T.to && e.to === '__custom' && !e.place) out.push({ lv: 'bad', block: true, t: '외부 장소를 고르거나 [새 장소 등록]으로 만들어 주세요.' });
   if (T.from && !e.from) out.push({ lv: 'bad', block: true, t: '돌아온 외부 장소를 골라 주세요.' });
-  if (T.from && e.from) { const pl = placeById(e.from); const over = e.lines.filter(l => (+l.qty || 0) > ((pl && pl.q || {})[l.pid] || 0)); if (over.length) out.push({ lv: 'warn', t: `그 장소로 보낸 수량보다 많이 돌아온 상품 ${over.length}종이 있습니다. 수량을 확인해 주세요.` }); }
+  if (T.from && e.from) { const pl = placeById(e.from); const over = e.lines.filter(l => (+l.qty || 0) > ((pl && pl.q || {})[l.pid] || 0)); if (over.length) { const why = (e.memo || '').trim(); out.push({ lv: why ? 'warn' : 'bad', block: !why, over: true, t: `그 장소로 보낸 수량보다 많이 돌아온 상품 ${over.length}종: ${over.slice(0, 4).map(l => `${esc(S.P[l.pid].name)} (보냄 ${fmt((pl && pl.q || {})[l.pid] || 0)} · 돌아옴 ${fmt(l.qty)})`).join(', ')}${over.length > 4 ? ' 외' : ''}. ${why ? `사유: ${esc(why)} — 이대로 저장합니다.` : '<b>수량을 고치거나, 메모 칸에 사유를 적어야 저장할 수 있습니다.</b>'}` }); } }
   if (T.partner && !e.partner.trim()) out.push({ lv: 'bad', block: true, t: `${e.type === '반품' ? '반품처' : '받는 업체'}를 적어 주세요.` });
   const neg = e.lines.filter(l => stockOf(e.store, l.pid) + T.sign * (+l.qty || 0) < 0);
   if (neg.length) out.push({ lv: 'warn', t: `반영하면 재고가 마이너스가 되는 상품 ${neg.length}종이 있습니다. 수량을 확인해 주세요.` });
@@ -1383,14 +1494,15 @@ function importPreview() {
     <div class="alerts" style="margin-bottom:10px">
       <div class="al"><span class="ic">✔</span><span class="tx">상품을 찾은 줄 <b>${ok.length}</b>개 · ${fmt(ok.reduce((a, b) => a + b.qty, 0))}개</span></div>
       ${cnt('new') ? `<div class="al"><span class="ic">🔺</span><span class="tx">등록된 상품에 없는 줄 <b>${cnt('new')}</b>개 — 저장에서 빠집니다. 새 상품이면 관리 › 상품 목록에서 먼저 등록해 주세요.</span></div>` : ''}
-      ${cnt('multi') ? `<div class="al"><span class="ic">🔸</span><span class="tx">같은 이름 상품이 여러 개인 줄 <b>${cnt('multi')}</b>개 — 줄마다 맞는 상품을 골라 주세요.</span></div>` : ''}
+      ${cnt('multi') ? (() => { const M = R.filter(r => r.st === 'multi'), left = M.filter(r => !r.pid).length; const ips = {}; M.forEach(r => r.cand.forEach(c => { const ip = S.P[c].ip || '(IP 없음)'; ips[ip] = (ips[ip] || 0) + 1; }));
+        return `<div class="al"><span class="ic">🔸</span><span class="tx">이름이 같은(괄호·띄어쓰기만 다른) 상품이 두 개 이상인 줄 <b>${M.length}</b>개${left ? ` · 아직 안 고른 줄 <b>${left}</b>개` : ' · ✔ 모두 골랐습니다'}<br><span style="font-size:12.5px">한꺼번에 고르기:</span> <span class="mpick"><button class="btn sm" data-mpick="__stock">재고 있는 쪽으로</button>${Object.entries(ips).sort((a, b) => b[1] - a[1]).map(([ip, n]) => `<button class="btn sm" data-mpick="${esc(ip)}">IP '${esc(ip)}' 쪽 (${n})</button>`).join('')}${M.some(r => r.pid) ? '<button class="btn sm" data-mpick="__clear">선택 지우기</button>' : ''}</span><br><span class="muted" style="font-size:12px">상품 정보는 합치거나 지우지 않습니다. 이번 등록에 어느 상품으로 넣을지만 고릅니다.</span></span></div>`; })() : ''}
       ${cnt('qty') ? `<div class="al"><span class="ic">🔺</span><span class="tx">수량이 비었거나 0인 줄 <b>${cnt('qty')}</b>개 — 저장에서 빠집니다.</span></div>` : ''}
       ${dup ? `<div class="al"><span class="ic">🔸</span><span class="tx">파일 안에 같은 상품이 두 번 나온 줄 <b>${dup}</b>개 — <span class="fseg sm"><button class="${im.dupMode === 'sum' ? 'on' : ''}" data-dupm="sum">수량 합치기</button><button class="${im.dupMode === 'first' ? 'on' : ''}" data-dupm="first">처음 줄만</button></span></span></div>` : ''}
       ${im.prevFile ? `<div class="al"><span class="ic">🔺</span><span class="tx">같은 이름의 파일을 ${md(im.prevFile.date)}에 이미 올렸습니다 (${esc(whoText(im.prevFile.by, im.prevFile.co))}). 두 번 넣지 않도록 확인해 주세요.</span></div>` : ''}
     </div>
     <div class="tw"><table><thead><tr><th class="n">줄</th><th>파일 상품명</th><th class="hide-s">바코드·품번</th><th>찾은 상품</th><th class="n">수량</th><th>상태</th></tr></thead><tbody>
     ${R.map((r, i) => `<tr class="${r.st || r.dup ? 'flag' : ''}"><td class="n muted">${r.line}</td><td class="nm">${esc(r.name || '-')}</td><td class="code hide-s">${esc(r.bc || r.sku || '')}</td>
-      <td class="nm">${r.st === 'multi' ? `<select class="inp" data-ip="${i}" style="min-width:180px"><option value="">고르기</option>${r.cand.map(c => `<option value="${esc(c)}" ${r.pid === c ? 'selected' : ''}>${esc(S.P[c].name)} · ${esc(S.P[c].barcode || S.P[c].sku)}</option>`).join('')}</select>` : r.pid ? `${esc(S.P[r.pid].name)}<div class="muted" style="font-size:12px">${esc(r.how)}로 찾음</div>` : '<span class="muted">없음</span>'}</td>
+      <td class="nm">${r.st === 'multi' ? `<select class="inp" data-ip="${i}" style="min-width:180px"><option value="">고르기</option>${r.cand.map(c => `<option value="${esc(c)}" ${r.pid === c ? 'selected' : ''}>${esc(S.P[c].name)} · ${esc(S.P[c].sku || S.P[c].barcode)} · ${esc(S.P[c].ip || '')} · 재고 ${fmt(stockOf(S.ui.entry.store, c))}</option>`).join('')}</select>` : r.pid ? `${esc(S.P[r.pid].name)}<div class="muted" style="font-size:12px">${esc(r.how)}로 찾음</div>` : '<span class="muted">없음</span>'}</td>
       <td class="n" style="font-weight:700">${fmt(r.qty)}</td><td>${r.st === 'new' ? '<span class="pill p-bad">🔺 미등록</span>' : r.st === 'qty' ? '<span class="pill p-bad">🔺 수량</span>' : r.st === 'multi' && !r.pid ? '<span class="pill p-warn">🔸 선택</span>' : r.dup ? `<span class="pill p-warn">🔸 ${r.dup}줄과 중복</span>` : '<span class="pill p-ok">✔</span>'}</td></tr>`).join('')}
     </tbody></table></div>
     <div class="row" style="margin-top:12px;justify-content:flex-end"><button class="btn" id="impCancel">취소</button><button class="btn pri" id="impUse">찾은 ${R.filter(r => r.pid && r.qty > 0 && !(r.dup && im.dupMode === 'first')).length}줄을 ${esc(S.ui.entry.type)} 목록에 담기</button></div></div>`;
@@ -1490,18 +1602,35 @@ async function saveCount() {
 
 /* ───────── 매장 이동 ───────── */
 function transferView() {
-  const st = S.stores;
-  const inc = S.transfers.filter(t => st.includes(t.to)); const out = S.transfers.filter(t => st.includes(t.from));
-  const row = (t, recv) => `<tr><td class="num nowrap" style="text-align:left">${md(t.date)}</td><td class="nowrap">${esc(storeName(t.from))} → ${esc(storeName(t.to))}</td><td class="nm">${esc(S.P[t.pid].name)}</td><td class="n" style="font-weight:700">${fmt(t.qty)}</td><td>${t.status === 'sent' ? (recv ? `<button class="btn sm pri" data-recv="${t.id}">받기 확인</button>` : '<span class="pill p-warn">🔸 받는 중</span>') : `<span class="pill p-ok">✔ 받음 ${md(t.recvDate)}</span>`}</td></tr>`;
+  const st = S.stores; const byNew = (a, b) => (b.date || '').localeCompare(a.date || '') || (b.at || '').localeCompare(a.at || '');
+  const pend = S.transfers.filter(t => st.includes(t.to) && t.status === 'sent').sort(byNew);
+  const going = S.transfers.filter(t => st.includes(t.from) && !st.includes(t.to) && t.status === 'sent').sort(byNew);
+  const hist = S.transfers.filter(t => (st.includes(t.to) || st.includes(t.from)) && t.status !== 'sent').sort((a, b) => (b.recvDate || '').localeCompare(a.recvDate || '') || byNew(a, b));
+  const nm = t => esc((S.P[t.pid] || {}).name || t.pid), code = t => esc((S.P[t.pid] || {}).barcode || (S.P[t.pid] || {}).sku || '');
+  const card = (t, recv) => `<div class="tcard${recv ? ' recv' : ''}">
+    <div class="tc1"><span class="tcd">${md(t.date)}(${wd(t.date)})</span><span class="tcr">${sdot(t.from)}${esc(shortName(t.from))} → ${sdot(t.to)}${esc(shortName(t.to))}</span></div>
+    <div class="tc2"><span class="tcn">${nm(t)}${code(t) ? ` <span class="code">${code(t)}</span>` : ''}</span><b class="tcq">${fmt(t.qty)}<small>개</small></b></div>
+    ${recv ? `<div class="tc3"><label for="rq_${t.id}">실제로 받은 수량</label><input class="inp qty" id="rq_${t.id}" type="number" inputmode="numeric" min="0" max="${t.qty}" value="${t.qty}"><button class="btn pri" data-recv="${t.id}">받기 확인</button></div>` : '<div class="tc3"><span class="pill p-warn">🔸 받는 매장 확인 기다리는 중</span></div>'}
+  </div>`;
+  const hrow = t => { const rq = t.recvQty ?? t.qty, short = t.qty - rq; return `<tr><td class="nowrap">${md(t.date)}(${wd(t.date)})</td><td class="nowrap">${esc(shortName(t.from))} → ${esc(shortName(t.to))}</td><td class="nm">${nm(t)}</td><td class="n">${fmt(t.qty)}</td><td class="n" style="font-weight:700">${fmt(rq)}</td><td>${short > 0 ? `<span class="pill p-bad">🔺 ${fmt(short)}개 모자람</span>` : `<span class="pill p-ok">✔ 받음 ${t.recvDate ? md(t.recvDate) + '(' + wd(t.recvDate) + ')' : ''}</span>`}</td></tr>`; };
   return `${head('매장 이동', '보낸 매장에서 빠지고, 받는 매장이 확인하면 더해집니다', `<button class="btn pri" data-quick="매장 이동">상품 보내기</button>`)}
-  <div class="card"><h2>받을 상품 <span class="r">${inc.filter(t => t.status === 'sent').length}건 대기</span></h2>${inc.length ? `<div class="tw"><table><thead><tr><th>보낸 날</th><th>경로</th><th>상품명</th><th class="n">수량</th><th>상태</th></tr></thead><tbody>${inc.map(t => row(t, true)).join('')}</tbody></table></div>` : '<div class="empty">받을 상품이 없습니다</div>'}</div>
-  <div class="card"><h2>보낸 상품</h2>${out.length ? `<div class="tw"><table><thead><tr><th>보낸 날</th><th>경로</th><th>상품명</th><th class="n">수량</th><th>상태</th></tr></thead><tbody>${out.map(t => row(t, false)).join('')}</tbody></table></div>` : '<div class="empty">보낸 상품이 없습니다. 위 [상품 보내기]로 시작하세요.</div>'}</div>`;
+  <div class="card"><h2>받을 상품 <span class="r">${pend.length}건 대기</span></h2>${pend.length ? `<p class="muted" style="margin:0 0 10px;font-size:13px">상자를 열어 센 수량을 넣고 [받기 확인]을 누르세요. 덜 왔으면 받은 만큼만 더하고, 모자란 수량은 기록에 남습니다.</p><div class="tcards">${pend.map(t => card(t, true)).join('')}</div>` : '<div class="empty">받을 상품이 없습니다</div>'}</div>
+  <div class="card"><h2>보낸 상품 · 받는 중 <span class="r">${going.length}건</span></h2>${going.length ? `<div class="tcards">${going.map(t => card(t, false)).join('')}</div>` : '<div class="empty">받는 중인 상품이 없습니다. 위 [상품 보내기]로 시작하세요.</div>'}</div>
+  <div class="card"><h2>지난 이동 기록 <span class="r">받기 끝난 ${hist.length}건</span></h2>${hist.length ? `<div class="tw"><table class="tb htb"><thead><tr><th>보낸 날</th><th>경로</th><th>상품명</th><th class="n">보낸 수량</th><th class="n">받은 수량</th><th>결과</th></tr></thead><tbody>${hist.slice(0, 200).map(hrow).join('')}</tbody></table></div>` : '<div class="empty">아직 받기 끝난 이동이 없습니다</div>'}</div>`;
 }
 async function receive(id) {
   const t = S.transfers.find(x => x.id === id); if (!t) return;
-  const m = { id: 'r' + Date.now().toString(36), date: today(), store: t.to, type: '매장 이동(받음)', pid: t.pid, qty: t.qty, memo: `← ${storeName(t.from)}`, by: S.user.name, at: new Date().toISOString(), tid: t.id };
-  await DB.saveMoves(stampMoves([m])); S.moves.push(m); (S.stock[t.to] ||= {})[t.pid] = stockOf(t.to, t.pid) + t.qty;
-  t.status = 'received'; t.recvDate = m.date; toast('받기 확인했습니다');
+  const el = document.getElementById('rq_' + id); let q = el ? parseInt(el.value, 10) : t.qty;
+  if (isNaN(q) || q < 0) { toast('받은 수량을 0 이상 숫자로 넣어 주세요'); return; }
+  if (q > t.qty) { toast(`보낸 수량(${fmt(t.qty)}개)보다 많이 받을 수 없습니다`); return; }
+  const short = t.qty - q;
+  const go = async () => {
+    const m = { id: 'r' + Date.now().toString(36), date: today(), store: t.to, type: '매장 이동(받음)', pid: t.pid, qty: q, memo: `← ${storeName(t.from)}${short ? ` · 보낸 ${fmt(t.qty)}개 중 ${fmt(short)}개 모자람` : ''}`, by: S.user.name, at: new Date().toISOString(), tid: t.id, sentQty: t.qty };
+    await DB.saveMoves(stampMoves([m])); S.moves.push(m); (S.stock[t.to] ||= {})[t.pid] = stockOf(t.to, t.pid) + q;
+    t.status = 'received'; t.recvDate = m.date; t.recvQty = q; toast(short ? `${fmt(q)}개 받기 확인 · ${fmt(short)}개 모자람을 기록했습니다` : '받기 확인했습니다');
+  };
+  if (short) { confirmDrawer('덜 온 수량으로 받기', `<p style="margin:0">${esc((S.P[t.pid] || {}).name || '')}<br>보낸 수량 <b>${fmt(t.qty)}개</b> 중 <b>${fmt(q)}개</b>만 받습니다. 모자란 <b class="qty-neg">${fmt(short)}개</b>는 기록에 남으니 보낸 매장과 확인해 주세요.</p>`, `${fmt(q)}개만 받기`, go); return; }
+  await go();
 }
 
 /* ───────── 기록 ───────── */
@@ -1514,7 +1643,7 @@ function recordsView() {
   return `${head('기록', `${fmt(L.length)}건 · 최근 것부터`)}
   <div class="card" style="display:flex;flex-direction:column;gap:10px"><div class="row"><div class="search">${ic('search')}<input class="inp" id="rq" type="search" placeholder="상품명·메모·바코드" value="${esc(S.ui.recQ)}"></div></div>
   <div class="chips"><button class="chip ${!S.ui.recType ? 'on' : ''}" data-rt="">전체</button>${types.map(t => `<button class="chip ${S.ui.recType === t ? 'on' : ''}" data-rt="${esc(t)}">${esc(t)} <span class="num">${fmt(tot[t] || 0)}건</span></button>`).join('')}</div></div>
-  <div class="card" style="padding:8px 12px">${movesTable(L.slice(-400).reverse())}${L.length > 400 ? '<p class="muted" style="font-size:13px">최근 400건만 보여 줍니다.</p>' : ''}</div>`;
+  <div class="card" style="padding:8px 12px">${movesTable(byRecent(L).slice(0, 400))}${L.length > 400 ? '<p class="muted" style="font-size:13px">최근 400건만 보여 줍니다.</p>' : ''}</div>`;
 }
 
 /* ───────── 매출 ───────── */
@@ -1785,7 +1914,8 @@ function grandTotal(stores, a, b, pa, pb, pos, posPrev, cmpLabel) {
     <div class="g-parts"><span><i class="dotc pos"></i>토스포스 <b>${fmt(pos)}</b>원 <span class="muted">${tot ? Math.round(w * 10) / 10 : 0}%</span></span><span><i class="dotc mac"></i>자판기·기계 <b>${fmt(mc)}</b>원 <span class="muted">${tot ? Math.round((100 - w) * 10) / 10 : 0}%</span>${mc ? '' : ' <span class="muted">· 자료 없음</span>'}</span></div></div>`;
 }
 function salesView() {
-  const stores = S.stores; const last = latestSalesDate(stores);
+  const stores = saleSt(S.stores); const last = latestSalesDate(stores);
+  if (!stores.length) return `${head('매출', '토스포스 매출리포트 기준')}<div class="card"><div class="empty">국대출판물류는 물류창고라 매출이 없습니다. 위 매장 선택에서 판매 매장을 골라 주세요.</div></div>`;
   const unit = S.ui.salesUnit;
   if (!S.ui.range || S.ui.range.unit !== unit) S.ui.range = { unit, ab: defaultRange(unit, last) };
   const [a, b] = S.ui.range.ab;
@@ -1800,7 +1930,7 @@ function salesView() {
   const multi = stores.length > 1;
   const ch = pct(cur.s, pre.s);
   const units = [['day', '일별'], ['week', '주별'], ['month', '월별'], ['year', '연도별'], ['ip', 'IP별']];
-  const quick = [['오늘', () => [today(), today()]], ['최근 올린 날', () => [last, last]], ['최근 14일', () => [addDays(last, -13), last]], ['이번주', () => { const k = periodKey(last, 'week'); return [k, last]; }], ['지난주', () => { const k = addDays(periodKey(last, 'week'), -7); return [k, addDays(k, 6)]; }], ['이번달', () => [last.slice(0, 7) + '-01', last]], ['지난달', () => { const f = addDays(last.slice(0, 7) + '-01', -1); return [f.slice(0, 7) + '-01', f]; }], ['올해', () => [last.slice(0, 4) + '-01-01', last]], ['전체', () => [firstSalesDate(stores), last]]];
+  const quick = [['오늘', () => [today(), today()]], ['최근 올린 날', () => [last, last]], ['최근 14일', () => [addDays(last, -13), last]], ['이번주', () => { const k = periodKey(last, 'week'); return [k, last]; }], ['지난주', () => { const k = addDays(periodKey(last, 'week'), -7); return [k, addDays(k, 6)]; }], ['최근 자료 달', () => [last.slice(0, 7) + '-01', last]], ['지난달', () => { const f = addDays(last.slice(0, 7) + '-01', -1); return [f.slice(0, 7) + '-01', f]; }], ['올해', () => [last.slice(0, 4) + '-01-01', last]], ['전체', () => [firstSalesDate(stores), last]]];
   S._quick = quick;
   const noData = stores.filter(s => !per[s].days);
   const su = salesUpdated(stores);
@@ -1822,6 +1952,8 @@ function salesView() {
     <button class="tile tbtn" data-cmp="q"><span class="lb">판매수량<span class="go">비교 ›</span></span><span class="v big${String(fmt(cur.q)).length>9?' long':''}">${fmt(cur.q)}<small>개</small></span><span class="d">${chg(pct(cur.q, pre.q))} <span class="muted">이전 ${fmt(pre.q)}개</span></span></button>
   </div>
   <div class="muted" style="font-size:12px;margin-top:-6px">비교 기간: ${esc(cr.label)} · 칸을 누르면 두 기간을 날짜별로 비교합니다</div>
+  ${S.stores.some(isWh) ? '<div class="muted" style="font-size:12px;margin-top:-6px">국대출판물류(물류창고)는 매출 합계에서 뺐습니다</div>' : ''}
+  ${ceoSales(per, sum, stores, a, b)}
   ${unit !== 'ip' ? machBlock(sum, a, b, cur.s) : ''}
   ${multi ? storeCompare(per, sum, stores) : ''}
   ${len === 1 && unit !== 'ip' ? `<div class="note" style="font-size:12.5px">${md(a)}(${wd(a)}) 하루 매출입니다. 아래 그래프는 흐름을 보기 위해 그날까지 최근 14일을 보여 줍니다.</div>` : ''}
@@ -1897,9 +2029,35 @@ function posDrawer() {
   </div>
   ${pv ? pv.err ? `<div class="note bad">🔺 ${esc(pv.err)}</div>` : `<div class="card"><h2>확인 · ${esc(storeName(pv.store))}</h2>
     <div class="alerts">${pv.days.map(d => `<div class="al"><span class="ic">${d.ok ? '✔' : '🔺'}</span><span class="tx"><b>${d.date}(${wd(d.date)})</b> 매출 ${won(d.s)} · ${fmt(d.p)}건 · 상품 ${d.items}종 ${fmt(d.q)}개${d.ok ? ' — 결제 합계와 상품 합계 일치' : ` — 🔺 결제 ${won(d.s)} ≠ 상품 ${won(d.si)}`}${d.exists ? '<br>🔸 이미 올린 날짜입니다. 저장하면 덮어씁니다.' : ''}</span></div>`).join('')}
-    ${pv.match ? `<div class="al"><span class="ic">${pv.unmatched.length ? '🔸' : '✔'}</span><span class="tx">재고 차감: 상품 ${pv.match.length}종 찾음${pv.unmatched.length ? ` · 못 찾은 ${pv.unmatched.length}종 (${esc(pv.unmatched.slice(0, 3).join(', '))}${pv.unmatched.length > 3 ? ' 외' : ''}) — 재고에 없는 상품은 차감하지 않습니다` : ''}</span></div>` : ''}</div>
-    <label class="ck"><input type="checkbox" id="posDeduct" ${pv.newDays && pv.newDays.length ? 'checked' : ''} ${pv.newDays && pv.newDays.length ? '' : 'disabled'}><span><span class="t">판매 수량을 재고에서 빼기${pv.newDays && pv.newDays.length ? ` — ${pv.newDays.length === 1 ? md(pv.newDays[0]) : md(pv.newDays[0]) + '~' + md(pv.newDays[pv.newDays.length - 1])} ${pv.newDays.length}일치만` : ''}</span><span class="s" style="display:block">${pv.lastPos ? `${md(pv.lastPos)}까지는 이미 재고에서 뺐습니다. ${pv.newDays.length ? '그 뒤 날짜만 빼서 두 번 빠지지 않습니다.' : '새로 뺄 날짜가 없습니다 (매출만 저장).'}` : "찾은 상품만 '판매'로 재고에서 뺍니다."}</span></span></label>
-    <div class="row" style="justify-content:flex-end;margin-top:10px"><button class="btn pri" id="posSave" ${pv.days.every(d => d.ok) ? '' : 'disabled'}>매출 저장</button></div></div>` : ''}`;
+    ${pv.match ? `<div class="al"><span class="ic">${pv.unmatched.length ? '🔸' : '✔'}</span><span class="tx">재고 차감: 상품 <b>${fmt(pv.matchN)}종</b> 찾음${pv.newDays.length ? ` · 뺄 수량 ${fmt(pv.matchQ)}개` : ''}${pv.unmatched.length ? ` · 못 찾은 상품 <b>${pv.unmatched.length}종</b> (${fmt(pv.unmatched.reduce((a, b) => a + b.q, 0))}개) — 아래에서 이어 주지 않으면 재고에서 빼지 않습니다` : ''}</span></div>` : ''}</div>
+    ${pv.unmatched.length ? `<details class="posun" ${pv.unmatched.length <= 12 ? 'open' : ''}><summary>못 찾은 상품 ${pv.unmatched.length}종 모두 보기 · 상품 이어 주기</summary>
+      <div class="tw"><table><thead><tr><th>POS 상품명</th><th class="n">판매</th><th>재고 상품으로 이어 주기</th></tr></thead><tbody>${pv.unmatched.map((u, i) => `<tr><td class="nm">${esc(u.name)}${u.multi ? '<div style="font-size:12px;color:var(--warn)">🔸 같은 이름 상품이 여러 개</div>' : ''}</td><td class="n">${fmt(u.q)}</td><td>${u.cands.length ? `<select class="inp" data-posln="${i}" aria-label="${esc(u.name)} 이을 상품"><option value="">— 빼지 않음 —</option>${u.cands.map(p => `<option value="${esc(p.id)}">${esc(p.name)} · ${esc(p.barcode || p.sku)} · 재고 ${fmt(stockOf(pv.store, p.id))}</option>`).join('')}</select>` : '<span class="muted" style="font-size:12px">비슷한 상품 없음 — 관리 › 상품 목록에 등록</span>'}</td></tr>`).join('')}</tbody></table></div>
+      <p class="muted" style="font-size:12px;margin:6px 0 0">이어 준 내용은 이번 올리기에만 쓰입니다. 상품 정보는 바뀌지 않습니다.</p></details>` : ''}
+    ${Object.keys(pv.links).length ? `<div class="note" style="font-size:12.5px">✔ 이어 준 상품 ${Object.keys(pv.links).length}종: ${Object.entries(pv.links).map(([n, id]) => `${esc(n)} → <b>${esc(S.P[id].name)}</b>`).join(' · ')}</div>` : ''}
+    ${pv.deduct && pv.neg.length ? `<div class="note bad">🔺 <b>재고가 마이너스가 되는 상품 ${pv.neg.length}종</b> — 실제 재고보다 많이 팔린 것으로 나옵니다. 입고·이동 누락이 없는지 확인해 주세요.<ul style="margin:6px 0 0;padding-left:18px;font-size:12.5px">${pv.neg.slice(0, 10).map(x => `<li>${esc(S.P[x.pid].name)} · 지금 ${fmt(x.now)} → <b class="qty-neg">${fmt(x.after)}</b></li>`).join('')}${pv.neg.length > 10 ? `<li>외 ${pv.neg.length - 10}종</li>` : ''}</ul>
+      <label class="ck" style="margin-top:8px"><input type="checkbox" id="posNegOk" ${pv.negOk ? 'checked' : ''}><span class="t">확인했습니다. 마이너스로 두고 저장합니다</span></label></div>` : ''}
+    <label class="ck"><input type="checkbox" id="posDeduct" ${pv.deduct ? 'checked' : ''} ${pv.newDays && pv.newDays.length ? '' : 'disabled'}><span><span class="t">판매 수량을 재고에서 빼기${pv.newDays && pv.newDays.length ? ` — ${pv.newDays.length === 1 ? md(pv.newDays[0]) : md(pv.newDays[0]) + '~' + md(pv.newDays[pv.newDays.length - 1])} ${pv.newDays.length}일치만` : ''}</span><span class="s" style="display:block">${pv.lastPos ? `${md(pv.lastPos)}까지는 이미 재고에서 뺐습니다. ${pv.newDays.length ? '그 뒤 날짜만 빼서 두 번 빠지지 않습니다.' : '새로 뺄 날짜가 없습니다 (매출만 저장).'}` : "찾은 상품만 '판매'로 재고에서 뺍니다."}</span></span></label>
+    <div class="row" style="justify-content:flex-end;margin-top:10px"><button class="btn pri" id="posSave" ${pv.days.every(d => d.ok) && !(pv.deduct && pv.neg.length && !pv.negOk) ? '' : 'disabled'}>매출 저장</button></div></div>` : ''}`;
+}
+// POS 상품명 → 재고 상품 찾기 (+ 화면에서 직접 이어 준 상품). 못 찾은 상품은 판매 수량·비슷한 상품 후보와 함께
+function posRecalc(pv) {
+  const store = pv.store, match = [], un = {};
+  for (const d of pv.days) for (const x of d.L) {
+    const lk = pv.links[x.name]; const c = lk ? [S.P[lk]] : S.byName[norm(x.name)];
+    if (lk || (c && c.length === 1 && (S.stock[store] || {})[c[0].id] != null)) match.push({ date: d.date, pid: c[0].id, q: x.q });
+    else { const u = un[x.name] ||= { name: x.name, q: 0, n: d.date, multi: c && c.length > 1 ? c : null }; u.q += x.q; }
+  }
+  const nn = s => norm(s).replace(/^\(.*?\)|\d+(호|번|종)?$/g, '');
+  for (const u of Object.values(un)) {
+    const k = norm(u.name), k2 = nn(u.name);
+    u.cands = (u.multi || S.products.filter(p => { const a = norm(p.name); return a && k && (a.includes(k) || k.includes(a) || (k2.length > 2 && a.includes(k2))); })).slice(0, 8);
+  }
+  const deductM = match.filter(m => !pv.lastPos || m.date > pv.lastPos), use = {};
+  for (const m of deductM) use[m.pid] = (use[m.pid] || 0) + m.q;
+  pv.match = match; pv.matchN = Object.keys(use).length || new Set(match.map(m => m.pid)).size; pv.matchQ = deductM.reduce((a, b) => a + b.q, 0);
+  pv.unmatched = Object.values(un).sort((a, b) => b.q - a.q);
+  pv.neg = Object.entries(use).map(([pid, q]) => ({ pid, now: stockOf(store, pid), after: stockOf(store, pid) - q })).filter(x => x.after < 0).sort((a, b) => a.after - b.after);
+  return pv;
 }
 async function readPos(f, store) {
   try {
@@ -1921,16 +2079,15 @@ async function readPos(f, store) {
       const it = XLSX.utils.sheet_to_json(wb.Sheets['상품 주문 합계'], { header: 1, defval: '' });
       for (const r of it) if (/^\d{4}-\d{2}-\d{2}$/.test(String(r[0]))) (items[r[0]] ||= []).push({ name: String(r[1]).trim(), ip: String(r[3]).trim() || '미분류', q: +r[4] || 0, s: +r[8] || 0 });
     }
-    const unmatched = new Set(); const match = [];
+    days.sort((a, b) => a.date.localeCompare(b.date));
     for (const d of days) {
       const L = items[d.date] || []; d.items = L.length; d.q = L.reduce((a, b) => a + b.q, 0); d.si = L.reduce((a, b) => a + b.s, 0); d.ok = d.si === d.s; d.exists = !!dayRec(store, d.date); d.L = L;
-      for (const x of L) { const c = S.byName[norm(x.name)]; if (c && c.length === 1 && (S.stock[store] || {})[c[0].id] != null) match.push({ date: d.date, pid: c[0].id, q: x.q }); else unmatched.add(x.name); }
     }
     if (!days.length) throw new Error('결제 합계에 날짜 줄이 없습니다.');
     // 재고는 '마지막으로 POS 판매를 뺀 날짜' 다음 날부터만 뺌 (한 달치 파일을 다시 올려도 두 번 빠지지 않게)
     const lastPos = S.moves.filter(m => m.store === store && m.type === '판매' && m.by === '자동(POS)').reduce((a, m) => (m.date > a ? m.date : a), '');
-    const newDays = days.map(d => d.date).filter(d => d > lastPos);
-    S.ui.posPreview = { store, days, match, unmatched: [...unmatched], file: f.name, lastPos, newDays };
+    const newDays = days.map(d => d.date).filter(d => d > lastPos).sort();
+    S.ui.posPreview = posRecalc({ store, days, file: f.name, lastPos, newDays, links: {}, deduct: newDays.length > 0, negOk: false });
   } catch (err) {
     S.ui.posPreview = { store, err: /password|encrypted|Wrong/i.test(String(err && err.message)) ? `zip 비밀번호가 맞지 않습니다. 관리 › 파일 비밀번호에서 ${storeName(store)} 비밀번호를 확인해 주세요.` : String(err.message || err) };
   }
@@ -1938,13 +2095,14 @@ async function readPos(f, store) {
 }
 async function savePos() {
   const pv = S.ui.posPreview; const st = pv.store;
+  if (pv.deduct && pv.neg.length && !pv.negOk) { toast('마이너스 재고 확인란을 먼저 눌러 주세요'); return; }
   for (const d of pv.days) {
     const ip = {}, pr = {}; for (const x of d.L) { const a = ip[x.ip] ||= [0, 0]; a[0] += x.q; a[1] += x.s; const b = pr[x.name] ||= [0, 0, x.ip]; b[0] += x.q; b[1] += x.s; }
     const rec = { s: d.s, p: d.p, q: d.q, ip, pr, up: { at: new Date().toISOString(), by: S.user.name, co: userCo(S.user), uid: S.user.uid, file: pv.file || '' } };
     await DB.saveSalesDay(st, d.date, rec);
     ((S.sales[st] ||= {})[d.date.slice(0, 7)] ||= { days: {} }).days[d.date.slice(8)] = rec;
   }
-  if ($('#posDeduct') && $('#posDeduct').checked && pv.match.length) {
+  if (pv.deduct && pv.newDays.length && pv.match.length) {
     const list = pv.match.filter(m => !pv.lastPos || m.date > pv.lastPos).map((m, i) => ({ id: 'p' + Date.now().toString(36) + i, date: m.date, store: st, type: '판매', pid: m.pid, qty: -m.q, memo: 'POS 판매', by: '자동(POS)', at: new Date().toISOString() }));
     await DB.saveMoves(stampMoves(list, pv.file)); for (const m of list) { S.moves.push(m); S.stock[st][m.pid] = stockOf(st, m.pid) + m.qty; }
   }
@@ -2142,7 +2300,12 @@ function seedView() {
   <p class="muted" style="font-size:12.5px;margin:8px 0 0">매출이 빠진 날이 있을 때는 <b>[매출·정산만 다시 넣기]</b>를 쓰세요. 한 달씩 넣고, 앱에서 이미 올린 날짜(예: 10/30)는 지우지 않습니다. 실패한 달이 있으면 아래에 이유가 나옵니다.</p><div class="muted" style="margin-top:8px;font-weight:600">${esc(S.ui.seedMsg || '')}</div></div>`;
 }
 function moreView() {
-  return `${head('설정', `앱 업데이트 ${APP_VERSION}`)}<div class="card">${textSizeBox()}</div>`;
+  const nav = NAV.filter(n => n.show()); const ids = nav.map(n => n.id); const main = TAB_MAIN.filter(id => ids.includes(id)).slice(0, 4);
+  const pendingN = can('approve') ? S.users.filter(u => u.status === 'pending').length : 0;
+  const rest = nav.filter(n => !main.includes(n.id));
+  return `${head('더보기', `모든 메뉴 · 앱 업데이트 ${APP_VERSION}`)}
+  <div class="moregrid">${rest.map(n => { const [t, i] = TAB[n.id] || [n.t, 'more']; return `<button class="mbtn" data-nav="${n.id}">${ic(i, 22)}<span>${esc(n.t)}</span>${n.id === 'admin' && pendingN ? `<b class="tcnt">${pendingN}</b>` : ''}</button>`; }).join('')}</div>
+  <div class="card"><h2>설정</h2>${textSizeBox()}</div>`;
 }
 
 /* ───────── 로그인·신청 ───────── */
@@ -2490,7 +2653,7 @@ function collabView() {
   // 일별 콜라보 매출 흐름
   const pts = []; for (let d = a; d <= (b < last ? b : last); d = addDays(d, 1)) { const rec = dayRec(st0, d); let s = 0, q = 0; if (rec) for (const [ip, [qq, ss]] of Object.entries(rec.ip || {})) if (catMatch(r, ip)) { s += ss; q += qq; } pts.push(dayPt(d, s, ` · ${fmt(q)}개`)); }
   const trend = pts.length > 1 ? `<div class="card"><h2>일별 콜라보 매출</h2>${lineChart(pts, { aria: r.ip + ' 일별 매출' })}</div>` : '';
-  return top + eq + split + trend + sku + etc + cvp + rank;
+  return top + eq.replace(/<span class="op">(.)<\/span>(\s*)<div class="eqi( res)?"><span class="k">/g, '<span class="op">$1</span>$2<div class="eqi$3"><span class="k"><i class="opm">$1</i>') + collabForecast(st0, r, a, b, R) + split + trend + sku + etc + cvp + rank;
 }
 function bind() {
   const app = $('#app');
@@ -2537,6 +2700,7 @@ function bind() {
     if (d.close != null) { if (S.ui.stopScan) S.ui.stopScan(); S.ui.drawer = null; S.ui.posPreview = null; render(); return; }
     if (t.id === 'ov' && ev.target === t) { S.ui.drawer = null; render(); return; }
     if (d.pf) { S.ui.f = d.pf; render(); return; }
+    if (d.pfgo) { S.ui.f = d.pfgo; S.ui.q = ''; S.ui.ip = ''; S.view = 'products'; render(); goTop(); return; }
     if (t.id === 'scanBtn' || t.id === 'scanBtn2') { scan(onScanned); return; }
     if (d.quick) {
       S.ui.drawer = null;
@@ -2579,7 +2743,9 @@ function bind() {
     if (t.id === 'ibCreate') { await ibCreate(); return; }
     if (t.id === 'ibActFile') { const ib = S.inbounds.find(x => x.id === S.ui.ib); pickFile('.xlsx,.xls,.csv', f => fileRows(f).then(x => ibActLoaded(ib, x)).catch(e => { S.ui.ibMsg = { t: '🔺 ' + e.message, bad: true }; render(); })); return; }
     if (t.id === 'ibActLinkGo') { const ib = S.inbounds.find(x => x.id === S.ui.ib); linkRows($('#ibActLink').value.trim()).then(x => ibActLoaded(ib, x)).catch(e => { S.ui.ibMsg = { t: '🔺 ' + e.message, bad: true }; render(); }); return; }
-    if (t.id === 'ibConfirm') { const ib = S.inbounds.find(x => x.id === S.ui.ib); confirmDrawer('실제 수량으로 입고 확정', `<p style="margin:0">${esc(ib.title)} — 실제 수량으로 재고에 더합니다. 확정한 뒤에는 수량을 고칠 수 없고, 차이는 기록으로 남습니다.</p>`, '입고 확정', () => ibConfirm(ib)); return; }
+    if (t.id === 'ibConfirm') { const ib = S.inbounds.find(x => x.id === S.ui.ib); const st = ibStats(ib), left = ib.items.filter(x => x.actual == null);
+      const warn = left.length ? `<div class="note warn" style="margin-top:10px">🔸 <b>아직 실제 수량을 안 넣은 상품 ${left.length}종</b>(예정 ${fmt(left.reduce((a, b) => a + (b.plan || 0), 0))}개)은 <b>0개로 입고</b>됩니다. 정말 안 왔는지 확인해 주세요.<ul style="margin:6px 0 0;padding-left:18px;font-size:12.5px">${left.slice(0, 8).map(x => `<li>${esc(x.name)} · 예정 ${fmt(x.plan)}개</li>`).join('')}${left.length > 8 ? `<li>외 ${left.length - 8}종</li>` : ''}</ul></div>` : '';
+      confirmDrawer('실제 수량으로 입고 확정', `<p style="margin:0">${esc(ib.title)} — 실제 <b>${fmt(st.act)}개</b>(예정 ${fmt(st.plan)}개)를 재고에 더합니다. 확정한 뒤에는 수량을 고칠 수 없고, 차이는 기록으로 남습니다.</p>${warn}`, left.length ? `${left.length}종 0개로 두고 확정` : '입고 확정', () => ibConfirm(ib)); return; }
     if (t.id === 'plNew') { S.ui.placeForm = null; S.ui.drawer = placeDrawer; render(); return; }
     if (d.plk) { S.ui.placeForm.kind = d.plk; render(); return; }
     if (d.ipf) { S.ui.ipF = d.ipf; render(); return; }
@@ -2592,12 +2758,21 @@ function bind() {
     if (t.id === 'linkGo') { readLink($('#linkIn').value.trim()); return; }
     if (t.id === 'impCancel') { S.ui.imp = null; render(); return; }
     if (d.dupm) { S.ui.imp.dupMode = d.dupm; render(); return; }
+    if (d.mpick != null && S.ui.imp) { const st = S.ui.entry.store; let n = 0; for (const r of S.ui.imp.rows.filter(r => r.st === 'multi')) {
+        if (d.mpick === '__clear') { r.pid = ''; continue; }
+        const c = d.mpick === '__stock' ? [...r.cand].sort((a, b) => stockOf(st, b) - stockOf(st, a)).filter(x => stockOf(st, x) > 0) : r.cand.filter(x => (S.P[x].ip || '(IP 없음)') === d.mpick);
+        if (c.length) { r.pid = c[0]; n++; } }
+      render(); if (d.mpick !== '__clear') toast(n ? `${n}줄을 골랐습니다` : '맞는 상품이 없습니다 — 줄마다 골라 주세요'); return; }
     if (t.id === 'mapRe' || t.id === 'mapSave') { const im = S.ui.imp; const m = readMapUI(); if (m.qty == null || (m.name == null && m.barcode == null && m.sku == null)) { toast('상품명(또는 바코드·품번)과 수량 칸을 골라 주세요'); return; }
       if (t.id === 'mapSave') { await saveImportMap(im.det.sig, { map: m, sample: im.det.H.filter(Boolean).slice(0, 8), by: S.user.name, at: new Date().toISOString() }); }
       importRows(im.raw, im.src, { a: im.det.a, r: im.det.r, map: m }); if (t.id === 'mapSave') S.ui.imp.det.how = 'saved'; render(); if (t.id === 'mapSave') toast('이 양식을 기억했습니다 — 같은 제목 줄 파일은 다음부터 자동'); return; }
     if (d.cbst) { S.ui.cb = { store: d.cbst }; render(); return; }
     if (t.id === 'impUse') { S.ui.entry.file = S.ui.imp.src; for (const r of S.ui.imp.rows) if (r.pid && r.qty > 0 && !(r.dup && S.ui.imp.dupMode === 'first')) addLine(r.pid, r.qty, r.dup ? `파일 ${r.dup}줄과 같은 상품 — 수량 합침` : null); S.ui.imp = null; S.ui.entry.mode = 'hand'; render(); return; }
-    if (t.id === 'cSave') { await saveCount(); S.ui.cntMsg = null; return; }
+    if (t.id === 'cSave') { const st = S.stores[0], c = S.ui.counts[st] || {}; const df = Object.keys(c).filter(pid => c[pid] !== stockOf(st, pid)).map(pid => ({ pid, b: stockOf(st, pid), v: c[pid] })).sort((a, b) => Math.abs(b.v - b.b) - Math.abs(a.v - a.b));
+      const plus = df.filter(x => x.v > x.b).reduce((a, x) => a + x.v - x.b, 0), minus = df.filter(x => x.v < x.b).reduce((a, x) => a + x.b - x.v, 0), amt = df.reduce((a, x) => a + (x.v - x.b) * ((S.P[x.pid] || {}).price || 0), 0);
+      confirmDrawer('실사 결과를 재고에 반영', `<p style="margin:0 0 8px">${esc(storeName(st))} · ${today()}(${wd(today())}) — 장부 수량을 세어 본 수량으로 바꿉니다. 반영한 뒤에는 '재고 조정' 기록으로 남습니다.</p>
+        <div class="kv"><dt>바뀌는 상품</dt><dd class="num"><b>${df.length}종</b></dd><dt>늘어남</dt><dd class="num" style="color:var(--ok);font-weight:700">+${fmt(plus)}개</dd><dt>줄어듦</dt><dd class="num qty-neg">−${fmt(minus)}개</dd>${amt ? `<dt>금액 차이</dt><dd class="num"><b>${amt > 0 ? '+' : ''}${won(amt)}</b></dd>` : ''}</div>
+        <div class="tw" style="margin-top:10px"><table><thead><tr><th>상품명</th><th class="n">장부</th><th class="n">실사</th><th class="n">차이</th></tr></thead><tbody>${df.slice(0, 15).map(x => `<tr><td class="nm">${esc(S.P[x.pid].name)}</td><td class="n">${fmt(x.b)}</td><td class="n">${fmt(x.v)}</td><td class="n" style="font-weight:700;color:${x.v < x.b ? 'var(--bad)' : 'var(--ok)'}">${x.v > x.b ? '+' : ''}${fmt(x.v - x.b)}</td></tr>`).join('')}</tbody></table></div>${df.length > 15 ? `<p class="muted" style="font-size:12.5px;margin:6px 0 0">차이 큰 순 15종만 보여 줍니다 (전체 ${df.length}종 반영)</p>` : ''}`, `${df.length}종 반영`, async () => { await saveCount(); S.ui.cntMsg = null; }); return; }
     if (t.id === 'cntTpl') { countTemplate(); return; }
     if (t.id === 'cntFile') { pickFile('.xlsx,.xls,.csv', f => fileRows(f).then(x => countApply(x.rows, x.src)).catch(e => { S.ui.cntMsg = { bad: true, html: '🔺 ' + esc(e.message) }; render(); })); return; }
     if (t.id === 'cntLinkGo') { linkRows($('#cntLink').value.trim()).then(x => countApply(x.rows, x.src)).catch(e => { S.ui.cntMsg = { bad: true, html: '🔺 ' + esc(e.message) }; render(); }); return; }
@@ -2634,12 +2809,12 @@ function bind() {
       const [id, part] = d.dsel.split(':'); const h = document.getElementById(id); if (!h) return;
       let [y, m, dd] = h.value.split('-').map(Number);
       if (part === 'y') y = +t.value; if (part === 'm') m = +t.value; if (part === 'd') dd = +t.value;
-      dd = Math.min(dd, new Date(Date.UTC(y, m, 0)).getUTCDate());
+      const lastD = new Date(Date.UTC(y, m, 0)).getUTCDate(); if (dd > lastD) { setTimeout(() => toast(`${m}월은 ${lastD}일까지라서 ${lastD}일로 맞췄습니다`), 0); dd = lastD; }
       h.value = `${y}-${String(m).padStart(2, '0')}-${String(dd).padStart(2, '0')}`;
       onChange({ target: h }); return;
     }
     if (t.id === 'cbPlan') { const r = ipPlan().find(x => x.id === t.value); if (r) S.ui.cb = { store: r.store, id: r.id, a: r.start, b: r.end }; render(); return; }
-    if (t.id === 'cba' || t.id === 'cbb') { S.ui.cb[t.id === 'cba' ? 'a' : 'b'] = t.value; if (S.ui.cb.b < S.ui.cb.a) S.ui.cb.b = S.ui.cb.a; render(); return; }
+    if (t.id === 'cba' || t.id === 'cbb') { const k = t.id === 'cba' ? 'a' : 'b'; S.ui.cb[k] = t.value; let msg = ''; if (S.ui.cb.b < S.ui.cb.a) { if (k === 'a') S.ui.cb.b = S.ui.cb.a; else S.ui.cb.a = S.ui.cb.b; msg = k === 'a' ? '시작일이 종료일보다 늦어서 종료일을 같은 날로 맞췄습니다' : '종료일이 시작일보다 빨라서 시작일을 같은 날로 맞췄습니다'; } render(); if (msg) toast(msg); return; }
     if (t.id === 'roleSel') { setUser(S.users.find(u => u.uid === t.value)); render(); return; }
     if (d.sc) { const on = t.checked; let s = S.stores.filter(x => x !== d.sc); if (on) s.push(d.sc); if (!s.length) s = [d.sc]; S.stores = STORES.map(x => x.id).filter(x => s.includes(x)); S.sumStores = null; S.ui.range = null; render(); return; }
     if (t.id === 'pip') { S.ui.ip = t.value; render(); return; }
@@ -2655,22 +2830,28 @@ function bind() {
     if (t.id === 'eFrom') { S.ui.entry.from = t.value; render(); return; }
     if (d.sdipc != null) { const o = S.ui.sdoc; o.ips = t.checked ? [...new Set([...o.ips, d.sdipc])] : o.ips.filter(x => x !== d.sdipc); render(); return; }
     if (t.id === 'sdDate') { S.ui.sdoc.date = t.value; if (S.ui.sdoc.from && S.ui.sdoc.from > t.value) S.ui.sdoc.from = t.value; render(); return; }
-    if (t.id === 'sdFrom') { S.ui.sdoc.from = t.value > S.ui.sdoc.date ? S.ui.sdoc.date : t.value; render(); return; }
+    if (t.id === 'sdFrom') { const bad = t.value > S.ui.sdoc.date; S.ui.sdoc.from = bad ? S.ui.sdoc.date : t.value; render(); if (bad) toast('시작일은 기준일보다 늦을 수 없어 기준일로 맞췄습니다'); return; }
     if (t.id === 'sdIpq') { S.ui.sdoc.ipq = t.value; return; }
     if (t.id === 'machStore') { S.ui.machStore = t.value; S.ui.machPv = null; render(); return; }
     if (t.id === 'ipPast') { S.ui.ipPast = t.checked; render(); return; }
-    if (['ipStore', 'ipName', 'ipStart', 'ipEnd', 'ipHost', 'ipNote'].includes(t.id)) { const k = { ipStore: 'store', ipName: 'ip', ipStart: 'start', ipEnd: 'end', ipHost: 'host', ipNote: 'note' }[t.id]; const f = S.ui.ipForm; f[k] = t.value; if (k === 'store') f.kind = STORE_KIND[t.value] || f.kind; if (k === 'start' && (!f.end || f.end < t.value)) f.end = t.value; render(); return; }
-    if (['plName', 'plStart', 'plEnd', 'plAddr', 'plPerson', 'plMemo'].includes(t.id)) { const k = { plName: 'name', plStart: 'start', plEnd: 'end', plAddr: 'addr', plPerson: 'person', plMemo: 'memo' }[t.id]; S.ui.placeForm[k] = t.value; if (k === 'start' && (!S.ui.placeForm.end || S.ui.placeForm.end < t.value)) S.ui.placeForm.end = t.value; render(); return; }
+    if (['ipStore', 'ipName', 'ipStart', 'ipEnd', 'ipHost', 'ipNote'].includes(t.id)) { const k = { ipStore: 'store', ipName: 'ip', ipStart: 'start', ipEnd: 'end', ipHost: 'host', ipNote: 'note' }[t.id]; const f = S.ui.ipForm; f[k] = t.value; if (k === 'store') f.kind = STORE_KIND[t.value] || f.kind; let msg = ''; if (k === 'start' && (!f.end || f.end < t.value)) { if (f.end) msg = '종료일을 시작일과 같은 날로 맞췄습니다'; f.end = t.value; } if (k === 'end' && f.end < f.start) { f.end = f.start; msg = '종료일은 시작일보다 빠를 수 없어 시작일로 맞췄습니다'; } render(); if (msg) toast(msg); return; }
+    if (['plName', 'plStart', 'plEnd', 'plAddr', 'plPerson', 'plMemo'].includes(t.id)) { const k = { plName: 'name', plStart: 'start', plEnd: 'end', plAddr: 'addr', plPerson: 'person', plMemo: 'memo' }[t.id]; const pf = S.ui.placeForm; pf[k] = t.value; let msg = ''; if (k === 'start' && (!pf.end || pf.end < t.value)) { if (pf.end) msg = '종료일을 시작일과 같은 날로 맞췄습니다'; pf.end = t.value; } if (k === 'end' && pf.end < pf.start) { pf.end = pf.start; msg = '종료일은 시작일보다 빠를 수 없어 시작일로 맞췄습니다'; } render(); if (msg) toast(msg); return; }
     if (t.id === 'ePartner') { S.ui.entry.partner = t.value; render(); return; }
-    if (t.id === 'eMemo') S.ui.entry.memo = t.value;
+    if (t.id === 'eMemo') { S.ui.entry.memo = t.value; if (TYPES.find(x => x.id === S.ui.entry.type).from) render(); return; }
     if (d.lq != null) { S.ui.entry.lines[+d.lq].qty = Math.max(0, parseInt(t.value || '0', 10)); render(); return; }
     if (d.ip != null) { const r = S.ui.imp.rows[+d.ip]; r.pid = t.value; render(); return; }
     if (d.cnt) { const st = S.stores[0]; const v = t.value === '' ? null : Math.max(0, parseInt(t.value, 10)); if (v == null) delete S.ui.counts[st][d.cnt]; else S.ui.counts[st][d.cnt] = v; render(); return; }
-    if (t.id === 'ra' || t.id === 'rb') { const a = $('#ra').value, b = $('#rb').value; if (a && b && a <= b) S.ui.range = { unit: S.ui.salesUnit, ab: [a, b] }; render(); return; }
+    if (t.id === 'ra' || t.id === 'rb') { let a = $('#ra').value, b = $('#rb').value; if (!a || !b) return; let msg = '';
+      if (a > b) { if (t.id === 'ra') { b = a; msg = `시작일이 종료일보다 늦어서 종료일도 ${md(a)}(${wd(a)})로 맞췄습니다`; } else { a = b; msg = `종료일이 시작일보다 빨라서 시작일도 ${md(b)}(${wd(b)})로 맞췄습니다`; } }
+      if (b > today()) { b = today(); if (a > b) a = b; msg = '앞으로 올 날짜는 고를 수 없어 오늘까지로 맞췄습니다'; }
+      S.ui.range = { unit: S.ui.salesUnit, ab: [a, b] }; render(); if (msg) toast(msg); return; }
     if (d.sum) { const cur = (S.sumStores || S.stores).filter(s => s !== d.sum); if (t.checked) cur.push(d.sum); S.sumStores = cur.length ? cur : [d.sum]; render(); return; }
     if (t.id === 'setM') { S.ui.settleMonth = t.value; render(); return; }
     if (d.pst) { const [id, s] = d.pst.split(':'); const p = S.ui.draft[id]; p.stores = t.checked ? [...new Set([...p.stores, s])] : p.stores.filter(x => x !== s); render(); return; }
     if (d.pp) { const [id, k] = d.pp.split(':'); S.ui.draft[id][k] = t.checked; return; }
+    if (t.id === 'posDeduct' && S.ui.posPreview) { S.ui.posPreview.deduct = t.checked; render(); return; }
+    if (t.id === 'posNegOk' && S.ui.posPreview) { S.ui.posPreview.negOk = t.checked; render(); return; }
+    if (d.posln != null && S.ui.posPreview) { const pv = S.ui.posPreview, u = pv.unmatched[+d.posln]; if (t.value) pv.links[u.name] = t.value; else delete pv.links[u.name]; posRecalc(pv); render(); return; }
     if (d.zpw) { S.zipPw[d.zpw] = t.value; if (DB.saveZip) DB.saveZip(S.zipPw).then(() => toast('비밀번호를 저장했습니다')); else render(); return; }
   };
   const fq = $('#fq'); if (fq) fq.oninput = debounce(() => { S.ui.fq = fq.value; rerenderKeep('#fq'); });
@@ -2767,6 +2948,12 @@ function fitSide() {
 }
 addEventListener('resize', fitSide); addEventListener('scroll', () => requestAnimationFrame(fitSide), { passive: true });
 // 재고 문서 출력: IP 찾기 칸은 글자를 칠 때마다 바로 걸러 줌 (화면 전체를 다시 그리지 않음)
+// 글자를 칠 때마다 저장 버튼을 바로 켜고 끔 (화면 전체를 다시 그리지 않아 한 번에 눌림)
+document.addEventListener('input', ev => {
+  const t = ev.target;
+  if (t.id === 'eMemo' && S.ui.entry) { S.ui.entry.memo = t.value; const b = $('#eSave'); if (b) b.disabled = lineIssues(S.ui.entry).some(x => x.block); return; }
+  if (['plName', 'plStart'].includes(t.id) && S.ui.placeForm) { S.ui.placeForm[t.id === 'plName' ? 'name' : 'start'] = t.value; const b = $('#plSave'); if (b) b.disabled = !(S.ui.placeForm.name.trim() && S.ui.placeForm.start); return; }
+});
 document.addEventListener('input', ev => {
   if (ev.target.id !== 'sdIpq' || !S.ui.sdoc) return;
   S.ui.sdoc.ipq = ev.target.value; const q = norm(ev.target.value);

@@ -1,7 +1,43 @@
 <!doctype html>
 <html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#0B0B0C"><link rel="icon" href="icon-192.png"><link rel="manifest" href="manifest.json"><link rel="apple-touch-icon" href="icon-180.png"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-title" content="SMG 재고">
-<style>:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0}img{max-width:100%}[hidden]{display:none!important}</style>
+<style>:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0}img{max-width:100%}[hidden]{display:none!important}
+/* 대표 판단 화면 */
+.kpis .tile .v.big{font-weight:800;color:var(--ink)}
+.kpis .tile .d{display:flex;flex-wrap:wrap;gap:2px 6px;font-size:12px}
+.todobox h2 .r{font-weight:500}
+.todos{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,210px),1fr));gap:8px}
+.todo{display:flex;align-items:center;gap:10px;min-height:64px;padding:10px 12px;border:1px solid var(--line);border-radius:9px;background:var(--surface);text-align:left;color:var(--ink)}
+.todo:hover{border-color:var(--red)}
+.todo .ti{font-size:18px;flex:none}
+.todo .tl{flex:1;min-width:0;font-weight:700;font-size:13.5px;display:flex;flex-direction:column}
+.todo .tl small{font-weight:500;font-size:12px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.todo .tv{font-size:18px;font-weight:800;font-variant-numeric:tabular-nums;white-space:nowrap}
+.todo.bad{border-left:4px solid var(--red)}.todo.bad .tv{color:var(--red-ink)}
+.wk{font-size:14px;line-height:1.6}.wk b.up{color:var(--red-ink)}.wk b.dn{color:#1F5FBF}.ink{color:var(--ink)}
+.tbh{font-weight:800;font-size:13px;margin-bottom:6px}.tbh.up{color:var(--red-ink)}.tbh.dn{color:#1F5FBF}
+.tb5{gap:16px}
+.rk{list-style:none;margin:0;padding:0}
+.rk li{display:grid;grid-template-columns:22px minmax(0,1fr) auto 84px;gap:8px;align-items:center;padding:6px 0;border-bottom:1px solid var(--line-2);font-size:13px}
+.rk .rn{font-weight:800;color:var(--muted);text-align:center;font-variant-numeric:tabular-nums}
+.rk .rt{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.rk .rt small{display:block;color:var(--muted);font-size:11.5px}
+.rk .rq{color:var(--ink-2);text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+.rk .rv{text-align:right;font-variant-numeric:tabular-nums;color:var(--ink)}
+.deadbar{display:flex;align-items:center;gap:12px;width:100%;padding:10px 12px;border:1px solid var(--line);border-left:4px solid #E0A43C;border-radius:9px;background:var(--surface);text-align:left;color:var(--ink);font-weight:700;flex-wrap:wrap}
+.deadbar span:first-child{flex:1;min-width:160px}.deadbar small{display:block;font-weight:500;color:var(--muted);font-size:12px}
+.deadbar b{font-size:20px;font-variant-numeric:tabular-nums}.deadbar b small{display:inline;font-size:13px;margin-left:2px}
+.fc .tiles{margin-top:6px}
+@media(max-width:760px){
+  .tiles > :last-child:nth-child(odd){grid-column:1/-1}
+  .eq{display:grid;grid-template-columns:1fr 1fr;gap:6px}.eq .op{display:none}
+  .eqi .opm{display:inline!important}
+  .eqi.res{grid-column:1/-1}
+  .eqi{min-width:0}
+  .tb5{grid-template-columns:1fr}
+}
+.eqi.res .opm{color:#fff}
+.eqi .opm{display:none;font-style:normal;font-weight:800;margin-right:4px;color:var(--ink)}
+</style>
 <title>SMG 재고관리</title>
 <meta name="claude:viewport-fit-sides" content="cover">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -9,10 +45,10 @@
 <style>
 /* Layout: black brand bar with store switcher top-left, side nav on wide screens, bottom tab bar on phones. Numbers right-aligned, tabular. */
 :root{
-  --red:#D32229; --red-ink:#B3191F; --black:#0B0B0C;
+  --red:#C23634; --red-ink:#A8232A; --black:#0B0B0C;
   --bg:#F2F2F3; --surface:#FFFFFF; --surface-2:#F7F7F8; --line:#E1E1E5; --line-2:#ECECEF;
   --ink:#141416; --ink-2:#3A3A40; --muted:#6C6C75;
-  --ok:#1E7A46; --warn:#B86200; --bad:#B3191F; --info:#2F5D8A;
+  --ok:#1E7A46; --warn:#B86200; --bad:#A8232A; --info:#2F5D8A;
   --warn-bg:#FFF3E0; --ok-bg:#E8F3EC; --bad-bg:#F6F6F7; --sel:#EDEDF0;
   --s-suwon:#D32229; --s-boxcafe:#2B2B30; --s-museum:#3E6A8A; --s-omake:#B87A12; --s-limission:#2E7D6B; --s-gukdae:#6B5B95;
   --f-body:"IBM Plex Sans KR",system-ui,-apple-system,"Apple SD Gothic Neo","Malgun Gothic",sans-serif;
@@ -124,7 +160,7 @@ body:not(.in-app) .kclock{display:none!important}
   .kclock .kr2{display:none!important}
   .kclock .kh{font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
   .kclock.abroad .kt::after{content:attr(data-k);font-size:11px;color:#bdbdc4;margin-left:6px;font-weight:600}
-  main{padding-bottom:calc(var(--tabh,64px) + 56px)}
+  main{padding-bottom:calc(var(--tabh,64px) + 20px)}
 }
 .ipgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px}
 .ipcard{display:flex;flex-direction:column;gap:10px;border-top:4px solid var(--c)}
@@ -186,7 +222,7 @@ body:not(.in-app) .kclock{display:none!important}
   .fri .k{display:block;margin:0}
 }
 .chg{font-weight:700;white-space:nowrap}
-.chg.up{color:#E5353C}
+.chg.up{color:var(--red-ink)}
 .chg.dn{color:#2F6FDB}
 .chg.flat{color:var(--muted)}
 :root[data-theme="dark"] .chg.dn{color:#6FA8FF}
@@ -269,6 +305,7 @@ table.tb tr.click.sel td:first-child{box-shadow:inset 3px 0 0 var(--red)}
 .iph2{display:flex;align-items:center;gap:8px;font-size:12px;flex-wrap:wrap}
 /* 제목 줄 버튼 묶음: 넓은 화면은 오른쪽에 나란히, 좁은 화면은 제목 아래 한 줄 전체를 같은 너비로 나눠 씀 */
 .pha{display:flex;gap:8px;flex-wrap:wrap;align-items:center;justify-content:flex-end}
+.mpick{display:inline-flex;flex-wrap:wrap;gap:6px;margin:4px 0}
 .pha > .btn,.pha > select{min-height:38px}
 .who{margin-left:auto}
 @media (max-width: 900px){
@@ -312,6 +349,22 @@ main{min-width:0;padding-block:18px 96px;padding-left:max(16px,env(safe-area-ins
 .ph .back-btn{order:99}
 @media (max-width: 900px){.ph:has(.back-btn) .pht{padding-right:100px;min-height:38px}.ph .back-btn{position:absolute;right:0;top:0}}
 .tabbar{display:none}
+.tcards{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,340px),1fr));gap:10px}
+.tcard{border:1px solid var(--line);border-radius:10px;padding:12px;display:flex;flex-direction:column;gap:8px;background:var(--surface)}
+.tcard.recv{border-left:4px solid var(--red)}
+.tc1{display:flex;justify-content:space-between;gap:8px;font-size:13px;color:var(--ink-2);flex-wrap:wrap}
+.tc1 .tcd{font-weight:700;color:var(--ink);font-variant-numeric:tabular-nums}
+.tc2{display:flex;align-items:baseline;gap:10px}
+.tc2 .tcn{flex:1;min-width:0;font-weight:600;word-break:keep-all}
+.tc2 .tcq{font-size:22px;font-weight:800;font-variant-numeric:tabular-nums;color:var(--ink);white-space:nowrap}
+.tc2 .tcq small{font-size:12px;font-weight:600;color:var(--muted);margin-left:2px}
+.tc3{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.tc3 label{font-size:12px;color:var(--muted);font-weight:600;margin-right:auto}
+.tc3 .inp.qty{width:84px;height:40px}
+.tc3 .btn{min-height:40px}
+.moregrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px}
+.mbtn{position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;min-height:76px;border:1px solid var(--line);border-radius:10px;background:var(--surface);font-weight:700;font-size:13px;color:var(--ink)}
+.mbtn .tcnt{position:absolute;top:6px;right:8px;background:var(--red);color:#fff;font-size:10px;line-height:15px;min-width:15px;padding:0 4px;border-radius:8px}
 
 /* cards, tiles */
 .card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:16px;min-width:0}
@@ -366,8 +419,8 @@ tr.flag td{background:var(--warn-bg)}
 .inp,select.inp,textarea.inp{border:1px solid var(--line);background:var(--surface);border-radius:7px;padding:8px 10px;min-height:38px;width:100%}
 .inp:focus{border-color:var(--ink-2);outline:none}
 .dsel{display:flex;gap:4px;min-width:0}
-.dsel select.inp{width:auto;flex:1 1 0;min-width:0;padding-left:6px;padding-right:2px}
-.dsel select.inp:first-of-type{flex:1.4 1 0}
+.dsel select.inp{width:auto;flex:1 0 auto;min-width:4.9em;padding-left:8px;padding-right:20px;font-variant-numeric:tabular-nums}
+.dsel select.inp:first-of-type{flex:1.3 0 auto;min-width:6.3em}
 .inp.qty{text-align:right;font-variant-numeric:tabular-nums;width:90px}
 .search{position:relative;flex:1;min-width:200px}
 .search .inp{padding-left:34px}
@@ -416,8 +469,11 @@ tr.flag td{background:var(--warn-bg)}
 .dr{background:var(--bg);width:min(560px,100%);height:100%;overflow:auto;padding:16px;padding-top:calc(16px + env(safe-area-inset-top,0px));padding-bottom:calc(24px + env(safe-area-inset-bottom,0px));display:flex;flex-direction:column;gap:12px}
 .dr .hd{display:flex;align-items:flex-start;gap:10px}
 .dr .hd h3{margin:0;font-size:18px;word-break:keep-all}
+.posun{border:1px solid var(--line);border-radius:10px;background:var(--surface);padding:10px 12px}
+.posun summary{font-weight:700;cursor:pointer;min-height:32px;display:flex;align-items:center}
+.posun select.inp{min-width:200px;font-size:13px}
 .x{margin-left:auto;background:none;border:1px solid var(--line);border-radius:7px;width:36px;height:36px;font-size:18px;flex:none}
-.toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(84px + env(safe-area-inset-bottom,0px));z-index:90;background:var(--ink);color:var(--surface);padding:10px 16px;border-radius:8px;font-weight:600;box-shadow:var(--shadow);max-width:calc(100vw - 32px)}
+.toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(var(--tabh,0px) + 16px + env(safe-area-inset-bottom,0px));z-index:90;background:var(--ink);color:var(--surface);padding:10px 16px;border-radius:8px;font-weight:600;box-shadow:var(--shadow);max-width:calc(100vw - 32px)}
 .kv{display:grid;grid-template-columns:auto 1fr;gap:4px 14px;font-size:13px}
 .kv dt{color:var(--muted);white-space:nowrap}
 .kv dd{margin:0;min-width:0;word-break:keep-all}
@@ -437,9 +493,12 @@ tr.flag td{background:var(--warn-bg)}
   .tabbar{display:block;position:fixed;left:0;right:0;bottom:0;z-index:55;background:var(--surface);border-top:1px solid var(--line);
     padding-bottom:env(safe-area-inset-bottom,0px);padding-left:env(safe-area-inset-left,0px);padding-right:env(safe-area-inset-right,0px)}
   .tabgrid{display:grid}
-  main{padding-bottom:calc(var(--tabh,64px) + 56px)}
+  main{padding-bottom:calc(var(--tabh,64px) + 20px)}
   .tabbar button{position:relative;background:none;border:0;padding:7px 1px 5px;display:flex;flex-direction:column;align-items:center;gap:2px;font-size:11px;font-weight:600;color:var(--muted);white-space:nowrap;min-width:0}
-  .tabgrid.two button{padding:6px 1px 4px;font-size:10.5px}
+  .kclock{display:none!important}
+  .moregrid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+  .mbtn{position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;min-height:76px;border:1px solid var(--line);border-radius:10px;background:var(--surface);font-weight:700;font-size:13px;color:var(--ink)}
+  .mbtn .tcnt{top:6px;left:auto;right:8px}
   .tabbar button span{overflow:hidden;text-overflow:ellipsis;max-width:100%}
   .tabbar button.on{color:var(--red)}
   .tabbar svg{width:20px;height:20px}
@@ -513,8 +572,8 @@ tr.flag td{background:var(--warn-bg)}
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 <script src="config.js"></script>
-<script src="firebase.js?v=29"></script>
-<script src="app.js?v=63"></script>
+<script src="firebase.js?v=30"></script>
+<script src="app.js?v=64"></script>
 <script>if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});</script>
 
 </body></html>

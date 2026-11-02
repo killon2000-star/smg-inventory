@@ -38,7 +38,7 @@ with sync_playwright() as p:
     ok(pg.evaluate("SMGApp.S.ui.cb.a").endswith('-20'),f'{tag} 기간 시작일 select 변경 반영')
     # ── 기간별 매출
     go(pg,'sales',salesUnit='day',range=None)
-    for t in ['이번달','지난달','이번주','오늘']:
+    for t in ['최근 자료 달','지난달','이번주','오늘']:
       b=pg.locator('.fquick button',has_text=t).first; b.click(); pg.wait_for_timeout(250)
       ok('on' in (pg.locator('.fquick button',has_text=t).first.get_attribute('class') or ''),f'{tag} 빠른 선택 [{t}] 동작')
     pg.locator('.fquick button',has_text='지난달').first.click(); pg.wait_for_timeout(300)
