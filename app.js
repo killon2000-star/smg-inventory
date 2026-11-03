@@ -1235,14 +1235,15 @@ function readTable(rows, qtyPref) {
     const name = g('name'), bc = g('barcode'), sku = g('sku');
     if (!name && !bc && !sku) continue;
     if (/^(합계|총계|소계|total)/i.test(name) && !bc && !sku) continue;
-    const num = v => { const t = String(v ?? '').replace(/[,원\s]/g, ''); if (t === '') return null; const n = Number(t); return isNaN(n) ? null : n; };
+    const num = v => { const t = String(v ?? '').replace(/[,원\s]|개$|ea$|pcs$/gi, ''); if (t === '') return null; const n = Number(t); return isNaN(n) ? null : n; };
     let cand = bc ? findProduct(bc) : []; if (!cand.length && sku) cand = findProduct(sku); if (!cand.length && name) cand = S.byName[norm(name)] || [];
     out.push({ line: i + 1, name, bc, sku, qty: num(g('qty')), price: num(g('price')), ip: g('ip'), pid: cand.length === 1 ? cand[0].id : '', multi: cand.length > 1 });
   }
   return { rows: out, header: det.r + 1 };
 }
 async function fileRows(f) {
-  if (/\.(pdf|png|jpe?g|heic|gif|webp)$/i.test(f.name)) throw new Error('PDF·사진은 입력할 수 없습니다. 엑셀이나 구글시트로 받아 주세요.');
+  if (/\.(pdf)$/i.test(f.name)) throw new Error('PDF는 입력할 수 없습니다. 엑셀·구글시트 또는 화면 캡처 사진으로 올려 주세요.');
+  if (isImg(f)) throw new Error('사진은 입고 예정 등록에서 [사진·캡처로 올리기]로 올려 주세요.');
   const wb = await readBook(f);
   const best = bestSheet(wb);
   return { rows: best ? best.rows : [], src: f.name + (best && wb.SheetNames.length > 1 ? ' › ' + best.n : '') };
@@ -1253,6 +1254,91 @@ async function linkRows(url) {
   if (S.mode === 'demo') throw new Error('미리보기 화면에서는 외부 링크를 열 수 없습니다. 실제 앱에서는 "링크가 있는 모든 사용자" 공유 시트를 바로 읽습니다.');
   const r = await fetch(`https://docs.google.com/spreadsheets/d/${m[1]}/gviz/tq?tqx=out:csv${g ? '&gid=' + g[1] : ''}`); if (!r.ok) throw new Error('시트를 열지 못했습니다. 공유를 "링크가 있는 모든 사용자 · 뷰어"로 바꿔 주세요.');
   const wb = XLSX.read(await r.text(), { type: 'string' }); return { rows: XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, defval: '' }), src: '구글시트' };
+}
+/* ───────── 사진·캡처로 입고 예정 읽기 (Firebase AI Logic → 안 되면 기기 안 글자 읽기) ───────── */
+const IMG_RE = /\.(png|jpe?g|heic|heif|gif|webp|bmp)$/i;
+const isImg = f => /^image\//.test(f.type || '') || IMG_RE.test(f.name || '');
+const IMG_HDR = ['상품명', '바코드', '품번', '수량', '가격', '입고 예정일', '매장'];
+async function imgBitmap(f) {
+  let blob = f;
+  if (/heic|heif/i.test(f.type || '') || /\.(heic|heif)$/i.test(f.name || '')) {
+    try { return await createImageBitmap(f); } catch (e) { /* 크롬 등: 변환 */ }
+    if (!window.heic2any) await loadScript('https://cdn.jsdelivr.net/npm/heic2any@0.0.4/dist/heic2any.min.js');
+    blob = await window.heic2any({ blob: f, toType: 'image/jpeg', quality: 0.92 }); if (Array.isArray(blob)) blob = blob[0];
+  }
+  return await createImageBitmap(blob);
+}
+// 긴 변 maxSide 이하로 줄이고(작으면 키우고) JPEG로
+async function imgPrep(f, maxSide, minSide, gray) {
+  const bm = await imgBitmap(f); let s = Math.min(1, maxSide / Math.max(bm.width, bm.height)); if (minSide && Math.max(bm.width, bm.height) * s < minSide) s = minSide / Math.max(bm.width, bm.height);
+  const c = document.createElement('canvas'); c.width = Math.round(bm.width * s); c.height = Math.round(bm.height * s);
+  const x = c.getContext('2d'); if (gray) x.filter = 'grayscale(1) contrast(1.25)'; x.fillStyle = '#fff'; x.fillRect(0, 0, c.width, c.height); x.drawImage(bm, 0, 0, c.width, c.height);
+  return c;
+}
+const cvB64 = c => c.toDataURL('image/jpeg', 0.9).split(',')[1];
+// 1) Firebase AI Logic (Gemini) — 표를 줄 단위 JSON으로
+let aiOff = false;
+async function aiRows(files) {
+  const cfg = window.SMG_CONFIG; if (aiOff || !cfg || !cfg.apiKey || S.mode === 'demo') throw new Error('ai off');
+  const parts = [{ text: '이 이미지(들)는 매장으로 들어올 상품 리스트입니다 (엑셀 캡처, 카카오톡 메시지, 거래명세서 등). 상품 한 줄마다 상품명, 바코드(8~14자리 숫자), 품번(상품코드), 수량, 가격(단가), 입고 예정일(YYYY-MM-DD), 매장/위치를 읽어 주세요. 이미지에 보이는 글자·숫자를 그대로 옮기고 추측하지 마세요. 없는 값은 빈 문자열, 수량·가격은 숫자만. 합계·소계 줄과 제목 줄은 빼세요. 여러 이미지면 순서대로 이어 주세요.' }];
+  for (const f of files) parts.push({ inlineData: { mimeType: 'image/jpeg', data: cvB64(await imgPrep(f, 2048)) } });
+  const str = { type: 'STRING' }, num = { type: 'NUMBER', nullable: true };
+  const body = { contents: [{ role: 'user', parts }], generationConfig: { temperature: 0, responseMimeType: 'application/json', responseSchema: { type: 'OBJECT', properties: { rows: { type: 'ARRAY', items: { type: 'OBJECT', properties: { name: str, barcode: str, sku: str, qty: num, price: num, date: str, store: str }, required: ['name', 'qty'] } } }, required: ['rows'] } } };
+  const r = await fetch(`https://firebasevertexai.googleapis.com/v1beta/projects/${cfg.projectId}/models/gemini-2.5-flash:generateContent`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-goog-api-key': cfg.apiKey }, body: JSON.stringify(body) });
+  if (!r.ok) { if (r.status === 403 || r.status === 404) aiOff = true; throw new Error('ai ' + r.status); }
+  const j = await r.json(); const t = (((j.candidates || [])[0] || {}).content || {}).parts || [];
+  return (JSON.parse(t.map(p => p.text || '').join('')).rows || []);
+}
+// 2) 기기 안에서 글자 읽기 (Tesseract 한국어+영어) → 칸 나누기
+async function ocrRows(files, prog) {
+  if (!window.Tesseract) await loadScript('https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js');
+  const w = await Tesseract.createWorker('kor+eng', 1, { logger: m => { if (m.status === 'recognizing text' && prog) prog(m.progress); } });
+  await w.setParameters({ preserve_interword_spaces: '1', tessedit_pageseg_mode: '6' });
+  const out = [];
+  try { for (const f of files) { const { data } = await w.recognize(await imgPrep(f, 3000, 1800, true), { rotateAuto: true }); const rs = ocrToRows(data); const dm = (data.text || '').match(/(20\d{2})\s*[.\-/년]\s*(\d{1,2})\s*[.\-/월]\s*(\d{1,2})/); if (dm && rs[0]) rs[0].date = `${dm[1]}-${dm[2]}-${dm[3]}`; out.push(...rs); } } finally { w.terminate(); }
+  return out;
+}
+function ocrToRows(data) {
+  const lines = (data.lines || []).filter(l => l.words && l.words.length && l.confidence > 20);
+  // 줄 → 칸 (글자 사이 간격이 줄 높이보다 넓으면 다른 칸)
+  const cellLines = lines.map(l => { const h = Math.max(8, l.bbox.y1 - l.bbox.y0); const cells = []; let cur = null;
+    for (const wd of l.words) { const tx = wd.text.trim(); if (!tx || /^[|│┃]+$/.test(tx)) { cur = null; continue; } if (cur && wd.bbox.x0 - cur.x1 < h * 0.9) { cur.t += (/[가-힣]$/.test(cur.t) && /^[가-힣]/.test(tx) && wd.bbox.x0 - cur.x1 < h * 0.38 ? '' : ' ') + tx; cur.x1 = wd.bbox.x1; } else { cur = { t: tx.replace(/^[|│]/, ''), x0: wd.bbox.x0, x1: wd.bbox.x1 }; cells.push(cur); } }
+    return cells.map(c => ({ ...c, t: c.t.replace(/[|│]/g, '').trim() })).filter(c => c.t); });
+  const asRows = cellLines.map(cs => cs.map(c => c.t));
+  const det = detectCols(asRows, QTY_PLAN);
+  const res = [];
+  if (det && det.map.qty != null && (det.map.name != null || det.map.barcode != null || det.map.sku != null)) {
+    const H = cellLines[det.r]; const cx = c => (c.x0 + c.x1) / 2; const h0 = Math.max(8, lines[det.r].bbox.y1 - lines[det.r].bbox.y0);
+    for (let i = det.r + 1; i < cellLines.length; i++) { const row = []; for (const c of cellLines[i]) { const m = cx(c) + h0 * 0.5; let bi = 0; H.forEach((hc, k) => { if (hc.x0 <= m) bi = k; }); row[bi] = row[bi] ? row[bi] + ' ' + c.t : c.t; }
+      const g = k => det.map[k] != null ? String(row[det.map[k]] || '').trim() : '';
+      res.push({ name: g('name'), barcode: g('barcode').replace(/\D/g, ''), sku: g('sku'), qty: g('qty'), price: g('price') });
+    }
+    return res;
+  }
+  // 제목 줄이 없을 때 (카톡 등): "상품명 … 10개" — 끝쪽 숫자를 수량으로
+  for (const cs of cellLines) { const t = cs.map(c => c.t).join(' '); const bc = (t.match(/\b\d{8,14}\b/) || [''])[0]; const rest = t.replace(bc, ' ');
+    const q = rest.match(/(\d[\d,]*)\s*(개|ea|EA|pcs|박스|입)?\s*$/); if (!q) continue; const name = rest.slice(0, q.index).replace(/[-:·x×*]\s*$/, '').trim(); if (!name && !bc) continue;
+    res.push({ name, barcode: bc, sku: '', qty: q[1], price: '' }); }
+  return res;
+}
+async function imgPlanRows(files, prog) {
+  let objs = null, how = '';
+  try { objs = await aiRows(files); how = 'AI'; } catch (e) { objs = null; }
+  if (!objs) { objs = await ocrRows(files, prog); how = '글자 읽기'; }
+  const rows = [IMG_HDR, ...objs.map(o => [o.name || '', String(o.barcode || '').replace(/\D/g, ''), o.sku || '', o.qty == null ? '' : String(o.qty).replace(/[^\d.,-]/g, ''), o.price == null ? '' : String(o.price).replace(/[^\d.,]/g, ''), o.date || '', o.store || ''])];
+  if (!objs.length) throw new Error('사진에서 상품 줄을 찾지 못했습니다. 표가 잘 보이게 다시 찍거나 캡처해 주세요.');
+  const nm = files.length > 1 ? `사진 ${files.length}장` : (files[0].name && !/^image\.\w+$/.test(files[0].name) ? files[0].name : '붙여넣은 사진');
+  return { rows, src: nm, img: how, meta: objs };
+}
+function ibImages(files) {
+  const f = S.ui.ibForm; if (!f) return; files = files.filter(isImg); if (!files.length) return;
+  f.err = ''; f.busy = '사진에서 표를 읽는 중…'; render();
+  imgPlanRows(files, p => { const b = document.getElementById('ibBusy'); if (b) b.textContent = `사진에서 글자를 읽는 중… ${Math.round(p * 100)}%`; })
+    .then(x => { f.busy = ''; f.img = x.img;
+      const d = x.meta.map(o => String(o.date || '').replace(/[./]/g, '-').match(/^(\d{4})-(\d{1,2})-(\d{1,2})/)).find(Boolean); if (d) f.date = `${d[1]}-${d[2].padStart(2, '0')}-${d[3].padStart(2, '0')}`;
+      const st = x.meta.map(o => o.store).find(Boolean); if (st) { const hit = myStores().find(s => norm(storeName(s)).includes(norm(st)) || norm(st).includes(norm(storeName(s)))); if (hit) f.store = hit; }
+      ibPlanLoaded(x); })
+    .catch(e => { f.busy = ''; f.err = e.message || String(e); render(); });
 }
 const itemKey = r => r.pid ? 'p:' + r.pid : 'n:' + (r.bc || r.sku || norm(r.name));
 function ibStats(ib) {
@@ -1276,7 +1362,7 @@ function inboundView() {
 function ibNewView() {
   const f = S.ui.ibForm ||= { store: S.stores[0], date: today(), title: '', ip: '', from: '', parsed: null, src: '', err: '' };
   const P = f.parsed;
-  return `${head('입고 예정 등록', '보내는 쪽에서 받은 상품 리스트(엑셀·CSV·구글시트)를 올리면 예정 수량으로 등록합니다. 재고에는 아직 더하지 않습니다.', '<button class="btn" id="ibBack">목록으로</button>')}
+  return `${head('입고 예정 등록', '보내는 쪽에서 받은 상품 리스트(엑셀·CSV·구글시트·캡처 사진)를 올리면 예정 수량으로 등록합니다. 재고에는 아직 더하지 않습니다.', '<button class="btn" id="ibBack">목록으로</button>')}
   <div class="card" style="display:flex;flex-direction:column;gap:12px">
     <div class="formgrid">
       <div class="field"><label for="ibStore">받는 매장</label><select class="inp" id="ibStore">${myStores().map(s => `<option value="${s}" ${f.store === s ? 'selected' : ''}>${esc(storeName(s))}</option>`).join('')}</select></div>
@@ -1285,18 +1371,21 @@ function ibNewView() {
       <div class="field"><label for="ibIp">IP (선택)</label><input class="inp" id="ibIp" value="${esc(f.ip)}" placeholder="예: 진격의 거인"></div>
       <div class="field" style="grid-column:1/-1"><label for="ibTitle">제목</label><input class="inp" id="ibTitle" value="${esc(f.title)}" placeholder="비워 두면 파일 이름으로 들어갑니다"></div>
     </div>
-    <div class="row"><button class="btn" id="ibPlanFile">상품 리스트 파일 고르기</button><input class="inp" id="ibPlanLink" placeholder="또는 구글시트 링크" style="flex:1;min-width:200px"><button class="btn" id="ibPlanLinkGo">링크 열기</button></div>
+    <div class="row"><button class="btn" id="ibPlanFile">엑셀·CSV 파일 고르기</button><button class="btn" id="ibPlanImg">사진·캡처로 올리기</button></div>
+    <span class="muted" style="font-size:12.5px">📷 엑셀 캡처·카카오톡·거래명세서 사진도 됩니다 (여러 장 가능, 컴퓨터에서는 캡처 후 Ctrl+V로 붙여넣기). 읽은 내용은 아래 미리보기에서 확인하고 고친 뒤 등록하세요.</span>
+    ${f.busy ? `<div class="note" id="ibBusy">⏳ ${esc(f.busy)}</div>` : ''}
+    <div class="row"><input class="inp" id="ibPlanLink" placeholder="또는 구글시트 링크" style="flex:1;min-width:200px"><button class="btn" id="ibPlanLinkGo">링크 열기</button></div>
     ${f.err ? `<div class="note bad">🔺 ${esc(f.err)}</div>` : ''}
   </div>
   ${P ? (() => { const known = P.filter(r => r.pid).length, nw = P.filter(r => !r.pid).length, noq = P.filter(r => !(r.qty > 0)).length; const dupK = {}; P.forEach(r => { const k = itemKey(r); dupK[k] = (dupK[k] || 0) + 1; });
     const dups = Object.values(dupK).filter(v => v > 1).length;
     return `<div class="card"><h2>미리보기 · ${esc(f.src)} <span class="r">${P.length}줄 · ${fmt(P.reduce((a, b) => a + (b.qty || 0), 0))}개${P.some(r => r.price) ? ` · ${won(P.reduce((a, b) => a + (b.price || 0) * (b.qty || 0), 0))}` : ''}</span></h2>
-    <div class="alerts" style="margin-bottom:10px"><div class="al"><span class="ic">✔</span><span class="tx">등록된 상품 <b>${known}</b>종</span></div>
+    ${f.img ? `<div class="note" style="margin-bottom:10px">📷 사진에서 읽은 내용입니다 (${f.img === 'AI' ? 'AI 표 읽기' : '기기 안 글자 읽기'}). 상품명·수량을 사진과 한 번 대조하고, 틀린 칸은 바로 고쳐 주세요.</div>` : ''}<div class="alerts" style="margin-bottom:10px"><div class="al"><span class="ic">✔</span><span class="tx">등록된 상품 <b>${known}</b>종</span></div>
     ${nw ? `<div class="al"><span class="ic">🔸</span><span class="tx">처음 보는 상품 <b>${nw}</b>종 — 입고를 확정할 때 상품 목록에 새로 등록됩니다.</span></div>` : ''}
     ${noq ? `<div class="al"><span class="ic">🔺</span><span class="tx">수량이 비었거나 0인 줄 <b>${noq}</b>개</span></div>` : ''}
     ${dups ? `<div class="al"><span class="ic">🔸</span><span class="tx">같은 상품이 두 번 나온 경우 <b>${dups}</b>건 — 수량을 합쳐서 등록합니다.</span></div>` : ''}</div>
     <div class="tw"><table><thead><tr><th class="n">줄</th><th>상품명</th><th class="hide-s">바코드·품번</th><th class="n">예정 수량</th><th class="n hide-s">가격</th><th>상태</th></tr></thead><tbody>
-    ${P.map(r => `<tr class="${!r.pid || !(r.qty > 0) || dupK[itemKey(r)] > 1 ? 'flag' : ''}"><td class="n muted">${r.line}</td><td class="nm">${esc(r.pid ? S.P[r.pid].name : r.name)}</td><td class="code hide-s">${esc(r.bc || r.sku || (r.pid ? (S.P[r.pid].barcode || S.P[r.pid].sku || '') : '')) || '<span class="muted">없음</span>'}</td><td class="n" style="font-weight:700">${fmt(r.qty)}</td><td class="n hide-s">${r.price ? fmt(r.price) : '-'}</td><td>${!(r.qty > 0) ? '<span class="pill p-bad">🔺 수량</span>' : r.pid ? '<span class="pill p-ok">✔</span>' : '<span class="pill p-warn">🔸 새 상품</span>'}</td></tr>`).join('')}
+    ${P.map((r, i) => `<tr class="${!r.pid || !(r.qty > 0) || dupK[itemKey(r)] > 1 ? 'flag' : ''}"><td class="n muted">${r.line}</td><td class="nm">${f.img ? `<input class="inp" data-ibn="${i}" value="${esc(r.name)}" aria-label="상품명" style="min-width:160px">${r.pid ? `<div class="muted" style="font-size:12px">✔ ${esc(S.P[r.pid].name)}</div>` : ''}` : esc(r.pid ? S.P[r.pid].name : r.name)}</td><td class="code hide-s">${esc(r.bc || r.sku || (r.pid ? (S.P[r.pid].barcode || S.P[r.pid].sku || '') : '')) || '<span class="muted">없음</span>'}</td><td class="n" style="font-weight:700">${f.img ? `<input class="inp qty" type="number" inputmode="numeric" min="0" data-ibq="${i}" value="${r.qty ?? ''}" aria-label="예정 수량">` : fmt(r.qty)}</td><td class="n hide-s">${r.price ? fmt(r.price) : '-'}</td><td>${!(r.qty > 0) ? '<span class="pill p-bad">🔺 수량</span>' : r.pid ? '<span class="pill p-ok">✔</span>' : '<span class="pill p-warn">🔸 새 상품</span>'}</td></tr>`).join('')}
     </tbody></table></div>
     <div class="row" style="justify-content:flex-end;margin-top:12px"><button class="btn pri" id="ibCreate">입고 예정으로 등록</button></div></div>`; })() : ''}`;
 }
@@ -1339,7 +1428,7 @@ function ibApplyActual(ib, rows, src) {
   }
   S.ui.ibMsg = { t: `${src}: 예정 상품 ${matched}종 수량을 넣었습니다${extra ? ` · 예정에 없던 상품 ${extra}종` : ''}.` };
 }
-function ibPlanLoaded(x) { const f = S.ui.ibForm; const t = readTable(x.rows, QTY_PLAN); f.err = t.err || ''; f.parsed = t.rows || null; f.src = x.src; if (!f.title) f.title = x.src.replace(/\.(xlsx|xls|csv)( › .*)?$/i, ''); render(); }
+function ibPlanLoaded(x) { const f = S.ui.ibForm; f.img = x.img || ''; const t = readTable(x.rows, QTY_PLAN); f.err = t.err || ''; f.parsed = t.rows || null; f.src = x.src; if (!f.title) f.title = x.src.replace(/\.(xlsx|xls|csv|png|jpe?g|heic|heif|webp)( › .*)?$/i, ''); render(); }
 function ibActLoaded(ib, x) { const t = readTable(x.rows, QTY_ACTUAL); if (t.err) { S.ui.ibMsg = { t: '🔺 ' + t.err, bad: true }; render(); return; } ibApplyActual(ib, t.rows, x.src); if (DB.saveInbound) DB.saveInbound(ib); render(); }
 async function ibCreate() {
   const f = S.ui.ibForm; const items = {};
@@ -2744,6 +2833,7 @@ function bind() {
     if (t.id === 'ibBack') { S.ui.ib = null; render(); return; }
     if (d.ibf) { S.ui.ibF = d.ibf; render(); return; }
     if (t.id === 'ibPlanFile') { pickFile('.xlsx,.xls,.csv', f => fileRows(f).then(x => ibPlanLoaded(x)).catch(e => { S.ui.ibForm.err = e.message; render(); })); return; }
+    if (t.id === 'ibPlanImg') { pickFile('image/*,.heic,.heif', fs => ibImages(fs), true); return; }
     if (t.id === 'ibPlanLinkGo') { linkRows($('#ibPlanLink').value.trim()).then(x => ibPlanLoaded(x)).catch(e => { S.ui.ibForm.err = e.message; render(); }); return; }
     if (t.id === 'ibCreate') { await ibCreate(); return; }
     if (t.id === 'ibActFile') { const ib = S.inbounds.find(x => x.id === S.ui.ib); pickFile('.xlsx,.xls,.csv', f => fileRows(f).then(x => ibActLoaded(ib, x)).catch(e => { S.ui.ibMsg = { t: '🔺 ' + e.message, bad: true }; render(); })); return; }
@@ -2963,6 +3053,28 @@ document.addEventListener('input', ev => {
   if (ev.target.id !== 'sdIpq' || !S.ui.sdoc) return;
   S.ui.sdoc.ipq = ev.target.value; const q = norm(ev.target.value);
   document.querySelectorAll('.iplist .ipck').forEach(l => { l.style.display = !q || norm(l.textContent).includes(q) ? '' : 'none'; });
+});
+// 사진 미리보기에서 상품명·수량 고치기 (다시 그리지 않고 바로 반영, 바깥으로 나가면 다시 맞춤)
+document.addEventListener('input', ev => {
+  const t = ev.target, f = S.ui.ibForm; if (!f || !f.parsed) return;
+  if (t.dataset.ibq != null) { const r = f.parsed[+t.dataset.ibq]; if (r) r.qty = t.value === '' ? null : Number(t.value); }
+  if (t.dataset.ibn != null) { const r = f.parsed[+t.dataset.ibn]; if (r) r.name = t.value; }
+});
+document.addEventListener('change', ev => {
+  const t = ev.target, f = S.ui.ibForm; if (!f || !f.parsed || t.dataset.ibn == null) return;
+  const r = f.parsed[+t.dataset.ibn]; if (!r) return; let cand = r.bc ? findProduct(r.bc) : []; if (!cand.length && r.sku) cand = findProduct(r.sku); if (!cand.length && r.name) cand = S.byName[norm(r.name)] || []; r.pid = cand.length === 1 ? cand[0].id : ''; render();
+});
+// 컴퓨터: 캡처 후 Ctrl+V / 사진 끌어 놓기 → 입고 예정 등록 화면이면 바로 읽기
+document.addEventListener('paste', ev => {
+  if (S.view !== 'inbound' || S.ui.ib !== 'new' || !S.ui.ibForm) return;
+  const fs = [...((ev.clipboardData || {}).files || [])].filter(isImg); if (!fs.length) return;
+  ev.preventDefault(); ibImages(fs);
+});
+document.addEventListener('dragover', ev => { if (S.view === 'inbound' && S.ui.ib === 'new') ev.preventDefault(); });
+document.addEventListener('drop', ev => {
+  if (S.view !== 'inbound' || S.ui.ib !== 'new' || !S.ui.ibForm) return;
+  const fs = [...((ev.dataTransfer || {}).files || [])]; if (!fs.length) return; ev.preventDefault();
+  const im = fs.filter(isImg); if (im.length) ibImages(im); else fileRows(fs[0]).then(x => ibPlanLoaded(x)).catch(e => { S.ui.ibForm.err = e.message; render(); });
 });
 function goTop() { resetZoom(); window.scrollTo(0, 0); }
 const TEXT_SIZES = [['아주 작게', 0.82], ['작게', 0.9], ['보통', 1], ['크게', 1.12], ['아주 크게', 1.25]];

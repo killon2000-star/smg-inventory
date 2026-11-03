@@ -6,9 +6,10 @@ B='http://127.0.0.1:18931/index.html'; OUT=sys.argv[1] if len(sys.argv)>1 else '
 os.makedirs(OUT,exist_ok=True)
 DEV0=[('360x780',360,780,True),('390x844',390,844,True),('430x932',430,932,True),('768x1024',768,1024,True),('1024x1366',1024,1366,True),('1366x768',1366,768,False),('1440x900',1440,900,False),('1920x1080',1920,1080,False),('932x430',932,430,True)]
 DEV=[d for d in DEV0 if not os.environ.get('DEVONLY') or d[0] in os.environ['DEVONLY'].split(',')]
-VIEWS=[v for v in ['home','ipnow','products','entry','count','inbound','transfer','records','files','sales','collab','settle','admin','more','ibnew','ipform','placeform','sales_week','sales_month','sales_year','sales_ip','admin_users','admin_stores','admin_products','home_drawer','cmp_drawer','product_drawer'] if not os.environ.get('VIEWONLY') or v in os.environ['VIEWONLY'].split(',')]
+VIEWS=[v for v in ['home','ipnow','products','entry','count','inbound','transfer','records','files','sales','collab','settle','admin','more','ibnew','ibnew_img','ipform','placeform','sales_week','sales_month','sales_year','sales_ip','admin_users','admin_stores','admin_products','home_drawer','cmp_drawer','product_drawer'] if not os.environ.get('VIEWONLY') or v in os.environ['VIEWONLY'].split(',')]
 # 화면 이름 → 여는 방법 (입력 양식·서랍)
 OPEN={'ibnew':"SMGApp.S.view='inbound';SMGApp.S.ui.ib='new';SMGApp.S.ui.drawer=null;SMGApp.render()",
+ 'ibnew_img':"SMGApp.S.view='inbound';SMGApp.S.ui.ib='new';SMGApp.S.ui.drawer=null;SMGApp.S.ui.ibForm={store:SMGApp.S.stores[0],date:'2026-11-12',title:'',ip:'',from:'',src:'s1_table.png',err:'',img:'글자 읽기',parsed:[['진격의 거인 아크릴 스탠드 리바이','8809912345012',24,15000],['원피스 루피 인형 30cm','8809912345067',8,32000],['하이큐 포토카드 랜덤','',null,3000]].map((a,i)=>({line:i+2,name:a[0],bc:a[1],sku:'',qty:a[2],price:a[3],ip:'',pid:''}))};SMGApp.render()",
  'ipform':"SMGApp.S.view='ipnow';SMGApp.S.ui.drawer=null;SMGApp.render();document.querySelector('#ipAdd').click()",
  'sales_week':"SMGApp.S.view='sales';SMGApp.S.ui.salesUnit='week';SMGApp.S.ui.drawer=null;SMGApp.render()",
  'sales_month':"SMGApp.S.view='sales';SMGApp.S.ui.salesUnit='month';SMGApp.S.ui.drawer=null;SMGApp.render()",
@@ -78,7 +79,7 @@ with sync_playwright() as p:
       check(pg,f'{name} {v}',lambda c,m: al.append(m) if not c else None,False)
       if al: iss.append({'k':'숫자 정렬','m':al})
       if iss: res[v]=iss
-      if v in ('home','products','sales','transfer','collab','ibnew','ipnow'): pg.screenshot(path=f'{OUT}{name}_{v}.png')
+      if v in ('home','products','sales','transfer','collab','ibnew','ibnew_img','ipnow'): pg.screenshot(path=f'{OUT}{name}_{v}.png')
     if errs: res['_pageerror']=errs
     R[name]=res; print(name,'PASS' if not res else 'FAIL '+json.dumps(res,ensure_ascii=False)[:1500]); ctx.close()
 json.dump(R,open(OUT+'result.json','w'),ensure_ascii=False,indent=1)
