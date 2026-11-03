@@ -1278,7 +1278,7 @@ async function imgPrep(f, maxSide, minSide, gray) {
 const cvB64 = c => c.toDataURL('image/jpeg', 0.9).split(',')[1];
 // 1) Firebase AI Logic (Gemini) — 표를 줄 단위 JSON으로
 let aiOff = false;
-const AI_MODELS = [['gemini-3.8-flash', 45000], ['gemini-flash-latest', 40000], ['gemini-flash-lite-latest', 40000]];
+const AI_MODELS = [['gemini-flash-lite-latest', 40000], ['gemini-flash-latest', 40000], ['gemini-3.8-flash', 45000]];   // 무료 한도가 넉넉한 lite 먼저
 async function aiRows(files) {
   const cfg = window.SMG_CONFIG; if (aiOff || !cfg || !cfg.apiKey || (S.mode === 'demo' && !window.SMG_AI_TEST)) throw new Error('ai off');
   const parts = [{ text: '이 이미지(들)는 매장으로 들어올 상품 리스트입니다 (엑셀 캡처, 카카오톡 메시지, 거래명세서 등). 상품 한 줄마다 상품명, 바코드(8~14자리 숫자), 품번(상품코드), 수량, 가격(단가), 입고 예정일(YYYY-MM-DD), 매장/위치를 읽어 주세요. 이미지에 보이는 글자·숫자를 그대로 옮기고 추측하지 마세요. 없는 값은 빈 문자열, 수량·가격은 숫자만. 합계·소계 줄과 제목 줄은 빼세요. 여러 이미지면 순서대로 이어 주세요.' }];
@@ -1289,7 +1289,7 @@ async function aiRows(files) {
   for (const [m, ms] of AI_MODELS) {   // 정확한 모델 먼저, 붐비면 가벼운 모델
     const ac = new AbortController(); const to = setTimeout(() => ac.abort(), ms);
     try { const r = await fetch(`https://firebasevertexai.googleapis.com/v1beta/projects/${cfg.projectId}/models/${m}:generateContent`, { method: 'POST', signal: ac.signal, headers: { 'Content-Type': 'application/json', 'x-goog-api-key': cfg.apiKey }, body: JSON.stringify(body) });
-      if (r.ok) { j = await r.json(); j.model = m; break; } last = 'ai ' + r.status; if (r.status === 401 || r.status === 403) { aiOff = true; break; } }
+      if (r.ok) { j = await r.json(); j.model = m; break; } last = 'ai ' + r.status; if (r.status === 403) { aiOff = true; break; } }
     catch (e) { last = 'ai timeout'; } finally { clearTimeout(to); }
   }
   if (!j) throw new Error(last);
