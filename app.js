@@ -1289,7 +1289,7 @@ async function aiRows(files) {
   for (const [m, ms] of AI_MODELS) {   // 정확한 모델 먼저, 붐비면 가벼운 모델
     const ac = new AbortController(); const to = setTimeout(() => ac.abort(), ms);
     try { const r = await fetch(`https://firebasevertexai.googleapis.com/v1beta/projects/${cfg.projectId}/models/${m}:generateContent`, { method: 'POST', signal: ac.signal, headers: { 'Content-Type': 'application/json', 'x-goog-api-key': cfg.apiKey }, body: JSON.stringify(body) });
-      if (r.ok) { j = await r.json(); j.model = m; break; } last = 'ai ' + r.status; if (r.status === 403) { aiOff = true; break; } }
+      if (r.ok) { j = await r.json(); j.model = m; break; } last = 'ai ' + r.status; if (r.status === 401 || r.status === 403) { aiOff = true; break; } }
     catch (e) { last = 'ai timeout'; } finally { clearTimeout(to); }
   }
   if (!j) throw new Error(last);
