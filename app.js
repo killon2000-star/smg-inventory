@@ -1278,16 +1278,24 @@ async function imgPrep(f, maxSide, minSide, gray) {
 const cvB64 = c => c.toDataURL('image/jpeg', 0.9).split(',')[1];
 // 1) Firebase AI Logic (Gemini) — 표를 줄 단위 JSON으로
 let aiOff = false;
+const AI_MODELS = [['gemini-3.8-flash', 45000], ['gemini-flash-latest', 40000], ['gemini-flash-lite-latest', 40000]];
 async function aiRows(files) {
-  const cfg = window.SMG_CONFIG; if (aiOff || !cfg || !cfg.apiKey || S.mode === 'demo') throw new Error('ai off');
+  const cfg = window.SMG_CONFIG; if (aiOff || !cfg || !cfg.apiKey || (S.mode === 'demo' && !window.SMG_AI_TEST)) throw new Error('ai off');
   const parts = [{ text: '이 이미지(들)는 매장으로 들어올 상품 리스트입니다 (엑셀 캡처, 카카오톡 메시지, 거래명세서 등). 상품 한 줄마다 상품명, 바코드(8~14자리 숫자), 품번(상품코드), 수량, 가격(단가), 입고 예정일(YYYY-MM-DD), 매장/위치를 읽어 주세요. 이미지에 보이는 글자·숫자를 그대로 옮기고 추측하지 마세요. 없는 값은 빈 문자열, 수량·가격은 숫자만. 합계·소계 줄과 제목 줄은 빼세요. 여러 이미지면 순서대로 이어 주세요.' }];
   for (const f of files) parts.push({ inlineData: { mimeType: 'image/jpeg', data: cvB64(await imgPrep(f, 2048)) } });
   const str = { type: 'STRING' }, num = { type: 'NUMBER', nullable: true };
   const body = { contents: [{ role: 'user', parts }], generationConfig: { temperature: 0, responseMimeType: 'application/json', responseSchema: { type: 'OBJECT', properties: { rows: { type: 'ARRAY', items: { type: 'OBJECT', properties: { name: str, barcode: str, sku: str, qty: num, price: num, date: str, store: str }, required: ['name', 'qty'] } } }, required: ['rows'] } } };
-  const r = await fetch(`https://firebasevertexai.googleapis.com/v1beta/projects/${cfg.projectId}/models/gemini-2.5-flash:generateContent`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-goog-api-key': cfg.apiKey }, body: JSON.stringify(body) });
-  if (!r.ok) { if (r.status === 403 || r.status === 404) aiOff = true; throw new Error('ai ' + r.status); }
-  const j = await r.json(); const t = (((j.candidates || [])[0] || {}).content || {}).parts || [];
-  return (JSON.parse(t.map(p => p.text || '').join('')).rows || []);
+  let j = null, last = '';
+  for (const [m, ms] of AI_MODELS) {   // 정확한 모델 먼저, 붐비면 가벼운 모델
+    const ac = new AbortController(); const to = setTimeout(() => ac.abort(), ms);
+    try { const r = await fetch(`https://firebasevertexai.googleapis.com/v1beta/projects/${cfg.projectId}/models/${m}:generateContent`, { method: 'POST', signal: ac.signal, headers: { 'Content-Type': 'application/json', 'x-goog-api-key': cfg.apiKey }, body: JSON.stringify(body) });
+      if (r.ok) { j = await r.json(); j.model = m; break; } last = 'ai ' + r.status; if (r.status === 403) { aiOff = true; break; } }
+    catch (e) { last = 'ai timeout'; } finally { clearTimeout(to); }
+  }
+  if (!j) throw new Error(last);
+  const t = (((j.candidates || [])[0] || {}).content || {}).parts || [];
+  aiRows.model = j.model;
+  return (JSON.parse(t.filter(p => !p.thought).map(p => p.text || '').join('')).rows || []);
 }
 // 2) 기기 안에서 글자 읽기 (Tesseract 한국어+영어) → 칸 나누기
 async function ocrRows(files, prog) {
