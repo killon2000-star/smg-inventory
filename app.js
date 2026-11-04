@@ -117,6 +117,8 @@ const S = {
   ui: { q: '', f: 'all', ip: '', salesUnit: 'day', range: null, recType: '', recQ: '', counts: {}, countQ: '', countIp: '', entry: null, imp: null, adminTab: 'pending', showApply: false, posPreview: null, storeMenu: false },
 };
 
+// 새로고침 전에 보던 화면·사업부·매장 되살리기
+try { const n = JSON.parse(localStorage.getItem('smg-nav') || 'null'); if (n && n.view) { S.view = n.view; ['adminTab', 'ib', 'ipF', 'bizF'].forEach(k => { if (n[k] != null) S.ui[k] = n[k]; }); if (Array.isArray(n.stores) && n.stores.length) S.stores = n.stores; } } catch (e) { }
 /* ───────── 데이터 계층 ───────── */
 const DemoBackend = {
   async load() {
@@ -242,6 +244,7 @@ const navSnap = () => ({ view: S.view, adminTab: S.ui.adminTab, ib: S.ui.ib, ipF
 const navKey = x => x ? [x.view, x.view === 'admin' ? x.adminTab : '', x.view === 'inbound' ? (x.ib || '') : ''].join('|') : '';
 function trackNav() {
   const cur = navSnap();
+  try { localStorage.setItem('smg-nav', JSON.stringify({ ...cur, bizF: S.ui.bizF, stores: S.stores })); } catch (e) { }   // 새로고침해도 보던 화면 그대로
   if (navLast && !navBackNow && navKey(cur) !== navKey(navLast)) {
     navStack.push(navLast); if (navStack.length > 30) navStack.shift();
     try { history.pushState({ smgNav: navStack.length }, ''); } catch (e) { }
@@ -1467,7 +1470,7 @@ async function fileRows(f) {
   const best = bestSheet(wb);
   return { rows: best ? best.rows : [], src: f.name + (best && wb.SheetNames.length > 1 ? ' › ' + best.n : '') };
 }
-async function linkRows(url) {
+async function linkRows(url) { await needX();
   const m = url.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/); const g = url.match(/[#&?]gid=(\d+)/);
   if (!m) throw new Error('구글시트 링크가 아닙니다.');
   if (S.mode === 'demo') throw new Error('미리보기 화면에서는 외부 링크를 열 수 없습니다. 실제 앱에서는 "링크가 있는 모든 사용자" 공유 시트를 바로 읽습니다.');
@@ -1836,7 +1839,7 @@ async function readFile(f) {
   importRows(best ? best.rows : [], `${f.name}${best && wb.SheetNames.length > 1 ? ' › ' + best.n : ''}`);
   render();
 }
-async function readLink(url) {
+async function readLink(url) { await needX();
   const m = url.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/); const g = url.match(/[#&?]gid=(\d+)/);
   if (!m) { S.ui.imp = { src: '링크', err: '구글시트 링크가 아닙니다. 주소에 /spreadsheets/d/ 가 들어 있어야 합니다.' }; render(); return; }
   const csvUrl = `https://docs.google.com/spreadsheets/d/${m[1]}/gviz/tq?tqx=out:csv${g ? '&gid=' + g[1] : ''}`;
@@ -2381,7 +2384,7 @@ function posRecalc(pv) {
   pv.neg = Object.entries(use).map(([pid, q]) => ({ pid, now: stockOf(store, pid), after: stockOf(store, pid) - q })).filter(x => x.after < 0).sort((a, b) => a.after - b.after);
   return pv;
 }
-async function readPos(f, store) {
+async function readPos(f, store) { await needX();
   try {
     let buf = await f.arrayBuffer(); let wbs = [];
     if (/\.zip$/i.test(f.name)) {
@@ -2430,7 +2433,7 @@ async function savePos() {
   }
   S.ui.posPreview = null; S.ui.drawer = null; toast(`매출 ${pv.days.length}일치를 저장했습니다`);
 }
-async function readBook(f) {
+async function readBook(f) { await needX();
   // CSV는 글자(UTF-8)로 읽어야 한글이 깨지지 않음
   if (/\.csv$/i.test(f.name)) { let t = await f.text(); if (t.includes('\uFFFD')) t = new TextDecoder('euc-kr').decode(await f.arrayBuffer()); return XLSX.read(t.replace(/^\uFEFF/, ''), { type: 'string' }); }
   return XLSX.read(await f.arrayBuffer(), { type: 'array' });
@@ -2472,6 +2475,7 @@ function pickFile(accept, cb, multi) {
   inp.addEventListener('change', () => { const fs = [...(inp.files || [])]; if (fs.length) multi ? cb(fs) : cb(fs[0]); });
   document.body.appendChild(inp); inp.click();
 }
+const needX = () => window.XLSX ? Promise.resolve() : loadScript('https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js');   // 엑셀 도구는 뒤에서 따로 받음
 function loadScript(src) { return new Promise((ok, no) => { const s = document.createElement('script'); s.src = src; s.onload = ok; s.onerror = () => no(new Error('라이브러리를 불러오지 못했습니다')); document.head.appendChild(s); }); }
 
 /* ───────── 정산 계산: 매출 파일을 올리면 바로 다시 계산 ───────── */
@@ -3381,6 +3385,7 @@ async function start() {
     if (FB) { S.mode = 'live'; DB = FB.backend; await FB.start(); }
     else { await DB.load(); indexProducts(); setUser(S.users[0]); }
     S.ready = true; render();
+    setTimeout(() => needX().catch(() => { }), 4000);   // 첫 화면이 뜬 뒤에 엑셀 도구 미리 받아두기
   } catch (err) {
     $('#app').innerHTML = `<div class="login"><div class="note bad" style="margin:20px">🔺 앱을 여는 중 문제가 생겼습니다: ${esc(err.message || err)}</div></div>`;
   }

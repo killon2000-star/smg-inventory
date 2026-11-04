@@ -5,6 +5,9 @@ window.SMG_FIREBASE = function (S, X) {
   const fb = window.firebase;
   fb.initializeApp(window.SMG_CONFIG);
   const auth = fb.auth(), db = fb.firestore();
+  // 한 번 받은 자료는 기기에 저장 → 새로고침 때 저장본을 먼저 보여주고 바뀐 것만 받아옴
+  try { db.enablePersistence({ synchronizeTabs: true }).catch(() => { }); } catch (e) { }
+  let rq = 0; const R = () => { if (rq) return; rq = requestAnimationFrame(() => { rq = 0; X.render(); }); };   // 자료가 한꺼번에 올 때 화면은 한 번만 다시 그림
   const inc = n => fb.firestore.FieldValue.increment(n);
   const ts = () => fb.firestore.FieldValue.serverTimestamp();
   const key = id => encodeURIComponent(String(id)).replace(/\./g, '%2E');   // 문서 이름에 쓸 수 없는 글자 바꾸기
@@ -28,12 +31,10 @@ window.SMG_FIREBASE = function (S, X) {
       if (!u) { S.user = null; S.ui.authUser = null; S.ui.applied = false; X.render(); return; }
       const ref = db.collection('users').doc(u.uid);
       const owner = u.email === X.OWNER_EMAIL;
-      if (owner) {
-        const snap = await ref.get();
-        if (!snap.exists) await ref.set({ name: 'Anthony', email: u.email, company: '온인터내셔널', position: '대표', places: ['본사'], status: 'active', owner: true, perms: { stores: X.STORES.map(s => s.id), move: true, count: true, sales: true, approve: true }, createdAt: ts(), approvedAt: ts() });
-      }
       // 내 계정 상태를 계속 지켜봄 → 퇴사·정지되면 바로 로그아웃
       unsub.push(ref.onSnapshot(async snap => {
+        if (!snap.exists && snap.metadata.fromCache) return;   // 저장본에 없으면 서버 답을 기다림
+        if (!snap.exists && owner) { ref.set({ name: 'Anthony', email: u.email, company: '온인터내셔널', position: '대표', places: ['본사'], status: 'active', owner: true, perms: { stores: X.STORES.map(s => s.id), move: true, count: true, sales: true, approve: true }, createdAt: ts(), approvedAt: ts() }).catch(() => { }); return; }
         if (!snap.exists) { S.user = null; S.ui.authUser = { uid: u.uid, email: u.email }; S.ui.applied = false; X.render(); return; }
         const d = { uid: u.uid, ...snap.data() };
         if (d.status === 'pending') { S.user = null; S.ui.applied = true; X.render(); return; }
@@ -52,38 +53,39 @@ window.SMG_FIREBASE = function (S, X) {
   /* 자료 불러오기 + 실시간 반영 */
   async function loadAll() {
     const mine = S.user.owner ? X.STORES.map(s => s.id) : S.user.perms.stores;
-    const cfg = await db.collection('config').doc('app').get().catch(() => null);
+    const cfgRef = db.collection('config').doc('app');
+    const cfg = await cfgRef.get({ source: 'cache' }).catch(() => null) || await cfgRef.get().catch(() => null);   // 저장본이 있으면 기다리지 않음
     if (cfg && cfg.exists && cfg.data().stores) cfg.data().stores.forEach(s => { if (!X.STORES.find(x => x.id === s.id)) X.STORES.push(s); });   // 코드 목록 + 관리 화면에서 추가한 매장
-    unsub.push(db.collection('config').doc('notice').onSnapshot(d => { S.notice = d.exists ? d.data() : null; X.render(); }, () => { }));
-    unsub.push(db.collection('config').doc('app').onSnapshot(d => { const x = d.exists ? d.data() : {}; if (x.ipPlan) { S.ipPlan = x.ipPlan; S.ipPlanAt = x.ipPlanAt || ''; } X.render(); }, () => { }));
+    unsub.push(db.collection('config').doc('notice').onSnapshot(d => { S.notice = d.exists ? d.data() : null; R(); }, () => { }));
+    unsub.push(db.collection('config').doc('app').onSnapshot(d => { const x = d.exists ? d.data() : {}; if (x.ipPlan) { S.ipPlan = x.ipPlan; S.ipPlanAt = x.ipPlanAt || ''; } R(); }, () => { }));
     db.collection('importMaps').get().then(q => { q.docs.forEach(d => { const x = d.data(); if (x.sig) S.maps[x.sig] = x; }); }).catch(() => { });
-    unsub.push(db.collection('products').onSnapshot(q => { S.products = q.docs.map(d => d.data()); X.indexProducts(); X.render(); }));
+    unsub.push(db.collection('products').onSnapshot(q => { S.products = q.docs.map(d => d.data()); X.indexProducts(); R(); }));
     for (const st of mine) {
-      unsub.push(db.collection('stores').doc(st).onSnapshot(d => { S.stock[st] = (d.exists && d.data().q) || {}; X.render(); }, () => { }));
+      unsub.push(db.collection('stores').doc(st).onSnapshot(d => { S.stock[st] = (d.exists && d.data().q) || {}; R(); }, () => { }));
       if (!S.user.limited) {
         unsub.push(db.collection('stores').doc(st).collection('moves').orderBy('at', 'desc').limit(1500).onSnapshot(q => {
-          S.moves = S.moves.filter(m => m.store !== st).concat(q.docs.map(d => d.data())).sort((a, b) => (a.at > b.at ? 1 : -1)); X.render();
+          S.moves = S.moves.filter(m => m.store !== st).concat(q.docs.map(d => d.data())).sort((a, b) => (a.at > b.at ? 1 : -1)); R();
         }, () => { }));
         unsub.push(db.collection('transfers').where('to', '==', st).onSnapshot(q => mergeTransfers(q), () => { }));
         unsub.push(db.collection('transfers').where('from', '==', st).onSnapshot(q => mergeTransfers(q), () => { }));
       }
       if (S.user.perms.sales || S.user.owner) {
-        unsub.push(db.collection('stores').doc(st).collection('sales').onSnapshot(q => { S.sales[st] = {}; q.docs.forEach(d => S.sales[st][d.id] = d.data()); X.render(); }, () => { }));
+        unsub.push(db.collection('stores').doc(st).collection('sales').onSnapshot(q => { S.sales[st] = {}; q.docs.forEach(d => S.sales[st][d.id] = d.data()); R(); }, () => { }));
       }
     }
-    if (!S.user.limited) for (const st of mine) unsub.push(db.collection('inbounds').where('store', '==', st).onSnapshot(q => { S.inbounds = S.inbounds.filter(x => x.store !== st).concat(q.docs.map(d => d.data())); X.render(); }, () => { }));
-    if (!S.user.limited) unsub.push(db.collection('places').onSnapshot(q => { S.places = q.docs.map(d => d.data()); X.render(); }, () => { }));
+    if (!S.user.limited) for (const st of mine) unsub.push(db.collection('inbounds').where('store', '==', st).onSnapshot(q => { S.inbounds = S.inbounds.filter(x => x.store !== st).concat(q.docs.map(d => d.data())); R(); }, () => { }));
+    if (!S.user.limited) unsub.push(db.collection('places').onSnapshot(q => { S.places = q.docs.map(d => d.data()); R(); }, () => { }));
     if (!S.user.limited) unsub.push(db.collection('warehouse').doc('main').onSnapshot(d => { S.warehouse = (d.exists && d.data().q) || {}; }, () => { }));
     if (S.user.perms.sales || S.user.perms.approve || S.user.owner) {
-      const z = await db.collection('config').doc('zip').get().catch(() => null); S.zipPw = (z && z.exists && z.data().pw) || {};
+      S.zipPw = S.zipPw || {}; db.collection('config').doc('zip').get().then(z => { S.zipPw = (z && z.exists && z.data().pw) || {}; }).catch(() => { });
     }
-    if (S.user.perms.approve || S.user.owner) unsub.push(db.collection('users').onSnapshot(q => { S.users = q.docs.map(d => ({ uid: d.id, ...d.data() })); X.render(); }));
+    if (S.user.perms.approve || S.user.owner) unsub.push(db.collection('users').onSnapshot(q => { S.users = q.docs.map(d => ({ uid: d.id, ...d.data() })); R(); }));
     else S.users = [S.user];
-    if (S.user.owner) unsub.push(db.collection('settle').onSnapshot(q => { S.settle = q.docs.filter(d => d.id !== '_rules').flatMap(d => d.data().rows || []); const r = q.docs.find(d => d.id === '_rules'); S.settleRules = r ? r.data() : null; X.render(); }, () => { }));
+    if (S.user.owner) unsub.push(db.collection('settle').onSnapshot(q => { S.settle = q.docs.filter(d => d.id !== '_rules').flatMap(d => d.data().rows || []); const r = q.docs.find(d => d.id === '_rules'); S.settleRules = r ? r.data() : null; R(); }, () => { }));
   }
   function mergeTransfers(q) {
     const m = new Map(S.transfers.map(t => [t.id, t])); q.docs.forEach(d => m.set(d.id, { id: d.id, ...d.data() }));
-    S.transfers = [...m.values()]; X.render();
+    S.transfers = [...m.values()]; R();
   }
 
   /* 저장 */
