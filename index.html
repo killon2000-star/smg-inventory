@@ -52,7 +52,19 @@
 .wm.big{font-size:30px}@media (max-width:1000px){.wm{font-size:15px;padding:0 2px}}
 .login .brand{background:var(--green-dk)!important}.login .brand .wm{color:#fff}
 .bizgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px;margin-bottom:18px}
-.tile.biz{border-top:3px solid var(--green)}.tile.biz.tot{background:var(--green-tint)}.tile.biz.empty{border-top-style:dashed}
+.tile.biz{border-top:3px solid var(--green)}
+.bizname{font-weight:800!important}
+.tile.biz .lb.bizname{font-size:1.2em;display:flex;align-items:center;gap:7px}
+.tile.biz .lb.bizname::before,.bizrow .bizname::before,h4.bizname::before{content:"";width:4px;height:1em;border-radius:2px;background:var(--green);flex:none;display:inline-block}
+th.bizname{font-size:1.12em}.chip .bizname{font-size:1.12em}
+.bizlist{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:8px;margin:0 0 14px}
+.bizrow{display:flex;flex-direction:column;gap:3px;padding:10px 12px;border:1px solid var(--line,#ddd);border-radius:10px;min-width:0}
+.bizrow .bizname{font-size:1.2em;display:flex;align-items:center;gap:7px}
+h4.bizname{font-size:1.15em;display:flex;align-items:center;gap:7px}
+.bizsoon{font-size:13px;margin:-8px 0 16px;display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.blogform{display:grid;grid-template-columns:160px 180px 1fr auto;gap:8px;align-items:end;margin-bottom:10px}
+.blogform .field{min-width:0}.blogform .inp{width:100%;box-sizing:border-box}
+@media(max-width:640px){.blogform{grid-template-columns:1fr 1fr}}.tile.biz.tot{background:var(--green-tint)}.tile.biz.empty{border-top-style:dashed}
 :root[data-theme="dark"] .tabbar button.on{color:var(--red-ink)}@media (prefers-color-scheme: dark){:root:not([data-theme="light"]) .tabbar button.on{color:var(--red-ink)}}
 </style>
 <title>온인터내셔널</title>

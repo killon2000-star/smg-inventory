@@ -14,11 +14,12 @@ const STORES = [
 ];
 // 온인터내셔널 사업부/채널 (본부장 지시 2026-11-04). 오프라인 매장은 토스포스 매출(S.sales)을 그대로 씀, 나머지는 S.biz[id][YYYY-MM-DD] = { s: 매출, p: 건수, q: 수량 }
 const BIZ = [
-  { id: 'offline', name: '오프라인 매장', sub: '수원 AK플라자 SMG STORE', stores: ['suwon'] },
-  { id: 'cafe', name: '콜라보카페', sub: '오픈 예정' },
-  { id: 'onkihote', name: '온라인 운영대행', sub: '네이버 스마트스토어 온키호테 · SMG 크리에이티브' },
-  { id: 'kuji', name: '온라인쿠지', sub: '온라인 쿠지 판매' },
+  { id: 'offline', name: '오프라인 매장', sub: '수원 SMG STORE · 토스포스 매출', stores: ['suwon'] },
+  { id: 'onkihote', name: '온키호테', sub: 'SMG 크리에이티브 온라인쇼핑몰 운영대행 · 네이버 스마트스토어(marlinshop) · 일본 라이선스 승인 후 상품 등록' },
+  { id: 'kuji', name: '쿠지사업 운영', sub: 'SMG 크리에이티브와 함께 · 수원 SMG STORE에서 토스포스로 시작' },
+  { id: 'blog', name: 'SMG STORE 수원 블로그 운영', sub: '유온컴퍼니 대행 · 월 대행료/수익 직접 입력', monthly: true },
 ];
+const BIZ_SOON = { name: '콜라보카페', sub: '오픈 예정 (2027.06 수원 AK플라자, 토스포스)' };   // 4개 사업부에 넣지 않음
 const COMPANIES = ['SMG 홀딩스', 'SMG 크리에이티브', '온인터내셔널', 'SMG STORE_수원', 'BOX CAFE', 'SMG MUSEUM_홍대', 'CAFE 오마케', '리밋션_홍대', '국대출판물류', '기타(직접 입력)'];
 const POSITIONS = ['대표', '전무', '상무', '본부장', '편집장', '부장', '차장', '과장', '대리', '수석팀장', '팀장', '부팀장', '매니저', '사원'];
 const SALES_REC = new Set(['대표', '전무', '상무', '본부장', '편집장', '부장', '차장', '과장', '대리', '수석팀장', '팀장', '부팀장']);   // 부팀장 이상 (대표 지시 2026-10-30)     // 팀장 이상 → 매출 보기 추천
@@ -49,7 +50,7 @@ const PERM_DEF = [
 ];
 
 const DEFAULT_ORDER = STORES.map(s => s.id);
-const APP_VERSION = '2026-11-04 11:30';   // 앱 화면을 마지막으로 고친 시각 (한국 시간)
+const APP_VERSION = '2026-11-04 11:43';   // 앱 화면을 마지막으로 고친 시각 (한국 시간)
 /* ───────── 작은 도구 ───────── */
 const $ = (s, el = document) => el.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -264,7 +265,7 @@ function render() {
   if (S.view !== 'more' && !nav.find(n => n.id === S.view)) S.view = 'home';
   trackNav();
   const pendingN = S.users.filter(u => u.status === 'pending').length;
-  const sv = S.stores.length === 1 ? storeName(S.stores[0]) : `${S.stores.length}개 매장 함께 보기`;
+  const sv = S.view === 'biz' && S.ui.bizF && S.ui.bizF !== 'all' && S.ui.bizF !== 'offline' ? (BIZ.find(b => b.id === S.ui.bizF) || {}).name || '사업부' : S.stores.length === 1 ? (S.stores[0] === 'suwon' ? '오프라인 매장 · 수원 SMG STORE' : storeName(S.stores[0])) : `${S.stores.length}개 매장 함께 보기`;
   app.innerHTML = `
   <header class="top">
     <button class="logo-btn" id="logoHome" aria-label="첫 화면으로"><img src="oninter_logo.png" alt="" width="40" height="40"><span class="wm">온인터내셔널</span></button>
@@ -391,8 +392,10 @@ function storeMenu() {
       <span class="grip" role="button" tabindex="0" data-grip="${s.id}" aria-label="${esc(s.name)} 끌어서 순서 바꾸기 (키보드: 위·아래 화살표)">≡</span></div>`).join('')}</div>
     <div class="foot"><button class="btn sm pri" id="smOrderDone">순서 저장</button></div></div>`;
   return `<div class="scrim" id="scrim"></div><div class="pop" role="dialog" aria-label="매장 선택">
-    <h4>매장 이름을 누르면 그 매장으로 이동 · 체크하면 여러 매장 함께 보기</h4>
-    ${STORES.map(s => {
+    <h4 class="bizname">온인터내셔널 사업부</h4>
+    ${BIZ.map(b => `<div class="srow"><button class="go" data-bizgo="${b.id}"><span class="dot" style="background:var(--green)"></span><span><b class="bizname">${esc(b.name)}</b>${b.id === 'offline' ? ' <span class="muted">(수원 SMG STORE)</span>' : ''}</span></button></div>`).join('')}
+    <h4 style="margin-top:12px">물류·이동용 매장 <span class="muted">(입출고·매장이동 · 체크하면 함께 보기)</span></h4>
+    ${STORES.filter(s => s.id !== 'suwon').map(s => {
       const ok = mine.includes(s.id);
       return `<div class="srow"${ok ? '' : ' style="opacity:.45"'}>
         <input type="checkbox" data-sc="${s.id}" ${S.stores.includes(s.id) ? 'checked' : ''} ${ok ? '' : 'disabled'} aria-label="${esc(s.name)} 함께 보기">
@@ -726,9 +729,11 @@ function bizSum(b, ym) { let s = 0, p = 0, last = ''; for (const [d, r] of Objec
 function bizMonth() { let m = ''; for (const b of BIZ) for (const d of Object.keys(bizDays(b))) if (d.slice(0, 7) > m) m = d.slice(0, 7); return m || today().slice(0, 7); }
 function bizCards() {
   const ym = bizMonth(); const R = BIZ.map(b => ({ b, ...bizSum(b, ym) })); const tot = R.reduce((a, r) => a + r.s, 0);
-  const card = r => r.last ? `<button class="tile tbtn biz" data-nav="biz"><span class="lb">${esc(r.b.name)} <span class="go">›</span></span><span class="v">${fmt(r.s)}<small>원</small></span><span class="d muted">${esc(r.b.sub)} · ${md(r.last)}까지 · ${fmt(r.p)}건</span></button>`
-    : `<button class="tile tbtn biz empty" data-nav="biz"><span class="lb">${esc(r.b.name)} <span class="go">›</span></span><span class="v muted" style="font-size:18px">자료 업로드 전</span><span class="d muted">${esc(r.b.sub)}</span></button>`;
-  return `${head('온인터내셔널 사업부 매출', `${+ym.slice(5)}월 · ${ym.slice(0, 4)}년 · 자료가 올라온 사업부만 더합니다`)}<div class="bizgrid"><button class="tile tbtn biz tot" data-nav="biz"><span class="lb">${+ym.slice(5)}월 전체 합계 <span class="go">›</span></span><span class="v big">${fmt(tot)}<small>원</small></span><span class="d muted">${BIZ.length}개 사업부 중 ${R.filter(r => r.last).length}개 자료</span></button>${R.map(card).join('')}</div>`;
+  const card = r => r.last ? `<button class="tile tbtn biz" data-nav="biz"><span class="lb bizname">${esc(r.b.name)} <span class="go">›</span></span><span class="v">${fmt(r.s)}<small>원</small></span><span class="d muted">${esc(r.b.sub)} · ${md(r.last)}까지 · ${fmt(r.p)}건</span></button>`
+    : `<button class="tile tbtn biz empty" data-nav="biz"><span class="lb bizname">${esc(r.b.name)} <span class="go">›</span></span><span class="v muted" style="font-size:18px">자료 업로드 전</span><span class="d muted">${esc(r.b.sub)}</span></button>`;
+  return `${head('온인터내셔널 사업부 매출', `${+ym.slice(5)}월 · ${ym.slice(0, 4)}년 · 자료가 올라온 사업부만 더합니다`)}<div class="bizgrid"><button class="tile tbtn biz tot" data-nav="biz"><span class="lb">${+ym.slice(5)}월 전체 합계 <span class="go">›</span></span><span class="v big">${fmt(tot)}<small>원</small></span><span class="d muted">${BIZ.length}개 사업부 중 ${R.filter(r => r.last).length}개 자료</span></button>${R.map(card).join('')}</div>${soonLine()}`;
+}
+function soonLine() { return `<div class="bizsoon"><span class="pill p-mute">오픈 예정</span> <b>${esc(BIZ_SOON.name)}</b> <span class="muted">${esc(BIZ_SOON.sub.replace(/^오픈 예정 /, ''))} · 사업부 합계에 넣지 않음</span></div>`;
 }
 function bizView() {
   const months = new Set(); for (const b of BIZ) for (const d of Object.keys(bizDays(b))) months.add(d.slice(0, 7));
@@ -736,12 +741,24 @@ function bizView() {
   const shown = sel === 'all' ? BIZ : BIZ.filter(b => b.id === sel);
   const nv = S.ui.naver;
   const pv = nv ? (nv.err ? `<div class="card"><b class="bad">읽지 못했습니다</b><p>${esc(nv.err)}</p><button class="btn" id="naverCancel">닫기</button></div>` : `<div class="card"><h2>미리보기 · ${esc(nv.src)}</h2><p class="muted">맞춘 열: ${Object.entries(nv.map).map(([k, v]) => `${esc(k)} → ${esc(v)}`).join(' · ')}</p><div class="tw"><table><thead><tr><th>날짜</th><th class="n">주문 건수</th><th class="n">수량</th><th class="n">매출(원)</th></tr></thead><tbody>${Object.entries(nv.days).sort().map(([d, v]) => `<tr><td class="nowrap">${md(d)}</td><td class="n">${fmt(v.p)}</td><td class="n">${fmt(v.q)}</td><td class="n">${fmt(v.s)}</td></tr>`).join('')}</tbody></table></div>${nv.skip ? `<p class="muted">취소·반품 등 ${fmt(nv.skip)}줄은 뺐습니다</p>` : ''}<div style="display:flex;gap:8px;margin-top:10px"><button class="btn pri" id="naverSave">온키호테 매출로 반영</button><button class="btn" id="naverCancel">취소</button></div></div>`) : '';
-  return `${head('사업부 매출', '오프라인 매장 · 콜라보카페 · 온라인 운영대행(온키호테) · 온라인쿠지')}
-  <div class="chips">${[['all', '전체'], ...BIZ.map(b => [b.id, b.name])].map(([k, t]) => `<button class="chip ${sel === k ? 'on' : ''}" data-bizf="${k}">${esc(t)}</button>`).join('')}</div>
-  <div class="card"><div class="tw"><table><thead><tr><th>월</th>${shown.map(b => `<th class="n">${esc(b.name)}</th>`).join('')}${sel === 'all' ? '<th class="n">합계</th>' : ''}</tr></thead><tbody>${ms.length ? ms.map(m => { const v = shown.map(b => bizSum(b, m)); return `<tr><td class="nowrap">${m.slice(0, 4)}.${m.slice(5)}</td>${v.map(x => `<td class="n">${x.last ? fmt(x.s) : '<span class="muted">-</span>'}</td>`).join('')}${sel === 'all' ? `<td class="n"><b>${fmt(v.reduce((a, x) => a + x.s, 0))}</b></td>` : ''}</tr>`; }).join('') : `<tr><td colspan="${shown.length + 2}" class="muted">자료 업로드 전</td></tr>`}</tbody></table></div>
+  return `${head('사업부 매출', BIZ.map(b => b.name).join(' · '))}
+  <div class="chips">${[['all', '전체'], ...BIZ.map(b => [b.id, b.name])].map(([k, t]) => `<button class="chip ${sel === k ? 'on' : ''}" data-bizf="${k}"><b class="bizname">${esc(t)}</b></button>`).join('')}</div>
+  <div class="card"><div class="tw"><table><thead><tr><th>월</th>${shown.map(b => `<th class="n bizname${sel === 'all' ? ' hide-s' : ''}">${esc(b.name)}</th>`).join('')}${sel === 'all' ? '<th class="n">합계</th>' : ''}</tr></thead><tbody>${ms.length ? ms.map(m => { const v = shown.map(b => bizSum(b, m)); return `<tr><td class="nowrap">${m.slice(0, 4)}.${m.slice(5)}</td>${v.map(x => `<td class="n${sel === 'all' ? ' hide-s' : ''}">${x.last ? fmt(x.s) : '<span class="muted">-</span>'}</td>`).join('')}${sel === 'all' ? `<td class="n"><b>${fmt(v.reduce((a, x) => a + x.s, 0))}</b></td>` : ''}</tr>`; }).join('') : `<tr><td colspan="${shown.length + 2}" class="muted">자료 업로드 전</td></tr>`}</tbody></table></div>
   ${shown.filter(b => !bizSum(b).last).map(b => `<p class="muted" style="margin:8px 0 0">${esc(b.name)}: 자료 업로드 전</p>`).join('')}</div>
-  <div class="card"><h2>온키호테 · 네이버 스마트스토어 주문 엑셀</h2><div class="drop"><div style="font-weight:700">스마트스토어센터 › 주문조회에서 받은 엑셀(.xlsx)</div><div class="muted" style="font-size:13px;margin:4px 0 10px">상품주문번호 · 주문일시(결제일) · 상품명 · 수량 · 최종 상품별 총 주문금액 열을 자동으로 찾습니다 · 취소·반품 건은 뺍니다 (시험 기능)</div><button class="btn" id="naverFileBtn">파일 고르기</button></div></div>${pv}
-  <p class="muted" style="font-size:13px">콜라보카페·온라인쿠지 매출 올리기는 다음 단계에서 붙입니다. 지금은 이 기기에만 저장됩니다(서버 저장은 다음 단계).</p>`;
+  <div class="bizlist">${shown.map(b => `<div class="bizrow"><span class="bizname">${esc(b.name)}</span><span class="muted">${esc(b.sub)}</span></div>`).join('')}</div>
+  ${shown.some(b => b.id === 'blog') ? blogCard() : ''}
+  ${shown.some(b => b.id === 'onkihote') ? `<div class="card"><h2><span class="bizname">온키호테</span> · 네이버 스마트스토어 주문 엑셀</h2><div class="drop"><div style="font-weight:700">스마트스토어센터 › 주문조회에서 받은 엑셀(.xlsx)</div><div class="muted" style="font-size:13px;margin:4px 0 10px">상품주문번호 · 주문일시(결제일) · 상품명 · 수량 · 최종 상품별 총 주문금액 열을 자동으로 찾습니다 · 취소·반품 건은 뺍니다 (시험 기능)</div><button class="btn" id="naverFileBtn">파일 고르기</button><div class="muted" style="font-size:12.5px;margin-top:8px">스토어: <a href="https://smartstore.naver.com/marlinshop" target="_blank" rel="noopener">smartstore.naver.com/marlinshop</a> · 상품은 일본 라이선스 승인 후 등록 예정</div></div></div>${pv}` : ''}
+  ${soonLine()}
+  <p class="muted" style="font-size:13px">쿠지사업 매출 올리기는 다음 단계에서 붙입니다. 온키호테·블로그 자료는 지금은 이 기기에만 저장됩니다(서버 저장은 다음 단계).</p>`;
+}
+function blogCard() {
+  const B = S.biz.blog || {}; const rows = Object.entries(B).sort().reverse();
+  return `<div class="card"><h2><span class="bizname">SMG STORE 수원 블로그 운영</span> · 월별 대행료/수익 <span class="r">유온컴퍼니</span></h2>
+  <div class="blogform"><div class="field"><label for="blogMonth">월</label><input class="inp" type="month" id="blogMonth" value="${today().slice(0, 7)}"></div>
+  <div class="field"><label for="blogAmt">금액(원)</label><input class="inp" id="blogAmt" inputmode="numeric" placeholder="예: 500000"></div>
+  <div class="field"><label for="blogMemo">메모</label><input class="inp" id="blogMemo" placeholder="예: 11월 대행료"></div>
+  <div class="field"><label>&nbsp;</label><button class="btn pri" id="blogSave">저장</button></div></div>
+  ${rows.length ? `<div class="tw"><table><thead><tr><th>월 · 메모</th><th class="n">금액</th></tr></thead><tbody>${rows.map(([d, v]) => `<tr><td>${d.slice(0, 4)}.${d.slice(5, 7)} <span class="muted">${esc(v.memo || '')}</span></td><td class="n">${fmt(v.s)} <button class="btn sm" data-blogdel="${d}">지우기</button></td></tr>`).join('')}</tbody></table></div>` : '<p class="muted">아직 입력한 달이 없습니다.</p>'}</div>`;
 }
 const NAVER_COLS = { no: ['상품주문번호'], date: ['결제일', '주문일시', '발주확인일', '구매확정일'], name: ['상품명'], qty: ['수량'], amt: ['최종 상품별 총 주문금액', '상품별 총 주문금액', '총 주문금액', '정산예정금액'], st: ['주문상태', '클레임상태'] };
 async function readNaver(f) {
@@ -2500,7 +2517,7 @@ function loginView() {
   const f = S.ui.apply ||= { name: '', company: '', other: '', places: [], position: '', phone: '', memo: '' };
   const sent = S.ui.applied;
   return `<div style="padding:16px"><div class="login">
-    <div class="brand"><img src="oninter_logo.png" alt="온인터내셔널 로고" width="72" height="72"><span class="wm big">온인터내셔널</span><b style="font-size:15px">매장·매출 관리</b><span style="font-size:13px;color:#E5F3F0">오프라인 매장 · 콜라보카페 · 온라인 운영대행 · 온라인쿠지</span></div>
+    <div class="brand"><img src="oninter_logo.png" alt="온인터내셔널 로고" width="72" height="72"><span class="wm big">온인터내셔널</span><b style="font-size:15px">매장·매출 관리</b><span style="font-size:13px;color:#E5F3F0">오프라인 매장 · 온키호테 · 쿠지사업 운영 · 블로그 운영</span></div>
     ${S.mode === 'demo' ? '<div class="note">미리보기: 직원이 처음 들어오면 보는 화면입니다. 실제로는 구글 로그인 후 이 신청서를 냅니다.</div>' : ''}
     ${inAppNotice()}
     ${sent ? `<div class="card"><h2>🔸 승인 대기 중</h2><p style="margin:0">신청을 보냈습니다. 유명훈 본부장님이 승인하면 바로 쓸 수 있습니다.</p></div>${S.mode === 'live' ? '<button class="btn" id="logout2">다른 계정으로 로그인</button>' : ''}` : S.mode === 'live' && !S.ui.authUser ? `
@@ -2903,6 +2920,9 @@ function bind() {
     if (t.id === 'eSave') { await saveEntry(); return; }
     if (t.id === 'fileBtn') { pickFile('.xlsx,.xls,.csv', f => readFile(f)); return; }
     if (t.id === 'naverFileBtn') { pickFile('.xlsx,.xls,.csv', f => readNaver(f).catch(e => { S.ui.naver = { err: e.message || String(e) }; render(); })); return; }
+    if (t.id === 'blogSave') { const m = (document.getElementById('blogMonth') || {}).value, a = +String((document.getElementById('blogAmt') || {}).value || '').replace(/[^\d-]/g, ''), memo = ((document.getElementById('blogMemo') || {}).value || '').trim(); if (!m || !a) { toast('월과 금액을 넣어 주세요'); return; } (S.biz.blog ||= {})[m + '-01'] = { s: a, p: 0, memo }; saveBiz(); toast('블로그 운영 금액을 저장했습니다'); render(); return; }
+    if (d.blogdel) { if (S.biz.blog) delete S.biz.blog[d.blogdel]; saveBiz(); render(); return; }
+    if (d.bizgo) { const b = BIZ.find(x => x.id === d.bizgo); S.ui.storeMenu = false; if (b && b.stores) { S.stores = [...b.stores]; S.sumStores = null; S.ui.range = null; S.view = 'home'; } else { S.ui.bizF = d.bizgo; S.view = 'biz'; } render(); goTop(); return; }
     if (t.id === 'naverSave') { const n = S.ui.naver; if (n && n.days) { const B = S.biz.onkihote ||= {}; for (const [d, v] of Object.entries(n.days)) B[d] = v; saveBiz(); S.ui.naver = null; toast('온키호테 매출을 반영했습니다'); } return; }
     if (t.id === 'naverCancel') { S.ui.naver = null; render(); return; }
     if (t.id === 'posFileBtn') { const st = $('#posStore').value; pickFile('.zip,.xlsx', f => readPos(f, st)); return; }
