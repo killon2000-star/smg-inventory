@@ -1,4 +1,4 @@
-/* SMG 재고관리 — 앱 본체 (미리보기 모드와 Firebase 모드가 같은 화면을 씁니다) */
+/* 온인터내셔널 앱 — 앱 본체 (미리보기 모드와 Firebase 모드가 같은 화면을 씁니다) */
 (function () {
 'use strict';
 
@@ -11,6 +11,13 @@ const STORES = [
   { id: 'omake', name: 'CAFE 오마케' },
   { id: 'limission', name: '리밋션_홍대' },
   { id: 'gukdae', name: '국대출판물류', type: 'warehouse' },   // SMG 홀딩스 물류창고 (대표 지시 11/2)
+];
+// 온인터내셔널 사업부/채널 (본부장 지시 2026-11-04). 오프라인 매장은 토스포스 매출(S.sales)을 그대로 씀, 나머지는 S.biz[id][YYYY-MM-DD] = { s: 매출, p: 건수, q: 수량 }
+const BIZ = [
+  { id: 'offline', name: '오프라인 매장', sub: '수원 AK플라자 SMG STORE', stores: ['suwon'] },
+  { id: 'cafe', name: '콜라보카페', sub: '오픈 예정' },
+  { id: 'onkihote', name: '온라인 운영대행', sub: '네이버 스마트스토어 온키호테 · SMG 크리에이티브' },
+  { id: 'kuji', name: '온라인쿠지', sub: '온라인 쿠지 판매' },
 ];
 const COMPANIES = ['SMG 홀딩스', 'SMG 크리에이티브', '온인터내셔널', 'SMG STORE_수원', 'BOX CAFE', 'SMG MUSEUM_홍대', 'CAFE 오마케', '리밋션_홍대', '국대출판물류', '기타(직접 입력)'];
 const POSITIONS = ['대표', '전무', '상무', '본부장', '편집장', '부장', '차장', '과장', '대리', '수석팀장', '팀장', '부팀장', '매니저', '사원'];
@@ -218,6 +225,7 @@ const NAV = [
   { id: 'records', t: '기록', show: () => !limited() },
   { id: 'files', t: '파일 이력', show: () => !limited() && (can('approve') || can('sales') || can('move')) },
   { id: 'sales', t: '매출', grp: '관리자', show: () => can('sales') },
+  { id: 'biz', t: '사업부 매출', show: () => can('sales') },
   { id: 'collab', t: '콜라보 분석', show: () => can('sales') },
   { id: 'settle', t: '정산', show: () => canSettle() },
   { id: 'admin', t: '관리', show: () => can('approve') || isOwner() },
@@ -259,7 +267,7 @@ function render() {
   const sv = S.stores.length === 1 ? storeName(S.stores[0]) : `${S.stores.length}개 매장 함께 보기`;
   app.innerHTML = `
   <header class="top">
-    <button class="logo-btn" id="logoHome" aria-label="첫 화면으로"><img src="logo-w.png" alt="SMG STORE"></button>
+    <button class="logo-btn" id="logoHome" aria-label="첫 화면으로"><span class="wm" aria-label="온인터내셔널">온인터내셔널</span></button>
     <button class="store-btn" id="storeBtn" aria-haspopup="true" aria-expanded="${S.ui.storeMenu}">
       <span class="nm">${esc(sv)}</span><span class="car"></span>
     </button>
@@ -291,7 +299,7 @@ function render() {
   if (tw && tt && tw.scrollWidth > tw.clientWidth && !tw.dataset.sc) { tw.scrollLeft = Math.max(0, tt.offsetLeft - 108 - tw.clientWidth * 0.2); tw.dataset.sc = 1; }
 }
 // 아래 메뉴: 권한 있는 메뉴를 모두 보여 줌 (6개 넘으면 두 줄)
-const TAB = { home: ['홈', 'home'], ipnow: ['IP현황', 'star'], products: ['상품', 'box'], entry: ['입출고', 'plus'], count: ['실사', 'check'], inbound: ['입고확인', 'truck'], transfer: ['매장이동', 'swap'], records: ['기록', 'list'], files: ['파일', 'list'], sales: ['매출', 'chart'], collab: ['콜라보', 'star'], settle: ['정산', 'won'], admin: ['관리', 'user'], more: ['설정', 'gear'] };
+const TAB = { home: ['홈', 'home'], ipnow: ['IP현황', 'star'], products: ['상품', 'box'], entry: ['입출고', 'plus'], count: ['실사', 'check'], inbound: ['입고확인', 'truck'], transfer: ['매장이동', 'swap'], records: ['기록', 'list'], files: ['파일', 'list'], sales: ['매출', 'chart'], biz: ['사업부', 'chart'], collab: ['콜라보', 'star'], settle: ['정산', 'won'], admin: ['관리', 'user'], more: ['설정', 'gear'] };
 const TAB_MAIN = ['home', 'products', 'entry', 'transfer', 'sales', 'count'];
 function tabbar(nav) {
   const pendingN = can('approve') ? S.users.filter(u => u.status === 'pending').length : 0;
@@ -405,6 +413,7 @@ function pageView() {
     case 'files': return filesView();
     case 'inbound': return inboundView();
     case 'sales': return salesView();
+    case 'biz': return bizView();
     case 'collab': return collabView();
     case 'settle': return settleView();
     case 'admin': return adminView();
@@ -706,6 +715,51 @@ function collabForecast(st, r, a, b, R) {
       ${past.map(x => `<tr><td>${esc(x.p.ip)} <span class="muted" style="font-size:12px">${fd(x.p.start)} ~</span></td><td class="hide-s nowrap">${esc(shortName(x.p.store))}</td><td class="n">${x.nd}일</td><td class="n">${fmt(x.s)}</td><td class="n">${fmt(x.s / (x.nd || 1))} ${chg(pct(daily, x.s / (x.nd || 1)))}</td></tr>`).join('')}</tbody></table></div><div class="muted" style="font-size:12px;margin-top:6px">일평균 옆 ▲▼ = 이번 콜라보가 그 콜라보보다 높거나 낮은 정도 · 기간 = 매출 자료가 있는 날 수</div>` : '<div class="muted" style="font-size:12.5px;margin-top:10px">비교할 지난 콜라보 매출 자료가 없습니다.</div>'}
   </div>`;
 }
+/* ───────── 사업부/채널 ───────── */
+S.biz = (() => { try { return JSON.parse(localStorage.getItem('oninter-biz') || '{}'); } catch (e) { return {}; } })();
+function saveBiz() { try { localStorage.setItem('oninter-biz', JSON.stringify(S.biz)); } catch (e) {} }
+function bizDays(b) {   // { 'YYYY-MM-DD': { s, p } }
+  if (b.stores) { const o = {}; for (const st of b.stores) for (const [ym, m] of Object.entries(S.sales[st] || {})) for (const [dd, r] of Object.entries(m.days || {})) { const x = o[ym + '-' + dd] ||= { s: 0, p: 0 }; x.s += r.s || 0; x.p += r.p || 0; } return o; }
+  return S.biz[b.id] || {};
+}
+function bizSum(b, ym) { let s = 0, p = 0, last = ''; for (const [d, r] of Object.entries(bizDays(b))) { if (ym && d.slice(0, 7) !== ym) continue; s += r.s || 0; p += r.p || 0; if (d > last) last = d; } return { s, p, last }; }
+function bizMonth() { let m = ''; for (const b of BIZ) for (const d of Object.keys(bizDays(b))) if (d.slice(0, 7) > m) m = d.slice(0, 7); return m || today().slice(0, 7); }
+function bizCards() {
+  const ym = bizMonth(); const R = BIZ.map(b => ({ b, ...bizSum(b, ym) })); const tot = R.reduce((a, r) => a + r.s, 0);
+  const card = r => r.last ? `<button class="tile tbtn biz" data-nav="biz"><span class="lb">${esc(r.b.name)} <span class="go">›</span></span><span class="v">${fmt(r.s)}<small>원</small></span><span class="d muted">${esc(r.b.sub)} · ${md(r.last)}까지 · ${fmt(r.p)}건</span></button>`
+    : `<button class="tile tbtn biz empty" data-nav="biz"><span class="lb">${esc(r.b.name)} <span class="go">›</span></span><span class="v muted" style="font-size:18px">자료 업로드 전</span><span class="d muted">${esc(r.b.sub)}</span></button>`;
+  return `${head('온인터내셔널 사업부 매출', `${+ym.slice(5)}월 · ${ym.slice(0, 4)}년 · 자료가 올라온 사업부만 더합니다`)}<div class="bizgrid"><button class="tile tbtn biz tot" data-nav="biz"><span class="lb">${+ym.slice(5)}월 전체 합계 <span class="go">›</span></span><span class="v big">${fmt(tot)}<small>원</small></span><span class="d muted">${BIZ.length}개 사업부 중 ${R.filter(r => r.last).length}개 자료</span></button>${R.map(card).join('')}</div>`;
+}
+function bizView() {
+  const months = new Set(); for (const b of BIZ) for (const d of Object.keys(bizDays(b))) months.add(d.slice(0, 7));
+  const ms = [...months].sort().reverse(); const sel = S.ui.bizF || 'all';
+  const shown = sel === 'all' ? BIZ : BIZ.filter(b => b.id === sel);
+  const nv = S.ui.naver;
+  const pv = nv ? (nv.err ? `<div class="card"><b class="bad">읽지 못했습니다</b><p>${esc(nv.err)}</p><button class="btn" id="naverCancel">닫기</button></div>` : `<div class="card"><h2>미리보기 · ${esc(nv.src)}</h2><p class="muted">맞춘 열: ${Object.entries(nv.map).map(([k, v]) => `${esc(k)} → ${esc(v)}`).join(' · ')}</p><div class="tw"><table><thead><tr><th>날짜</th><th class="n">주문 건수</th><th class="n">수량</th><th class="n">매출(원)</th></tr></thead><tbody>${Object.entries(nv.days).sort().map(([d, v]) => `<tr><td class="nowrap">${md(d)}</td><td class="n">${fmt(v.p)}</td><td class="n">${fmt(v.q)}</td><td class="n">${fmt(v.s)}</td></tr>`).join('')}</tbody></table></div>${nv.skip ? `<p class="muted">취소·반품 등 ${fmt(nv.skip)}줄은 뺐습니다</p>` : ''}<div style="display:flex;gap:8px;margin-top:10px"><button class="btn pri" id="naverSave">온키호테 매출로 반영</button><button class="btn" id="naverCancel">취소</button></div></div>`) : '';
+  return `${head('사업부 매출', '오프라인 매장 · 콜라보카페 · 온라인 운영대행(온키호테) · 온라인쿠지')}
+  <div class="chips">${[['all', '전체'], ...BIZ.map(b => [b.id, b.name])].map(([k, t]) => `<button class="chip ${sel === k ? 'on' : ''}" data-bizf="${k}">${esc(t)}</button>`).join('')}</div>
+  <div class="card"><div class="tw"><table><thead><tr><th>월</th>${shown.map(b => `<th class="n">${esc(b.name)}</th>`).join('')}${sel === 'all' ? '<th class="n">합계</th>' : ''}</tr></thead><tbody>${ms.length ? ms.map(m => { const v = shown.map(b => bizSum(b, m)); return `<tr><td class="nowrap">${m.slice(0, 4)}.${m.slice(5)}</td>${v.map(x => `<td class="n">${x.last ? fmt(x.s) : '<span class="muted">-</span>'}</td>`).join('')}${sel === 'all' ? `<td class="n"><b>${fmt(v.reduce((a, x) => a + x.s, 0))}</b></td>` : ''}</tr>`; }).join('') : `<tr><td colspan="${shown.length + 2}" class="muted">자료 업로드 전</td></tr>`}</tbody></table></div>
+  ${shown.filter(b => !bizSum(b).last).map(b => `<p class="muted" style="margin:8px 0 0">${esc(b.name)}: 자료 업로드 전</p>`).join('')}</div>
+  <div class="card"><h2>온키호테 · 네이버 스마트스토어 주문 엑셀</h2><div class="drop"><div style="font-weight:700">스마트스토어센터 › 주문조회에서 받은 엑셀(.xlsx)</div><div class="muted" style="font-size:13px;margin:4px 0 10px">상품주문번호 · 주문일시(결제일) · 상품명 · 수량 · 최종 상품별 총 주문금액 열을 자동으로 찾습니다 · 취소·반품 건은 뺍니다 (시험 기능)</div><button class="btn" id="naverFileBtn">파일 고르기</button></div></div>${pv}
+  <p class="muted" style="font-size:13px">콜라보카페·온라인쿠지 매출 올리기는 다음 단계에서 붙입니다. 지금은 이 기기에만 저장됩니다(서버 저장은 다음 단계).</p>`;
+}
+const NAVER_COLS = { no: ['상품주문번호'], date: ['결제일', '주문일시', '발주확인일', '구매확정일'], name: ['상품명'], qty: ['수량'], amt: ['최종 상품별 총 주문금액', '상품별 총 주문금액', '총 주문금액', '정산예정금액'], st: ['주문상태', '클레임상태'] };
+async function readNaver(f) {
+  const wb = await readBook(f); let rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, defval: '' });
+  const hi = rows.findIndex(r => r.some(c => String(c).trim() === '상품주문번호')); if (hi < 0) throw new Error('"상품주문번호" 열을 찾지 못했습니다. 스마트스토어 주문조회 엑셀인지 확인해 주세요. (비밀번호가 걸린 파일이면 풀어서 올려 주세요)');
+  const H = rows[hi].map(c => String(c).replace(/\s+/g, ' ').trim()); const ix = {}, map = {};
+  for (const [k, cands] of Object.entries(NAVER_COLS)) for (const c of cands) { const i = H.indexOf(c); if (i >= 0) { ix[k] = i; map[k === 'no' ? '주문번호' : k === 'date' ? '날짜' : k === 'name' ? '상품' : k === 'qty' ? '수량' : k === 'amt' ? '금액' : '상태'] = c; break; } }
+  if (ix.date == null || ix.amt == null) throw new Error('날짜(주문일시/결제일) 또는 금액(최종 상품별 총 주문금액) 열이 없습니다.');
+  const days = {}, seen = new Set(); let skip = 0;
+  for (const r of rows.slice(hi + 1)) {
+    const no = String(r[ix.no] || '').trim(); if (!no || seen.has(no)) continue; seen.add(no);
+    if (ix.st != null && /취소|반품|환불/.test(String(r[ix.st]))) { skip++; continue; }
+    let d = r[ix.date]; if (typeof d === 'number') { const o = XLSX.SSF.parse_date_code(d); d = `${o.y}-${String(o.m).padStart(2, '0')}-${String(o.d).padStart(2, '0')}`; } else { const m = String(d).match(/(\d{4})[.\-\/]\s?(\d{1,2})[.\-\/]\s?(\d{1,2})/); if (!m) continue; d = `${m[1]}-${m[2].padStart(2, '0')}-${m[3].padStart(2, '0')}`; }
+    const x = days[d] ||= { s: 0, p: 0, q: 0 }; x.s += +String(r[ix.amt]).replace(/[^\d.-]/g, '') || 0; x.p++; x.q += +r[ix.qty] || 0;
+  }
+  if (!Object.keys(days).length) throw new Error('읽을 주문 줄이 없습니다.');
+  S.ui.naver = { src: f.name, days, map, skip }; render();
+}
 function homeView() {
   const st = S.stores;
   const al = alerts(st);
@@ -727,7 +781,8 @@ function homeView() {
       salesBlock = `<button class="tile tbtn" data-nav="sales"><span class="lb">${+last.slice(5, 7)}월 총매출 <span class="go">매출 ›</span></span><span class="v big${String(fmt(posM + macM)).length > 9 ? ' long' : ''}">${fmt(posM + macM)}<small>원</small></span><span class="d muted">토스포스 ${md(last)}까지 ${man(posM)} + 기계 ${machLast ? md(machLast) + '까지 ' : ''}${man(macM)}</span></button>` + `<button class="tile tbtn" data-hday="${last}"><span class="lb">매출 · ${md(last)} <span class="go">상세 ›</span></span><span class="v big${String(fmt(s)).length>9?' long':''}">${fmt(s)}<small>원</small></span><span class="d ${ch == null ? 'muted' : ch >= 0 ? '' : ''}">${ch == null ? '지난주 같은 요일 자료 없음' : `${chg(ch)} 지난주 같은 요일 대비`} · ${fmt(p)}건</span></button>`;
     } }
   }
-  return `${head(multi ? `${st.length}개 매장 요약` : storeName(st[0]), `${freshLine(st) || '아직 반영된 자료가 없습니다'}${limited() ? ' · 재고 수량만 볼 수 있는 계정입니다' : ''}`, installBtn('sm'))}
+  const bizBlock = can('sales') ? bizCards() : '';
+  return `${bizBlock}${head(multi ? `${st.length}개 매장 요약` : storeName(st[0]), `${freshLine(st) || '아직 반영된 자료가 없습니다'}${limited() ? ' · 재고 수량만 볼 수 있는 계정입니다' : ''}`, installBtn('sm'))}
   ${freshTable(st)}
   <div class="note" style="font-size:12.5px">ℹ︎ 실시간 자료가 아닙니다. 판매는 <b>토스포스 매출 파일</b>을 올려야, 입고·이동은 <b>등록</b>해야 재고에 반영됩니다. 위 시각을 확인해 주세요.</div>
   ${ceoKpi(st)}
@@ -2217,7 +2272,7 @@ async function readBook(f) {
   return XLSX.read(await f.arrayBuffer(), { type: 'array' });
 }
 // 파일 끌어다 놓기: 파일 고르기 버튼이 있는 칸 어디에 놓아도 그 버튼을 누른 것과 같게
-const FILE_BTNS = ['fileBtn', 'posFileBtn', 'rulesBtn', 'ibPlanFile', 'ibPlanImg', 'ibActFile', 'cntFile', 'machFileBtn'];
+const FILE_BTNS = ['fileBtn', 'posFileBtn', 'rulesBtn', 'ibPlanFile', 'ibPlanImg', 'ibActFile', 'cntFile', 'machFileBtn', 'naverFileBtn'];
 let pendingDrop = null;
 const okType = (f, accept) => !accept || accept.split(',').some(a => { a = a.trim().toLowerCase(); if (!a) return false; if (a.endsWith('/*')) return (f.type || '').toLowerCase().startsWith(a.slice(0, -1)); if (a.startsWith('.')) return f.name.toLowerCase().endsWith(a); return (f.type || '').toLowerCase() === a; });
 function markDropZones() {
@@ -2445,7 +2500,7 @@ function loginView() {
   const f = S.ui.apply ||= { name: '', company: '', other: '', places: [], position: '', phone: '', memo: '' };
   const sent = S.ui.applied;
   return `<div style="padding:16px"><div class="login">
-    <div class="brand"><img src="logo-w.png" alt="SMG STORE"><b style="font-size:18px">SMG 재고관리</b><span style="font-size:13px;color:#cfcfd4">SMG 홀딩스 · 각 매장 직원용</span></div>
+    <div class="brand"><span class="wm big">온인터내셔널</span><b style="font-size:15px">매장·매출 관리</b><span style="font-size:13px;color:#E7F4EC">오프라인 매장 · 콜라보카페 · 온라인 운영대행 · 온라인쿠지</span></div>
     ${S.mode === 'demo' ? '<div class="note">미리보기: 직원이 처음 들어오면 보는 화면입니다. 실제로는 구글 로그인 후 이 신청서를 냅니다.</div>' : ''}
     ${inAppNotice()}
     ${sent ? `<div class="card"><h2>🔸 승인 대기 중</h2><p style="margin:0">신청을 보냈습니다. 유명훈 본부장님이 승인하면 바로 쓸 수 있습니다.</p></div>${S.mode === 'live' ? '<button class="btn" id="logout2">다른 계정으로 로그인</button>' : ''}` : S.mode === 'live' && !S.ui.authUser ? `
@@ -2510,8 +2565,8 @@ function inAppNotice() {
     <div class="row" style="margin-top:8px"><button class="btn sm pri" data-openext>${ENV.ios ? '사파리로 열기' : '크롬으로 열기'}</button><button class="btn sm" data-copylink>주소 복사</button></div></div>`;
 }
 function installGuide() {
-  const ios = `<ol style="margin:0;padding-left:20px;display:flex;flex-direction:column;gap:6px"><li><b>사파리</b>로 이 주소를 엽니다 (크롬·카카오톡 안에서는 안 됩니다).</li><li>화면 아래 <b>공유 버튼(□↑)</b>을 누릅니다. 안 보이면 오른쪽 아래 <b>⋯</b>을 먼저 누르세요.</li><li>목록을 아래로 내려 <b>홈 화면에 추가</b> → 오른쪽 위 <b>추가</b></li><li>홈 화면에 생긴 <b>SMG 재고</b> 아이콘으로 엽니다.</li></ol>`;
-  const and = `<ol style="margin:0;padding-left:20px;display:flex;flex-direction:column;gap:6px"><li><b>크롬</b>으로 이 주소를 엽니다.</li><li>오른쪽 위 <b>⋮</b> 메뉴를 누릅니다.</li><li><b>앱 설치</b> 또는 <b>홈 화면에 추가</b> → <b>설치</b></li><li>홈 화면에 생긴 <b>SMG 재고</b> 아이콘으로 엽니다.</li></ol>`;
+  const ios = `<ol style="margin:0;padding-left:20px;display:flex;flex-direction:column;gap:6px"><li><b>사파리</b>로 이 주소를 엽니다 (크롬·카카오톡 안에서는 안 됩니다).</li><li>화면 아래 <b>공유 버튼(□↑)</b>을 누릅니다. 안 보이면 오른쪽 아래 <b>⋯</b>을 먼저 누르세요.</li><li>목록을 아래로 내려 <b>홈 화면에 추가</b> → 오른쪽 위 <b>추가</b></li><li>홈 화면에 생긴 <b>온인터</b> 아이콘으로 엽니다.</li></ol>`;
+  const and = `<ol style="margin:0;padding-left:20px;display:flex;flex-direction:column;gap:6px"><li><b>크롬</b>으로 이 주소를 엽니다.</li><li>오른쪽 위 <b>⋮</b> 메뉴를 누릅니다.</li><li><b>앱 설치</b> 또는 <b>홈 화면에 추가</b> → <b>설치</b></li><li>홈 화면에 생긴 <b>온인터</b> 아이콘으로 엽니다.</li></ol>`;
   return `<div class="hd"><h3>홈 화면에 앱 설치</h3><button class="x" data-close aria-label="닫기">×</button></div>
   ${inAppNotice()}
   ${ENV.ios ? `<div class="card"><h2>아이폰·아이패드</h2>${ios}</div><div class="card"><h2>안드로이드·갤럭시</h2>${and}</div>` : `<div class="card"><h2>안드로이드·갤럭시</h2>${and}</div><div class="card"><h2>아이폰·아이패드</h2>${ios}</div>`}
@@ -2519,7 +2574,7 @@ function installGuide() {
   <p class="muted" style="font-size:13px;margin:0">설치한 앱은 주소창 없이 열리고, 로그인은 처음 한 번만 하면 됩니다. 앱을 고치면 다음에 열 때 자동으로 새 버전이 뜹니다.</p>`;
 }
 async function doInstall() {
-  if (installEvt) { installEvt.prompt(); const r = await installEvt.userChoice.catch(() => null); installEvt = null; if (r && r.outcome === 'accepted') toast('설치했습니다. 홈 화면의 SMG 재고 아이콘으로 여세요'); else render(); return; }
+  if (installEvt) { installEvt.prompt(); const r = await installEvt.userChoice.catch(() => null); installEvt = null; if (r && r.outcome === 'accepted') toast('설치했습니다. 홈 화면의 온인터 아이콘으로 여세요'); else render(); return; }
   S.ui.drawer = installGuide; render();
 }
 const APP_URL = 'https://killon2000-star.github.io/smg-inventory/';
@@ -2795,6 +2850,7 @@ function bind() {
     if (d.openext != null) { openExternal(); return; }
     if (d.copylink != null) { copyLink(); return; }
     if (t.closest && t.closest('#navBack')) { try { history.back(); } catch (e) { goBack(); } return; }
+    if (d.bizf) { S.ui.bizF = d.bizf; render(); return; }
     if (d.hd) { S.ui.hd = { k: d.hd, ip: '' }; S.ui.drawer = homeDrawer; render(); return; }
     if (d.hdip != null && S.ui.hd) { S.ui.hd.ip = d.hdip; render(); return; }
     if (d.hdgo) { const k = S.ui.hd ? S.ui.hd.k : 'all'; S.view = d.hdgo; if (d.hdgo === 'products') { S.ui.f = k === 'all' ? 'in' : k; S.ui.ip = S.ui.hd && S.ui.hd.ip && S.ui.hd.ip !== '(IP 없음)' ? S.ui.hd.ip : ''; } S.ui.drawer = null; render(); goTop(); return; }
@@ -2846,6 +2902,9 @@ function bind() {
     if (t.id === 'eClear') { S.ui.entry.lines = []; render(); return; }
     if (t.id === 'eSave') { await saveEntry(); return; }
     if (t.id === 'fileBtn') { pickFile('.xlsx,.xls,.csv', f => readFile(f)); return; }
+    if (t.id === 'naverFileBtn') { pickFile('.xlsx,.xls,.csv', f => readNaver(f).catch(e => { S.ui.naver = { err: e.message || String(e) }; render(); })); return; }
+    if (t.id === 'naverSave') { const n = S.ui.naver; if (n && n.days) { const B = S.biz.onkihote ||= {}; for (const [d, v] of Object.entries(n.days)) B[d] = v; saveBiz(); S.ui.naver = null; toast('온키호테 매출을 반영했습니다'); } return; }
+    if (t.id === 'naverCancel') { S.ui.naver = null; render(); return; }
     if (t.id === 'posFileBtn') { const st = $('#posStore').value; pickFile('.zip,.xlsx', f => readPos(f, st)); return; }
     if (t.id === 'rulesBtn') { pickFile('.json,application/json', f => f.text().then(JSON.parse).then(async r => { if (!r.rates || !r.creConsign) throw new Error('정산 요율 파일이 아닙니다'); if (DB.saveSettleRules) await DB.saveSettleRules(r); S.settleRules = r; toast('정산 요율을 저장했습니다'); }).catch(e => alertBox('🔺 ' + e.message))); return; }
     if (t.id === 'reseedBtn') {

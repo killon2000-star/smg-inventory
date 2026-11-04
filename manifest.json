@@ -1,6 +1,6 @@
 {
- "name": "SMG 재고관리",
- "short_name": "SMG 재고",
+ "name": "온인터내셔널",
+ "short_name": "온인터",
  "start_url": "./",
  "scope": "./",
  "display": "standalone",
