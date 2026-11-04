@@ -1,6 +1,6 @@
 <!doctype html>
 <html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="theme-color" content="#0B0B0C"><link rel="icon" href="icon-192.png"><link rel="manifest" href="manifest.json"><link rel="apple-touch-icon" href="icon-180.png"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-title" content="SMG 재고">
+<script>(function(){var t;try{t=localStorage.getItem('smg-theme')}catch(e){}if(t!=='light'&&t!=='dark')t=(window.matchMedia&&matchMedia('(prefers-color-scheme: dark)').matches)?'dark':'light';document.documentElement.dataset.theme=t;var c=t==='dark'?'#0B0B0C':'#FFFFFF';document.write('<meta name="theme-color" content="'+c+'"><meta name="apple-mobile-web-app-status-bar-style" content="'+(t==='dark'?'black':'default')+'">')})()</script><link rel="icon" href="icon-192.png"><link rel="manifest" href="manifest.json"><link rel="apple-touch-icon" href="icon-180.png"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-title" content="SMG 재고">
 <style>:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0}img{max-width:100%}[hidden]{display:none!important}
 /* 대표 판단 화면 */
 .kpis .tile .v.big{font-weight:800;color:var(--ink)}
@@ -550,6 +550,54 @@ tr.flag td{background:var(--warn-bg)}
 @media (min-width: 3000px){ body{zoom:1.45} }
 @media (min-width: 3600px){ body{zoom:1.7} }
 @media print{.top,.side,.tabbar{display:none}}
+/* ── 2026.11 리디자인: 머리줄 도구(글자 크기·화면 색), 화이트톤 머리줄, 넓은 화면 폭, 드롭 영역, 정렬 ── */
+.page{max-width:1800px;margin-inline:auto;width:100%}
+.htools{display:flex;align-items:center;gap:8px;flex:none}
+.fsz,.tone{display:inline-flex;border:1px solid #3a3a40;border-radius:8px;overflow:hidden;flex:none}
+.fsz button,.tone button{background:transparent;border:0;color:#d8d8dc;font-weight:700;font-size:13px;min-height:34px;padding:0 10px;min-width:2.6em;line-height:1;white-space:nowrap}
+.fsz button+button,.tone button+button{border-left:1px solid #3a3a40}
+.fsz button.on,.tone button.on{background:var(--red);color:#fff}
+.setrow{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-top:10px}.setrow .lb{min-width:72px;font-weight:700}
+.setrow .fsz,.setrow .tone{border-color:var(--line)}.setrow .fsz button,.setrow .tone button{color:var(--ink);min-height:44px}
+.setrow .fsz button+button,.setrow .tone button+button{border-left-color:var(--line)}
+.setrow .fsz button.on,.setrow .tone button.on{color:#fff}
+body::before{background:var(--top-bg)}
+:root{--top-bg:#FFFFFF}
+:root[data-theme="dark"]{--top-bg:#0B0B0C}
+/* 화이트톤: 흰 머리줄 + 빨간 밑줄 */
+:root[data-theme="light"] .top{background:#fff;color:var(--ink);border-bottom:3px solid var(--red);box-shadow:0 1px 0 rgba(0,0,0,.04)}
+:root[data-theme="light"] .logo-btn img{content:url(logo.png)}
+:root[data-theme="light"] .logo-btn:hover,:root[data-theme="light"] .store-btn:hover{background:#f1f1f3}
+:root[data-theme="light"] .store-btn{color:var(--ink)}
+:root[data-theme="light"] .store-btn .car{border-top-color:var(--ink)}
+:root[data-theme="light"] .notice{background:#f4f4f6;border-color:#e1e1e5;color:var(--ink)}
+:root[data-theme="light"] .notice .nt-more{color:var(--muted)}
+:root[data-theme="light"] .who{color:var(--ink-2)}
+:root[data-theme="light"] .me-btn{color:var(--ink)}
+:root[data-theme="light"] .me-btn:hover{background:#f1f1f3;border-color:var(--line)}
+:root[data-theme="light"] .me2{color:var(--muted)}
+:root[data-theme="light"] .fsz,:root[data-theme="light"] .tone{border-color:#d4d4da}
+:root[data-theme="light"] .fsz button,:root[data-theme="light"] .tone button{color:var(--ink-2)}
+:root[data-theme="light"] .fsz button+button,:root[data-theme="light"] .tone button+button{border-left-color:#d4d4da}
+:root[data-theme="light"] .fsz button.on,:root[data-theme="light"] .tone button.on{color:#fff}
+:root[data-theme="light"] .top .btn{background:#fff;color:var(--ink);border-color:var(--line)}
+/* 입력칸·고르기 칸 같은 높이 (사파리 select가 더 커지는 것 방지) */
+input.inp:not([type=checkbox]):not([type=radio]):not([type=file]),select.inp{height:38px}
+@media (pointer:coarse){input.inp:not([type=checkbox]):not([type=radio]):not([type=file]),select.inp{height:44px}}
+#app .tw table tbody input.inp,#app .tw table tbody select.inp{height:auto}
+/* 파일 끌어다 놓기 */
+.dropok{outline:2px dashed var(--red)!important;outline-offset:3px;background:color-mix(in srgb,var(--red) 6%,var(--surface))!important}
+.drop.on{background:color-mix(in srgb,var(--red) 6%,var(--surface))}
+.drophint{display:block;font-size:12px;color:var(--muted);margin-top:4px}
+/* 표: 카드 안에서 가로 스크롤, 숫자 칸 고정폭 숫자 */
+.card:has(>table){overflow-x:auto;-webkit-overflow-scrolling:touch}
+td,th{font-variant-numeric:tabular-nums}
+@media (max-width:900px){
+  .htools{order:8;flex:1 0 100%;justify-content:space-between;flex-wrap:wrap;row-gap:6px;min-width:0}
+  .fsz button,.tone button{min-height:36px;padding:0 9px}
+}
+@media (max-width:360px){.fsz button,.tone button{padding:0 6px;font-size:12px;min-width:2.3em}}
+
 
 /* 그래프: 모든 날짜·요일, 눈금선, 주말, 말풍선 */
 .chartbox{position:relative}
@@ -594,7 +642,7 @@ tr.flag td{background:var(--warn-bg)}
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 <script src="config.js"></script>
 <script src="firebase.js?v=30"></script>
-<script src="app.js?v=69"></script>
+<script src="app.js?v=70"></script>
 <script>if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});</script>
 
 </body></html>

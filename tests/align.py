@@ -85,7 +85,7 @@ LJS = r"""() => {
         if (th && td && !th.hasAttribute('colspan')) { const hb = contentBox(th), hc = th.getBoundingClientRect(), hs = getComputedStyle(th), tc = td.getBoundingClientRect(), tss = getComputedStyle(td); n++;
           if (Math.abs(hc.left - tc.left) > T || Math.abs(hc.right - tc.right) > T) bad.push({ kind: '헤더-열 경계', where: `표${ti} 열${ci}` });
           if (hs.paddingLeft !== tss.paddingLeft || hs.paddingRight !== tss.paddingRight) bad.push({ kind: '헤더-열 여백', where: `표${ti} 열${ci}`, sample: [hs.paddingLeft, tss.paddingLeft] });
-          if (hb) { if (c.num ? Math.abs((hc.right - parseFloat(hs.paddingRight)) - hb.r) > T : Math.abs((hc.left + parseFloat(hs.paddingLeft)) - hb.l) > T) bad.push({ kind: c.num ? '헤더 오른쪽 정렬' : '헤더 왼쪽 정렬', where: `표${ti} 열${ci}`, sample: [th.textContent.trim()] }); } } }
+          if (hb) { if (c.num ? Math.abs((hc.right - parseFloat(hs.paddingRight) * (parseFloat(getComputedStyle(document.documentElement).zoom) || 1)) - hb.r) > T : Math.abs((hc.left + parseFloat(hs.paddingLeft) * (parseFloat(getComputedStyle(document.documentElement).zoom) || 1)) - hb.l) > T) bad.push({ kind: c.num ? '헤더 오른쪽 정렬' : '헤더 왼쪽 정렬', where: `표${ti} 열${ci}`, sample: [th.textContent.trim()] }); } } }
     }
   });
   // 카드 그리드: 같은 줄 카드끼리 여백·제목/값 기준선 일치

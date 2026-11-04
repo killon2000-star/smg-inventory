@@ -64,9 +64,11 @@ JS=r"""()=>{const vw=document.documentElement.clientWidth,vh=innerHeight,iss=[];
  return iss}"""
 R={}
 with sync_playwright() as p:
-  br=p.chromium.launch()
+  ENG=os.environ.get('ENG','chromium'); TH=os.environ.get('THEME',''); ZM=os.environ.get('ZOOM','')
+  br=getattr(p,ENG).launch()
   for name,W,H,mob in DEV:
-    ctx=br.new_context(viewport={'width':W,'height':H},device_scale_factor=3 if W<500 else 2 if mob else 1,is_mobile=mob,has_touch=mob)
+    ctx=br.new_context(viewport={'width':W,'height':H},device_scale_factor=3 if W<500 else 2 if mob else 1,is_mobile=mob and ENG!='firefox',has_touch=mob)
+    TH and ctx.add_init_script(f"localStorage.setItem('smg-theme','{TH}')"); ZM and ctx.add_init_script(f"localStorage.setItem('smg-text-zoom','{ZM}')")
     pg=ctx.new_page(); errs=[]; pg.on('pageerror',lambda e:errs.append(str(e)))
     pg.route('**/*',lambda r:r.abort() if any(k in r.request.url for k in ('firebase','googleapis','firestore')) else r.continue_())
     pg.goto(B); pg.wait_for_selector('#page',timeout=30000); pg.wait_for_timeout(700)

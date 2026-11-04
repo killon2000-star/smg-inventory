@@ -42,7 +42,7 @@ const PERM_DEF = [
 ];
 
 const DEFAULT_ORDER = STORES.map(s => s.id);
-const APP_VERSION = '2026-11-02 18:30';   // 앱 화면을 마지막으로 고친 시각 (한국 시간)
+const APP_VERSION = '2026-11-04 10:00';   // 앱 화면을 마지막으로 고친 시각 (한국 시간)
 /* ───────── 작은 도구 ───────── */
 const $ = (s, el = document) => el.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -264,6 +264,7 @@ function render() {
       <span class="nm">${esc(sv)}</span><span class="car"></span>
     </button>
     ${noticeBar()}
+    ${headTools()}
     <div class="who"><button class="me-btn" id="meBtn" title="내 정보" aria-label="내 정보 · ${esc(S.user.name)}"><span class="me1"><b>${esc(S.user.name)}</b> ${esc(S.user.position || '')}</span><span class="me2">${esc(meLine(S.user))}</span></button>${S.mode === 'demo' ? '' : '<button class="btn sm" id="logout">로그아웃</button>'}</div>
   </header>
   ${S.mode === 'demo' ? `<div class="demobar"><span class="demo-tag">미리보기</span><label for="roleSel">권한별로 보기</label><select id="roleSel">${DEMO_ROLES.map(r => `<option value="${r.uid}" ${S.user.uid === r.uid ? 'selected' : ''}>${esc(r.label)}</option>`).join('')}</select><span class="muted hide-s">수원 실제 자료 · 저장한 내용은 새로고침하면 처음 상태로 돌아갑니다</span></div>` : ''}
@@ -272,7 +273,6 @@ function render() {
   <div class="shell">
     <nav class="side" aria-label="메뉴">
       ${nav.map(n => `${n.grp ? `<div class="grp">${n.grp}</div>` : ''}<button data-nav="${n.id}" class="${S.view === n.id ? 'on' : ''}">${esc(n.t)}${n.id === 'admin' && pendingN && can('approve') ? `<span class="cnt">${pendingN}</span>` : ''}</button>`).join('')}
-      <div style="margin:24px 12px 0">${textSizeBox()}</div>
       <div class="grp" style="margin-top:16px">앱 업데이트 ${fd(APP_VERSION.slice(0, 10))} ${APP_VERSION.slice(11)}</div>
     </nav>
     <main><div class="page" id="page">${pageView()}</div></main>
@@ -280,7 +280,7 @@ function render() {
   <nav class="tabbar" aria-label="아래 메뉴">${tabbar(nav)}</nav>
   ${S.ui.drawer ? `<div class="ov" id="ov"><div class="dr${S.ui.drawer.wide ? ' wide' : ''}" role="dialog" aria-modal="true">${S.ui.drawer()}</div></div>` : ''}
   ${S.ui.toast ? `<div class="toast" role="status">${esc(S.ui.toast)}</div>` : ''}`;
-  bind(); pinTabbar();
+  bind(); pinTabbar(); markDropZones();
   // 왼쪽 메뉴 아래가 시계에 가려지지 않게: 시계 높이만큼 아래 여백 (글자 크기 목록은 위로 펼침)
   const kc = document.querySelector('.kclock'); if (kc && kc.offsetHeight) document.documentElement.style.setProperty('--kch', kc.offsetHeight + 'px');
   fitSide();
@@ -2216,7 +2216,36 @@ async function readBook(f) {
   if (/\.csv$/i.test(f.name)) { let t = await f.text(); if (t.includes('\uFFFD')) t = new TextDecoder('euc-kr').decode(await f.arrayBuffer()); return XLSX.read(t.replace(/^\uFEFF/, ''), { type: 'string' }); }
   return XLSX.read(await f.arrayBuffer(), { type: 'array' });
 }
+// 파일 끌어다 놓기: 파일 고르기 버튼이 있는 칸 어디에 놓아도 그 버튼을 누른 것과 같게
+const FILE_BTNS = ['fileBtn', 'posFileBtn', 'rulesBtn', 'ibPlanFile', 'ibPlanImg', 'ibActFile', 'cntFile', 'machFileBtn'];
+let pendingDrop = null;
+const okType = (f, accept) => !accept || accept.split(',').some(a => { a = a.trim().toLowerCase(); if (!a) return false; if (a.endsWith('/*')) return (f.type || '').toLowerCase().startsWith(a.slice(0, -1)); if (a.startsWith('.')) return f.name.toLowerCase().endsWith(a); return (f.type || '').toLowerCase() === a; });
+function markDropZones() {
+  FILE_BTNS.forEach(id => {
+    const b = document.getElementById(id); if (!b || b.closest('.tabbar')) return;
+    const z = b.closest('.drop') || b.closest('.field') || b.closest('.card') || b.parentElement; if (!z || z.dataset.fzone) return;
+    z.dataset.fzone = id;
+    if (!z.classList.contains('drop') && !b.nextElementSibling?.classList?.contains('drophint')) b.insertAdjacentHTML('afterend', '<span class="drophint">또는 파일을 여기로 끌어다 놓기</span>');
+  });
+}
+const fzoneAt = e => e.target && e.target.closest ? e.target.closest('[data-fzone]') : null;
+let dzOn = null;
+document.addEventListener('dragover', e => { const z = fzoneAt(e); if (!z) return; e.preventDefault(); if (dzOn !== z) { dzOn && dzOn.classList.remove('dropok', 'on'); z.classList.add('dropok', 'on'); dzOn = z; } });
+document.addEventListener('dragleave', e => { if (dzOn && !dzOn.contains(e.relatedTarget)) { dzOn.classList.remove('dropok', 'on'); dzOn = null; } });
+document.addEventListener('drop', e => {
+  const z = fzoneAt(e); dzOn && dzOn.classList.remove('dropok', 'on'); dzOn = null;
+  if (!z) { if (e.dataTransfer && e.dataTransfer.types && [...e.dataTransfer.types].includes('Files')) e.preventDefault(); return; }
+  e.preventDefault(); const fs = [...(e.dataTransfer.files || [])]; if (!fs.length) return;
+  const b = document.getElementById(z.dataset.fzone); if (!b) return;
+  pendingDrop = fs; b.click(); setTimeout(() => { pendingDrop = null; }, 1500);
+});
+addEventListener('dragover', e => { if (e.dataTransfer && [...(e.dataTransfer.types || [])].includes('Files') && !fzoneAt(e)) e.preventDefault(); });
 function pickFile(accept, cb, multi) {
+  if (pendingDrop) {
+    const fs = pendingDrop.filter(f => okType(f, accept)); pendingDrop = null;
+    if (!fs.length) { alertBox('이 칸에 놓을 수 없는 파일 형식입니다. (' + accept + ')'); return; }
+    multi ? cb(fs) : cb(fs[0]); return;
+  }
   // 화면이 다시 그려져도 사라지지 않도록 문서 맨 끝에 따로 만든 파일 선택 칸
   let inp = document.getElementById('smgFilePick');
   if (inp) inp.remove();
@@ -2407,7 +2436,7 @@ function moreView() {
   const pendingN = can('approve') ? S.users.filter(u => u.status === 'pending').length : 0;
   const rest = nav.filter(n => !main.includes(n.id));
   return `${head('설정', `앱 업데이트 ${fd(APP_VERSION.slice(0, 10))} ${APP_VERSION.slice(11)}`)}
-  <div class="card"><h2>설정</h2>${textSizeBox()}</div>`;
+  <div class="card"><h2>설정</h2><div class="setrow"><span class="lb">글자 크기</span>${textSizeBox()}</div><div class="setrow"><span class="lb">화면 색</span>${themeBtn()}</div></div>`;
 }
 
 /* ───────── 로그인·신청 ───────── */
@@ -2796,7 +2825,8 @@ function bind() {
     if (d.sg) { S.stores = [d.sg]; S.sumStores = null; S.ui.storeMenu = false; S.ui.range = null; render(); goTop(); return; }
     if (d.nav) { if (d.nav === 'more' && S.view === 'more') return; S.view = d.nav; S.ui.drawer = null; render(); goTop(); return; }
     if (d.tzt) { S.ui.tzOpen = !S.ui.tzOpen; render(); return; }
-    if (d.tz) { applyTextSize(parseFloat(d.tz)); S.ui.tzOpen = false; render(); toast('글자 크기: ' + (TEXT_SIZES.find(x => x[1] === parseFloat(d.tz)) || [''])[0]); return; }
+    if (d.tz) { applyTextSize(parseFloat(d.tz)); S.ui.tzOpen = false; render(); return; }
+    if (d.tone) { applyTheme(d.tone); render(); return; }
     if (d.al != null) { const a = alerts(S.stores)[+d.al]; if (a && a.go) { a.go(); render(); } return; }
     if (d.pid && ev.target.tagName !== 'INPUT') { openProduct(d.pid); return; }
     if (d.close != null) { if (S.ui.stopScan) S.ui.stopScan(); S.ui.drawer = null; S.ui.posPreview = null; render(); return; }
@@ -2973,7 +3003,7 @@ function bind() {
     eq.onkeydown = e => { if (e.key === 'Enter') { const v = eq.value.trim(); const c = findProduct(v); if (c.length) { addLine(c[0].id, 1); render(); setTimeout(() => $('#eq') && $('#eq').focus(), 0); } else { const b = $('#eSug [data-add]'); if (b) b.click(); } } };
   }
   const drop = $('#drop');
-  if (drop && $('#fileBtn')) { drop.ondragover = e => { e.preventDefault(); drop.classList.add('on'); }; drop.ondragleave = () => drop.classList.remove('on'); drop.ondrop = e => { e.preventDefault(); drop.classList.remove('on'); if (e.dataTransfer.files[0]) readFile(e.dataTransfer.files[0]); }; }
+
   const ov = $('#ov'); if (ov) ov.onclick = e => { if (e.target === ov) { if (S.ui.stopScan) S.ui.stopScan(); S.ui.drawer = null; render(); } };
   document.onkeydown = e => { if (e.key === 'Escape' && (S.ui.drawer || S.ui.storeMenu)) { S.ui.drawer = null; S.ui.storeMenu = false; render(); } };
 }
@@ -3085,14 +3115,27 @@ document.addEventListener('drop', ev => {
   const im = fs.filter(isImg); if (im.length) ibImages(im); else fileRows(fs[0]).then(x => ibPlanLoaded(x)).catch(e => { S.ui.ibForm.err = e.message; render(); });
 });
 function goTop() { resetZoom(); window.scrollTo(0, 0); }
-const TEXT_SIZES = [['아주 작게', 0.82], ['작게', 0.9], ['보통', 1], ['크게', 1.12], ['아주 크게', 1.25]];
+const TEXT_SIZES = [['가-', 0.875, '작게'], ['가', 1, '보통'], ['가+', 1.125, '크게'], ['가++', 1.25, '아주 크게']];
+const nearZoom = z => TEXT_SIZES.reduce((a, b) => Math.abs(b[1] - z) < Math.abs(a[1] - z) ? b : a)[1];
 function applyTextSize(z) { S.ui.textZoom = z; document.documentElement.style.zoom = z === 1 ? '' : String(z); try { localStorage.setItem('smg-text-zoom', String(z)); } catch (e) { } }
-try { const z = parseFloat(localStorage.getItem('smg-text-zoom') || '1'); if (z && z !== 1) applyTextSize(z); } catch (e) { }
+try { const z = nearZoom(parseFloat(localStorage.getItem('smg-text-zoom') || '1') || 1); if (z !== 1) applyTextSize(z); } catch (e) { }
 function textSizeBox() {
-  const z = S.ui.textZoom || 1, cur = (TEXT_SIZES.find(x => x[1] === z) || TEXT_SIZES[2])[0];
-  return `<div class="tzbox"><button class="btn tzbtn" data-tzt="1" aria-expanded="${!!S.ui.tzOpen}"><span>글자 크기</span><b>${cur}</b><span class="car${S.ui.tzOpen ? ' up' : ''}"></span></button>
-    ${S.ui.tzOpen ? `<div class="tzlist" role="listbox" aria-label="글자 크기">${TEXT_SIZES.map(([t, v]) => `<button role="option" aria-selected="${z === v}" class="${z === v ? 'on' : ''}" data-tz="${v}" style="font-size:${Math.round(14 * v)}px">${t}${z === v ? ' ✓' : ''}</button>`).join('')}</div>` : ''}</div>`;
+  const z = S.ui.textZoom || 1;
+  return `<div class="fsz" role="group" aria-label="글자 크기">${TEXT_SIZES.map(([t, v, l]) => `<button type="button" class="${z === v ? 'on' : ''}" aria-pressed="${z === v}" data-tz="${v}" title="글자 ${l}" aria-label="글자 ${l}">${t}</button>`).join('')}</div>`;
 }
+// 화이트톤/블랙톤: 저장 → 다음에 열어도 유지. 상태 표시줄(맨 위) 색도 같이 (반투명 없음)
+function curTheme() { return document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light'; }
+function applyTheme(t) {
+  document.documentElement.dataset.theme = t;
+  const c = t === 'dark' ? '#0B0B0C' : '#FFFFFF';
+  document.querySelectorAll('meta[name=theme-color]').forEach(m => m.setAttribute('content', c));
+  try { localStorage.setItem('smg-theme', t); } catch (e) { }
+}
+function themeBtn() {
+  const d = curTheme() === 'dark';
+  return `<div class="tone" role="group" aria-label="화면 색"><button type="button" data-tone="light" class="${d ? '' : 'on'}" aria-pressed="${!d}">화이트톤</button><button type="button" data-tone="dark" class="${d ? 'on' : ''}" aria-pressed="${d}">블랙톤</button></div>`;
+}
+function headTools() { return `<div class="htools">${textSizeBox()}${themeBtn()}</div>`; }
 function setUser(u) {
   S.user = u;
   let ord = u && u.storeOrder; try { ord = ord || JSON.parse(localStorage.getItem('smg-store-order:' + (u ? u.uid : '')) || 'null'); } catch (e) { }
