@@ -317,6 +317,7 @@ function tabbar(nav) {
     for (let k = 1; k < groups.length; k++) { acc += groups[k - 1].length; const d = Math.abs(items.length - 2 * acc); if (!best || d < best.d) best = { d, n: acc }; }
     rows = best ? [items.slice(0, best.n), items.slice(best.n)] : [items.slice(0, Math.ceil(items.length / 2)), items.slice(Math.ceil(items.length / 2))];
   }
+  if (rows.length > 1) { const k = rows[1].findIndex(x => x.id === 'admin'); if (k >= 0) rows[0].push(...rows[1].splice(k, 1)); }   // 11/4 대표: 관리는 윗줄 끝, 설정 바로 위
   const btn = (x, i, row) => { const [t, ic2] = x.id === 'more' ? ['설정', 'more'] : (TAB[x.id] || [x.id, 'more']);
     return `<button data-nav="${x.id}" class="${S.view === x.id ? 'on' : ''}${i && row[i - 1].g !== x.g ? ' gs' : ''}">${ic(ic2, 18)}<span>${t}</span>${x.id === 'admin' && pendingN ? `<b class="tcnt">${pendingN}</b>` : ''}</button>`; };
   return `<div class="tabgrid ${rows.length > 1 ? 'two' : ''}">` + rows.map(r => `<div class="trow">${r.map(btn).join('')}</div>`).join('') + '</div>';
