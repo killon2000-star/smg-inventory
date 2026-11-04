@@ -1,6 +1,6 @@
 <!doctype html>
 <html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<script>(function(){var t;try{t=localStorage.getItem('smg-theme')}catch(e){}if(t!=='light'&&t!=='dark')t=(window.matchMedia&&matchMedia('(prefers-color-scheme: dark)').matches)?'dark':'light';document.documentElement.dataset.theme=t;var c=t==='dark'?'#0B0B0C':'#FFFFFF';document.write('<meta name="theme-color" content="'+c+'"><meta name="apple-mobile-web-app-status-bar-style" content="'+(t==='dark'?'black':'default')+'">')})()</script><link rel="icon" href="icon-192.png"><link rel="manifest" href="manifest.json"><link rel="apple-touch-icon" href="icon-180.png"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-title" content="온인터">
+<script>(function(){var t;try{t=localStorage.getItem('smg-theme')}catch(e){}if(t!=='light'&&t!=='dark')t=(window.matchMedia&&matchMedia('(prefers-color-scheme: dark)').matches)?'dark':'light';document.documentElement.dataset.theme=t;var c=t==='dark'?'#0B0B0C':'#FFFFFF';document.write('<meta name="theme-color" content="'+c+'"><meta name="apple-mobile-web-app-status-bar-style" content="'+(t==='dark'?'black':'default')+'">')})()</script><link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png"><link rel="icon" type="image/png" sizes="192x192" href="icon-192.png"><link rel="manifest" href="manifest.json"><link rel="apple-touch-icon" href="icon-180.png"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-title" content="온인터">
 <style>:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0}img{max-width:100%}[hidden]{display:none!important}
 /* 대표 판단 화면 */
 .kpis .tile .v.big{font-weight:800;color:var(--ink)}
@@ -62,31 +62,31 @@
 <style>
 /* Layout: black brand bar with store switcher top-left, side nav on wide screens, bottom tab bar on phones. Numbers right-aligned, tabular. */
 :root{
-  --red:#1B8A4B; --red-ink:#13693A; --black:#0B0B0C; --green:#1B8A4B; --green-dk:#0E4F2B; --green-tint:#E7F4EC; --hot:#C62828;
+  --red:#19776A; --red-ink:#115E53; --black:#0B0B0C; --green:#19776A; --green-dk:#0D4A42; --green-tint:#E5F3F0; --brand-teal:#489198; --brand-blue:#3571A5; --hot:#C62828;
   --bg:#F2F2F3; --surface:#FFFFFF; --surface-2:#F7F7F8; --line:#E1E1E5; --line-2:#ECECEF;
   --ink:#141416; --ink-2:#3A3A40; --muted:#6C6C75;
   --ok:#1E7A46; --warn:#B86200; --bad:#A8232A; --info:#2F5D8A;
   --warn-bg:#FFF3E0; --ok-bg:#E8F3EC; --bad-bg:#F6F6F7; --sel:#EDEDF0;
-  --s-suwon:#1B8A4B; --s-boxcafe:#2B2B30; --s-museum:#3E6A8A; --s-omake:#B87A12; --s-limission:#2E7D6B; --s-gukdae:#6B5B95;
+  --s-suwon:#19776A; --s-boxcafe:#2B2B30; --s-museum:#3E6A8A; --s-omake:#B87A12; --s-limission:#2E7D6B; --s-gukdae:#6B5B95;
   --f-body:"IBM Plex Sans KR",system-ui,-apple-system,"Apple SD Gothic Neo","Malgun Gothic",sans-serif;
   --f-num:"Oswald","IBM Plex Sans KR",system-ui,sans-serif;
   --r:8px; --shadow:0 1px 2px rgba(0,0,0,.06),0 4px 16px rgba(0,0,0,.06);
 }
 @media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
-  --red:#1A8F4C; --red-ink:#5FD08E; --hot:#FF6B70; --green:#5FD08E; --green-dk:#1E7A45; --green-tint:#13291C;
+  --red:#17705F; --red-ink:#5CCBB2; --hot:#FF6B70; --green:#5CCBB2; --green-dk:#17705F; --green-tint:#10272A;
   --bg:#111113; --surface:#1A1A1E; --surface-2:#202025; --line:#2E2E35; --line-2:#26262C;
   --ink:#ECECEF; --ink-2:#C9C9CF; --muted:#9696A0;
   --ok:#4CC27E; --warn:#F0A040; --bad:#FF6B70; --info:#7FB0DE;
   --warn-bg:#33240F; --ok-bg:#14291D; --bad-bg:#222227; --sel:#2A2A31;
-  --s-suwon:#5FD08E; --s-boxcafe:#BFBFC7; --s-museum:#6FA1C6; --s-omake:#E0A43C; --s-limission:#5BBF9F; --s-gukdae:#A495CC;
+  --s-suwon:#5CCBB2; --s-boxcafe:#BFBFC7; --s-museum:#6FA1C6; --s-omake:#E0A43C; --s-limission:#5BBF9F; --s-gukdae:#A495CC;
   --shadow:0 1px 2px rgba(0,0,0,.4),0 4px 16px rgba(0,0,0,.3); color-scheme:dark}}
 :root[data-theme="dark"]{
-  --red:#1A8F4C; --red-ink:#5FD08E; --hot:#FF6B70; --green:#5FD08E; --green-dk:#1E7A45; --green-tint:#13291C;
+  --red:#17705F; --red-ink:#5CCBB2; --hot:#FF6B70; --green:#5CCBB2; --green-dk:#17705F; --green-tint:#10272A;
   --bg:#111113; --surface:#1A1A1E; --surface-2:#202025; --line:#2E2E35; --line-2:#26262C;
   --ink:#ECECEF; --ink-2:#C9C9CF; --muted:#9696A0;
   --ok:#4CC27E; --warn:#F0A040; --bad:#FF6B70; --info:#7FB0DE;
   --warn-bg:#33240F; --ok-bg:#14291D; --bad-bg:#222227; --sel:#2A2A31;
-  --s-suwon:#5FD08E; --s-boxcafe:#BFBFC7; --s-museum:#6FA1C6; --s-omake:#E0A43C; --s-limission:#5BBF9F; --s-gukdae:#A495CC;
+  --s-suwon:#5CCBB2; --s-boxcafe:#BFBFC7; --s-museum:#6FA1C6; --s-omake:#E0A43C; --s-limission:#5BBF9F; --s-gukdae:#A495CC;
   --shadow:0 1px 2px rgba(0,0,0,.4),0 4px 16px rgba(0,0,0,.3); color-scheme:dark}
 *{box-sizing:border-box}
 html,body{height:100%}
@@ -129,8 +129,8 @@ button{cursor:pointer}
 .schip.more{color:var(--muted);font-weight:600}
 .logo-btn{background:none;border:0;padding:4px;border-radius:6px;display:flex;align-items:center;flex:none}
 .logo-btn:hover{background:#1d1d20}
-.logo-btn img{height:40px;width:auto}
-@media (max-width:900px){.logo-btn img{height:30px}}
+.logo-btn{gap:8px}.logo-btn img{height:40px;width:40px;flex:none;border-radius:50%;box-shadow:0 0 0 1px rgba(0,0,0,.08)}
+@media (max-width:900px){.logo-btn img{height:30px;width:30px}.logo-btn .wm{font-size:16px}}
 /* store menu */
 .pop{position:fixed;z-index:70;top:calc(env(safe-area-inset-top,0px) + 58px);left:max(8px,env(safe-area-inset-left,0px));width:min(360px,calc(100vw - 16px));
   background:var(--surface);color:var(--ink);border:1px solid var(--line);border-radius:10px;box-shadow:var(--shadow);padding:10px}
@@ -507,7 +507,7 @@ tr.flag td{background:var(--warn-bg)}
 .drop.on{border-color:var(--red)}
 .login{max-width:520px;margin:30px auto;display:flex;flex-direction:column;gap:14px}
 .login .brand{display:flex;flex-direction:column;align-items:center;gap:8px;padding:20px;background:var(--black);border-radius:10px;color:#fff}
-.login .brand img{height:64px}
+.login .brand img{height:72px;width:72px;border-radius:50%}
 .gbtn{display:flex;align-items:center;justify-content:center;gap:10px;background:#fff;color:#1f1f1f;border:1px solid #dadce0;border-radius:8px;min-height:44px;font-weight:600}
 
 @media (max-width: 900px){
@@ -572,7 +572,6 @@ body::before{background:var(--top-bg)}
 :root[data-theme="dark"]{--top-bg:#0B0B0C}
 /* 화이트톤: 흰 머리줄 + 빨간 밑줄 */
 :root[data-theme="light"] .top{background:#fff;color:var(--ink);border-bottom:3px solid var(--red);box-shadow:0 1px 0 rgba(0,0,0,.04)}
-:root[data-theme="light"] .logo-btn img{content:url(logo.png)}
 :root[data-theme="light"] .logo-btn:hover,:root[data-theme="light"] .store-btn:hover{background:#f1f1f3}
 :root[data-theme="light"] .store-btn{color:var(--ink)}
 :root[data-theme="light"] .store-btn .car{border-top-color:var(--ink)}
@@ -641,7 +640,7 @@ td,th{font-variant-numeric:tabular-nums}
 .flt .fseg:has(> :nth-child(6)){grid-template-columns:repeat(3,1fr)}
 @media(max-width:520px){.eqi{min-width:calc(50% - 20px)}.eq .op{width:14px;justify-content:center}.eqi b{font-size:21px}}
 </style>
-</head><body><div id="app"><div class="login"><div class="brand"><b>온인터내셔널</b><span>불러오는 중…</span></div></div></div>
+</head><body><div id="app"><div class="login"><div class="brand"><img src="oninter_logo.png" alt="" width="72" height="72"><b>온인터내셔널</b><span>불러오는 중…</span></div></div></div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>

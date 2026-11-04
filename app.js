@@ -49,7 +49,7 @@ const PERM_DEF = [
 ];
 
 const DEFAULT_ORDER = STORES.map(s => s.id);
-const APP_VERSION = '2026-11-04 10:00';   // 앱 화면을 마지막으로 고친 시각 (한국 시간)
+const APP_VERSION = '2026-11-04 11:30';   // 앱 화면을 마지막으로 고친 시각 (한국 시간)
 /* ───────── 작은 도구 ───────── */
 const $ = (s, el = document) => el.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -267,7 +267,7 @@ function render() {
   const sv = S.stores.length === 1 ? storeName(S.stores[0]) : `${S.stores.length}개 매장 함께 보기`;
   app.innerHTML = `
   <header class="top">
-    <button class="logo-btn" id="logoHome" aria-label="첫 화면으로"><span class="wm" aria-label="온인터내셔널">온인터내셔널</span></button>
+    <button class="logo-btn" id="logoHome" aria-label="첫 화면으로"><img src="oninter_logo.png" alt="" width="40" height="40"><span class="wm">온인터내셔널</span></button>
     <button class="store-btn" id="storeBtn" aria-haspopup="true" aria-expanded="${S.ui.storeMenu}">
       <span class="nm">${esc(sv)}</span><span class="car"></span>
     </button>
@@ -2500,7 +2500,7 @@ function loginView() {
   const f = S.ui.apply ||= { name: '', company: '', other: '', places: [], position: '', phone: '', memo: '' };
   const sent = S.ui.applied;
   return `<div style="padding:16px"><div class="login">
-    <div class="brand"><span class="wm big">온인터내셔널</span><b style="font-size:15px">매장·매출 관리</b><span style="font-size:13px;color:#E7F4EC">오프라인 매장 · 콜라보카페 · 온라인 운영대행 · 온라인쿠지</span></div>
+    <div class="brand"><img src="oninter_logo.png" alt="온인터내셔널 로고" width="72" height="72"><span class="wm big">온인터내셔널</span><b style="font-size:15px">매장·매출 관리</b><span style="font-size:13px;color:#E5F3F0">오프라인 매장 · 콜라보카페 · 온라인 운영대행 · 온라인쿠지</span></div>
     ${S.mode === 'demo' ? '<div class="note">미리보기: 직원이 처음 들어오면 보는 화면입니다. 실제로는 구글 로그인 후 이 신청서를 냅니다.</div>' : ''}
     ${inAppNotice()}
     ${sent ? `<div class="card"><h2>🔸 승인 대기 중</h2><p style="margin:0">신청을 보냈습니다. 유명훈 본부장님이 승인하면 바로 쓸 수 있습니다.</p></div>${S.mode === 'live' ? '<button class="btn" id="logout2">다른 계정으로 로그인</button>' : ''}` : S.mode === 'live' && !S.ui.authUser ? `
