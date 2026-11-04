@@ -217,20 +217,20 @@ function alerts(stores) {
 }
 
 /* ───────── 렌더 뼈대 ───────── */
-const NAV = [   // 관련 메뉴끼리 묶음(g): 요약 → 재고·입고 → 기록 → 매출 분석 → 관리
+const NAV = [   // 관련 메뉴끼리 묶음(g): 요약 → 매출 분석 → 재고·입고 → 기록 → 관리
   { id: 'home', t: '홈', i: 'home', g: 1, show: () => true },
   { id: 'ipnow', t: 'IP 현황', g: 1, show: () => true },
-  { id: 'products', t: '상품·재고', i: 'box', g: 2, show: () => true },
-  { id: 'entry', t: '입출고 등록', i: 'plus', g: 2, show: () => can('move') },
-  { id: 'inbound', t: '입고 확인', g: 2, show: () => can('move') },
-  { id: 'transfer', t: '매장 이동', g: 2, show: () => can('move') },
-  { id: 'count', t: '실사', i: 'check', g: 2, show: () => can('count') },
-  { id: 'records', t: '기록', g: 3, show: () => !limited() },
-  { id: 'files', t: '파일 이력', g: 3, show: () => !limited() && (can('approve') || can('sales') || can('move')) },
-  { id: 'sales', t: '매출', grp: '관리자', g: 4, show: () => can('sales') },
-  { id: 'biz', t: '사업부 매출', g: 4, show: () => can('sales') },
-  { id: 'collab', t: '콜라보 분석', g: 4, show: () => can('sales') },
-  { id: 'settle', t: '정산', g: 4, show: () => canSettle() },
+  { id: 'sales', t: '매출', grp: '매출 분석', g: 2, show: () => can('sales') },
+  { id: 'biz', t: '사업부 매출', g: 2, show: () => can('sales') },
+  { id: 'collab', t: '콜라보 분석', g: 2, show: () => can('sales') },
+  { id: 'settle', t: '정산', g: 2, show: () => canSettle() },
+  { id: 'products', t: '상품·재고', i: 'box', grp: '재고', g: 3, show: () => true },
+  { id: 'entry', t: '입출고 등록', i: 'plus', g: 3, show: () => can('move') },
+  { id: 'inbound', t: '입고 확인', g: 3, show: () => can('move') },
+  { id: 'transfer', t: '매장 이동', g: 3, show: () => can('move') },
+  { id: 'count', t: '실사', i: 'check', g: 3, show: () => can('count') },
+  { id: 'records', t: '기록', g: 4, show: () => !limited() },
+  { id: 'files', t: '파일 이력', g: 4, show: () => !limited() && (can('approve') || can('sales') || can('move')) },
   { id: 'admin', t: '관리', g: 5, show: () => can('approve') || isOwner() },
 ];
 // 글칸에서 바로 버튼을 누를 때: 칸이 바뀌어 화면을 다시 그리면 누른 버튼이 사라져 클릭이 안 먹힘 → 손을 뗄 때까지 미룸
