@@ -64,6 +64,8 @@ h4.bizname{font-size:1.15em;display:flex;align-items:center;gap:7px}
 .bizsoon{font-size:13px;margin:-8px 0 16px;display:flex;flex-wrap:wrap;gap:6px;align-items:center}
 .blogform{display:grid;grid-template-columns:160px 180px 1fr auto;gap:8px;align-items:end;margin-bottom:10px}
 .blogform .field{min-width:0}.blogform .inp{width:100%;box-sizing:border-box}
+.show-s{display:none}.dec .dgrid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-top:12px}.dec .dbox{border:1px solid var(--line);border-left:4px solid var(--green,var(--info));border-radius:6px;padding:10px 12px;background:var(--surface);min-width:0}.dec .dbox.warn{border-left-color:var(--warn);background:var(--warn-bg)}.dec h3{margin:0 0 6px;font-size:15px}.dec .dl{margin:0;padding-left:18px;font-size:14px;line-height:1.55}.dec .dl li{margin:3px 0;overflow-wrap:anywhere}.dec .bizname,.bizname{font-weight:800}.dcfg{margin-top:12px}.dcfg summary{cursor:pointer;font-weight:700}.dform{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:8px;align-items:end;margin-top:8px}.dform .field{display:flex;flex-direction:column;gap:3px;font-size:13px}.dform .inp{width:100%;min-width:0}
+@media(max-width:1100px){.dec .dgrid{grid-template-columns:1fr}}@media(max-width:640px){.dform{grid-template-columns:1fr 1fr}}
 @media(max-width:640px){.blogform{grid-template-columns:1fr 1fr}}.tile.biz.tot{background:var(--green-tint)}.tile.biz.empty{border-top-style:dashed}
 :root[data-theme="dark"] .tabbar button.on{color:var(--red-ink)}@media (prefers-color-scheme: dark){:root:not([data-theme="light"]) .tabbar button.on{color:var(--red-ink)}}
 </style>
@@ -554,7 +556,7 @@ tr.flag td{background:var(--warn-bg)}
   .tile .v{font-size:clamp(17px,5.2vw,22px)}
   .tile .v small{font-size:11px}
   .tile .v.long{font-size:clamp(15px,4.4vw,20px)}
-  .hide-s{display:none}
+  .hide-s{display:none}.show-s{display:revert!important}
   .formgrid{grid-template-columns:1fr}
   .formgrid .field{grid-column:auto!important}
   td.nm{min-width:140px}
@@ -659,7 +661,7 @@ td,th{font-variant-numeric:tabular-nums}
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 <script src="config.js"></script>
 <script src="firebase.js?v=30"></script>
-<script src="app.js?v=73"></script>
+<script src="app.js?v=74"></script>
 <script>if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});</script>
 
 </body></html>
