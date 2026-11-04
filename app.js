@@ -319,8 +319,12 @@ function tabbar(nav) {
   }
   if (rows.length > 1) { const k = rows[1].findIndex(x => x.id === 'admin'); if (k >= 0) rows[0].push(...rows[1].splice(k, 1)); }   // 11/4 대표: 관리는 윗줄 끝, 설정 바로 위
   const btn = (x, i, row) => { const [t, ic2] = x.id === 'more' ? ['설정', 'more'] : (TAB[x.id] || [x.id, 'more']);
-    return `<button data-nav="${x.id}" class="${S.view === x.id ? 'on' : ''}${i && row[i - 1].g !== x.g ? ' gs' : ''}">${ic(ic2, 18)}<span>${t}</span>${x.id === 'admin' && pendingN ? `<b class="tcnt">${pendingN}</b>` : ''}</button>`; };
-  return `<div class="tabgrid ${rows.length > 1 ? 'two' : ''}">` + rows.map(r => `<div class="trow">${r.map(btn).join('')}</div>`).join('') + '</div>';
+    return `<button data-nav="${x.id}" class="${S.view === x.id ? 'on' : ''}${i && (!row[i - 1] || row[i - 1].g !== x.g) ? ' gs' : ''}">${ic(ic2, 18)}<span>${t}</span>${x.id === 'admin' && pendingN ? `<b class="tcnt">${pendingN}</b>` : ''}</button>`; };
+  // 11/4 대표: 간격 맞추기 → 두 줄 모두 같은 칸 너비. 짧은 줄은 관리 앞에 빈칸을 둬서 관리가 설정 바로 위에 오게
+  const cols = Math.max(...rows.map(r => r.length));
+  rows.forEach(r => { while (r.length < cols) { const k = r.findIndex(x => x && x.id === 'admin'); r.splice(k >= 0 ? k : r.length, 0, null); } });
+  const cell = (x, i, row) => x ? btn(x, i, row) : '<span class="tgap" aria-hidden="true"></span>';
+  return `<div class="tabgrid ${rows.length > 1 ? 'two' : ''}" style="--tcols:${cols}">` + rows.map(r => `<div class="trow">${r.map(cell).join('')}</div>`).join('') + '</div>';
 }
 function applyStoreOrder(order) {
   if (!Array.isArray(order) || !order.length) return;
