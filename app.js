@@ -217,21 +217,21 @@ function alerts(stores) {
 }
 
 /* ───────── 렌더 뼈대 ───────── */
-const NAV = [
-  { id: 'home', t: '홈', i: 'home', show: () => true },
-  { id: 'ipnow', t: 'IP 현황', show: () => true },
-  { id: 'products', t: '상품·재고', i: 'box', show: () => true },
-  { id: 'entry', t: '입출고 등록', i: 'plus', show: () => can('move') },
-  { id: 'count', t: '실사', i: 'check', show: () => can('count') },
-  { id: 'inbound', t: '입고 확인', show: () => can('move') },
-  { id: 'transfer', t: '매장 이동', show: () => can('move') },
-  { id: 'records', t: '기록', show: () => !limited() },
-  { id: 'files', t: '파일 이력', show: () => !limited() && (can('approve') || can('sales') || can('move')) },
-  { id: 'sales', t: '매출', grp: '관리자', show: () => can('sales') },
-  { id: 'biz', t: '사업부 매출', show: () => can('sales') },
-  { id: 'collab', t: '콜라보 분석', show: () => can('sales') },
-  { id: 'settle', t: '정산', show: () => canSettle() },
-  { id: 'admin', t: '관리', show: () => can('approve') || isOwner() },
+const NAV = [   // 관련 메뉴끼리 묶음(g): 요약 → 재고·입고 → 기록 → 매출 분석 → 관리
+  { id: 'home', t: '홈', i: 'home', g: 1, show: () => true },
+  { id: 'ipnow', t: 'IP 현황', g: 1, show: () => true },
+  { id: 'products', t: '상품·재고', i: 'box', g: 2, show: () => true },
+  { id: 'entry', t: '입출고 등록', i: 'plus', g: 2, show: () => can('move') },
+  { id: 'inbound', t: '입고 확인', g: 2, show: () => can('move') },
+  { id: 'transfer', t: '매장 이동', g: 2, show: () => can('move') },
+  { id: 'count', t: '실사', i: 'check', g: 2, show: () => can('count') },
+  { id: 'records', t: '기록', g: 3, show: () => !limited() },
+  { id: 'files', t: '파일 이력', g: 3, show: () => !limited() && (can('approve') || can('sales') || can('move')) },
+  { id: 'sales', t: '매출', grp: '관리자', g: 4, show: () => can('sales') },
+  { id: 'biz', t: '사업부 매출', g: 4, show: () => can('sales') },
+  { id: 'collab', t: '콜라보 분석', g: 4, show: () => can('sales') },
+  { id: 'settle', t: '정산', g: 4, show: () => canSettle() },
+  { id: 'admin', t: '관리', g: 5, show: () => can('approve') || isOwner() },
 ];
 // 글칸에서 바로 버튼을 누를 때: 칸이 바뀌어 화면을 다시 그리면 누른 버튼이 사라져 클릭이 안 먹힘 → 손을 뗄 때까지 미룸
 let inChange = false, ptrDown = false, renderPending = false;
@@ -307,12 +307,19 @@ const TAB = { home: ['홈', 'home'], ipnow: ['IP현황', 'star'], products: ['�
 const TAB_MAIN = ['home', 'products', 'entry', 'transfer', 'sales', 'count'];
 function tabbar(nav) {
   const pendingN = can('approve') ? S.users.filter(u => u.status === 'pending').length : 0;
-  // 대표 지시 11/3: 숨김 메뉴 없이 모든 메뉴를 아래에 다 보이게 (최대 두 줄, 같은 크기 칸)
-  const out = [...nav.map(n => n.id), 'more'], cols = out.length <= 6 ? out.length : Math.ceil(out.length / 2);
-  return `<div class="tabgrid ${out.length > 6 ? 'two' : ''}" style="grid-template-columns:repeat(${cols},minmax(0,1fr))">` + out.map(id => {
-    const [t, i] = id === 'more' ? ['설정', 'more'] : (TAB[id] || [id, 'more']);
-    return `<button data-nav="${id}" class="${S.view === id ? 'on' : ''}">${ic(i, 18)}<span>${t}</span>${id === 'admin' && pendingN ? `<b class="tcnt">${pendingN}</b>` : ''}</button>`;
-  }).join('') + '</div>';
+  // 대표 지시 11/3: 숨김 메뉴 없이 모든 메뉴를 아래에 다 보이게 (최대 두 줄)
+  // 11/4: 관련 메뉴끼리 붙여서, 묶음 사이에 옅은 구분선. 한 묶음이 두 줄로 갈라지지 않게 줄을 나눔
+  const items = [...nav.map(n => ({ id: n.id, g: n.g || 9 })), { id: 'more', g: 5 }];
+  const groups = []; items.forEach(x => { const l = groups[groups.length - 1]; if (l && l[0].g === x.g) l.push(x); else groups.push([x]); });
+  let rows = [items];
+  if (items.length > 6) {   // 두 줄: 줄 길이 차이가 가장 작은 묶음 경계에서 나눔
+    let best = null, acc = 0;
+    for (let k = 1; k < groups.length; k++) { acc += groups[k - 1].length; const d = Math.abs(items.length - 2 * acc); if (!best || d < best.d) best = { d, n: acc }; }
+    rows = best ? [items.slice(0, best.n), items.slice(best.n)] : [items.slice(0, Math.ceil(items.length / 2)), items.slice(Math.ceil(items.length / 2))];
+  }
+  const btn = (x, i, row) => { const [t, ic2] = x.id === 'more' ? ['설정', 'more'] : (TAB[x.id] || [x.id, 'more']);
+    return `<button data-nav="${x.id}" class="${S.view === x.id ? 'on' : ''}${i && row[i - 1].g !== x.g ? ' gs' : ''}">${ic(ic2, 18)}<span>${t}</span>${x.id === 'admin' && pendingN ? `<b class="tcnt">${pendingN}</b>` : ''}</button>`; };
+  return `<div class="tabgrid ${rows.length > 1 ? 'two' : ''}">` + rows.map(r => `<div class="trow">${r.map(btn).join('')}</div>`).join('') + '</div>';
 }
 function applyStoreOrder(order) {
   if (!Array.isArray(order) || !order.length) return;
