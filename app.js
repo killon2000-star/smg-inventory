@@ -292,7 +292,8 @@ function render() {
   <nav class="tabbar" aria-label="아래 메뉴">${tabbar(nav)}</nav>
   ${S.ui.drawer ? `<div class="ov" id="ov"><div class="dr${S.ui.drawer.wide ? ' wide' : ''}" role="dialog" aria-modal="true">${S.ui.drawer()}</div></div>` : ''}
   ${S.ui.toast ? `<div class="toast" role="status">${esc(S.ui.toast)}</div>` : ''}`;
-  bind(); pinTabbar(); markDropZones();
+  { const tb = document.querySelector('.tabbar'), z = S.ui.textZoom || 1; if (tb) tb.style.zoom = z === 1 ? '' : String(1 / z); }   // 글자 크기를 바꿔도 아래 메뉴는 화면 폭에 딱 맞게
+  bind(); pinTabbar(); fitTabLabels(); markDropZones();
   // 왼쪽 메뉴 아래가 시계에 가려지지 않게: 시계 높이만큼 아래 여백 (글자 크기 목록은 위로 펼침)
   const kc = document.querySelector('.kclock'); if (kc && kc.offsetHeight) document.documentElement.style.setProperty('--kch', kc.offsetHeight + 'px');
   fitSide();
@@ -305,6 +306,11 @@ function render() {
 // 아래 메뉴: 권한 있는 메뉴를 모두 보여 줌 (6개 넘으면 두 줄)
 const TAB = { home: ['홈', 'home'], ipnow: ['IP현황', 'star'], products: ['상품', 'box'], entry: ['입출고', 'plus'], count: ['실사', 'check'], inbound: ['입고확인', 'truck'], transfer: ['매장이동', 'swap'], records: ['기록', 'list'], files: ['파일', 'list'], sales: ['매출', 'chart'], biz: ['사업부', 'chart'], collab: ['콜라보', 'star'], settle: ['정산', 'won'], admin: ['관리', 'user'], more: ['설정', 'gear'] };
 const TAB_MAIN = ['home', 'products', 'entry', 'transfer', 'sales', 'count'];
+// 아래 메뉴 글씨가 칸 밖으로 나가지 않게: 넘치면 그 칸만 글씨를 줄임 (최소 8px)
+function fitTabLabels() {
+  document.querySelectorAll('.tabbar button span').forEach(s => { s.style.fontSize = ''; let f = parseFloat(getComputedStyle(s).fontSize) || 11; while (s.scrollWidth > s.clientWidth + 0.5 && f > 8) { f -= 0.5; s.style.fontSize = f + 'px'; } });
+}
+addEventListener('resize', () => { try { fitTabLabels(); } catch (e) { } });
 function tabbar(nav) {
   const pendingN = can('approve') ? S.users.filter(u => u.status === 'pending').length : 0;
   // 대표 지시 11/3: 숨김 메뉴 없이 모든 메뉴를 아래에 다 보이게 (최대 두 줄)

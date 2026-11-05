@@ -51,7 +51,8 @@
 .wm{font-weight:800;letter-spacing:-.02em;font-size:20px;color:var(--green);white-space:nowrap;padding:0 4px}
 .wm.big{font-size:30px}@media (max-width:1000px){.wm{font-size:15px;padding:0 2px}}
 .login .brand{background:var(--green-dk)!important}.login .brand .wm{color:#fff}
-.bizgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px;margin-bottom:18px}
+.bizgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(220px,100%),1fr));gap:10px;margin-bottom:18px}
+.bizgrid>*{min-width:0;max-width:100%;overflow:hidden}.tile.biz,.tile.biz *{min-width:0;white-space:normal!important;overflow-wrap:anywhere;word-break:keep-all}.tile.biz .lb.bizname{display:block!important;padding-right:14px;position:relative}.tile.biz .lb.bizname .go{position:absolute;right:0;top:0}.tile.biz .lb.bizname::before{vertical-align:-0.12em;margin-right:7px}.tile.biz .todobox,.todobox{min-width:0;overflow-wrap:anywhere}
 .tile.biz{border-top:3px solid var(--green)}
 .bizname{font-weight:800!important}
 .tile.biz .lb.bizname{font-size:1.2em;display:flex;align-items:center;gap:7px}
@@ -532,10 +533,10 @@ tr.flag td{background:var(--warn-bg)}
   .tabbar{display:block;position:fixed;left:0;right:0;bottom:0;z-index:55;background:var(--surface);border-top:1px solid var(--line);
     padding-bottom:env(safe-area-inset-bottom,0px);padding-left:env(safe-area-inset-left,0px);padding-right:env(safe-area-inset-right,0px)}
   .tabgrid{display:block;width:100%}
-  .trow{display:flex;width:100%}.trow+.trow{border-top:1px solid var(--line)}
-  .trow button,.trow .tgap{flex:0 0 calc(100% / var(--tcols,1));width:calc(100% / var(--tcols,1))}
+  .trow{display:grid;grid-template-columns:repeat(var(--tcols,1),minmax(0,1fr));width:100%;min-width:0}.trow+.trow{border-top:1px solid var(--line)}
+  .trow button,.trow .tgap{min-width:0;width:auto;overflow:hidden}
   .tabbar button.gs::before{content:'';position:absolute;left:0;top:22%;bottom:22%;width:1px;background:var(--line)}
-  .tabbar{max-width:100vw;overflow:hidden}
+  .tabbar{width:auto;max-width:none;overflow:hidden}
   main{padding-bottom:calc(var(--tabh,64px) + 20px)}
   .tabgrid.two button{min-height:46px;padding:4px 1px 3px}
   .tabbar button{position:relative;background:none;border:0;min-height:52px;justify-content:center;padding:7px 1px 5px;display:flex;flex-direction:column;align-items:center;gap:2px;font-size:11px;font-weight:600;color:var(--muted);white-space:nowrap;min-width:0}
@@ -543,7 +544,7 @@ tr.flag td{background:var(--warn-bg)}
   .moregrid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
   .mbtn{position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;min-height:76px;border:1px solid var(--line);border-radius:10px;background:var(--surface);font-weight:700;font-size:13px;color:var(--ink)}
   .mbtn .tcnt{top:6px;left:auto;right:8px}
-  .tabbar button span{overflow:hidden;text-overflow:ellipsis;max-width:100%}
+  .tabbar button span{display:block;overflow:hidden;text-overflow:clip;white-space:nowrap;max-width:100%;text-align:center}
   .tabbar button.on{color:var(--red)}
   .tabbar svg{width:20px;height:20px}
   .tcnt{position:absolute;top:3px;left:calc(50% + 6px);background:var(--red);color:#fff;font-size:10px;line-height:15px;min-width:15px;padding:0 4px;border-radius:8px}
@@ -663,7 +664,7 @@ td,th{font-variant-numeric:tabular-nums}
 <script defer src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 <script defer src="config.js"></script>
 <script defer src="firebase.js?v=31"></script>
-<script defer src="app.js?v=79"></script>
+<script defer src="app.js?v=80"></script>
 <script>if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});</script>
 
 </body></html>
