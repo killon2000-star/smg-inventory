@@ -50,7 +50,7 @@ const PERM_DEF = [
 ];
 
 const DEFAULT_ORDER = STORES.map(s => s.id);
-const APP_VERSION = '2026-11-04 11:43';   // 앱 화면을 마지막으로 고친 시각 (한국 시간)
+const APP_VERSION = '2026-11-10 08:10';   // 앱 화면을 마지막으로 고친 시각 (한국 시간)
 /* ───────── 작은 도구 ───────── */
 const $ = (s, el = document) => el.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -266,7 +266,8 @@ function render() {
   document.body.classList.toggle('in-app', inApp);
   if (!S.user || S.ui.showApply) { app.innerHTML = loginView(); bindLogin(); return; }
   const nav = NAV.filter(n => n.show());
-  if (S.view !== 'more' && !nav.find(n => n.id === S.view)) S.view = 'home';
+  if (S.view !== 'more' && S.view !== 'mclose' && !nav.find(n => n.id === S.view)) S.view = 'home';
+  document.body.classList.toggle('mclose-on', S.view === 'mclose');
   trackNav();
   const pendingN = S.users.filter(u => u.status === 'pending').length;
   const sv = S.view === 'biz' && S.ui.bizF && S.ui.bizF !== 'all' && S.ui.bizF !== 'offline' ? (BIZ.find(b => b.id === S.ui.bizF) || {}).name || '사업부' : S.stores.length === 1 ? (S.stores[0] === 'suwon' ? '오프라인 매장 · 수원 SMG STORE' : storeName(S.stores[0])) : `${S.stores.length}개 매장 함께 보기`;
@@ -441,6 +442,7 @@ function pageView() {
     case 'biz': return bizView();
     case 'collab': return collabView();
     case 'settle': return settleView();
+    case 'mclose': return mcloseView();
     case 'admin': return adminView();
     case 'more': return moreView();
   }
@@ -2329,7 +2331,7 @@ function salesView() {
   const noSales = posDays === 0 && !machTot;
   const su = salesUpdated(stores);
   const how = sp.preset === 'custom' ? '직접 선택' : ((SALES_PRESETS.find(x => x.id === sp.preset) || {}).t || '오늘');
-  return `${head('매출', `토스포스 매출리포트 기준 · ${S.stores.length > 1 ? '매장마다 마감일이 다릅니다 (아래 표)' : `${last ? `<b>${fd(last)} 마감</b>까지` : '아직 자료 없음'}${su.up ? ` · 마지막 올림 ${kst(su.up.at)} ${esc(whoText(su.up.by, su.up.co))}` : ''}`}`, `<button class="btn" id="posBtn">토스포스 파일 올리기</button><button class="btn" id="machBtn">자판기·기계 매출 올리기</button>`)}${freshTable(S.stores)}
+  return `${head('매출', `토스포스 매출리포트 기준 · ${S.stores.length > 1 ? '매장마다 마감일이 다릅니다 (아래 표)' : `${last ? `<b>${fd(last)} 마감</b>까지` : '아직 자료 없음'}${su.up ? ` · 마지막 올림 ${kst(su.up.at)} ${esc(whoText(su.up.by, su.up.co))}` : ''}`}`, `${canSettle() ? '<button class="btn" data-nav="mclose">월말 마감 보고서</button>' : ''}<button class="btn" id="posBtn">토스포스 파일 올리기</button><button class="btn" id="machBtn">자판기·기계 매출 올리기</button>`)}${freshTable(S.stores)}
   ${grandTotal(sum, a, b, pa, pb, cur.s, pre.s, cr.label)}
   <div class="card" style="display:flex;flex-direction:column;gap:12px">
     <div class="flt">
@@ -2610,7 +2612,7 @@ function settleView() {
   const machSales = rows.filter(r => r.kind === 'machine').reduce((a, r) => a + r.sales, 0);
   const T = k => rows.reduce((a, r) => a + (+r[k] || 0), 0);
   const st = rows[0] ? rows[0].status : '';
-  return `${head('정산', '대표만 보입니다 · POS 매출 × 홀딩스 정산서 요율 + 자판기·기계 매출 × 20%', `<select class="inp" id="setM" style="width:auto">${months.map(x => `<option ${x === m ? 'selected' : ''}>${x}</option>`).join('')}</select>`)}
+  return `${head('정산', '대표만 보입니다 · POS 매출 × 홀딩스 정산서 요율 + 자판기·기계 매출 × 20%', `<button class="btn" data-nav="mclose">월말 마감 보고서</button><select class="inp" id="setM" style="width:auto">${months.map(x => `<option ${x === m ? 'selected' : ''}>${x}</option>`).join('')}</select>`)}
   <div class="tiles"><div class="tile"><span class="lb">판매 금액${machSales ? ' (POS + 기계)' : ''}</span><span class="v big${String(fmt(ipRows.reduce((a, r) => a + r.sales, 0))).length>9?' long':''}">${fmt(ipRows.reduce((a, r) => a + r.sales, 0))}<small>원</small></span>${machSales ? `<span class="d muted">기계 ${fmt(machSales)}원 포함</span>` : ''}</div>
     <div class="tile"><span class="lb">온인터 배분</span><span class="v big${String(fmt(T('onin'))).length>9?' long':''}">${fmt(T('onin'))}<small>원</small></span></div>
     <div class="tile"><span class="lb">크리에이티브 지급</span><span class="v big${String(fmt(-T('creative'))).length>9?' long':''}">${fmt(-T('creative'))}<small>원</small></span></div>
@@ -2621,6 +2623,194 @@ function settleView() {
   ${ipRows.map(r => `<tr><td class="nm">${esc(r.ip)}</td><td class="hide-s nowrap muted">${esc(r.supplier)}</td><td class="n">${fmt(r.sales)}</td><td class="n">${r.rate === '' ? '-' : Math.round(r.rate * 100) + '%'}</td><td class="n">${fmt(r.onin)}</td><td class="n hide-s">${r.creative ? fmt(-r.creative) : '-'}</td><td class="n" style="font-weight:700">${fmt(r.net)}</td></tr>`).join('')}
   ${ded.map(r => `<tr><td class="nm">${esc(r.ip)}</td><td class="hide-s muted">차감</td><td class="n">-</td><td class="n">-</td><td class="n">${fmt(r.onin)}</td><td class="n hide-s">-</td><td class="n" style="font-weight:700;color:var(--bad)">${fmt(r.net)}</td></tr>`).join('')}
   <tr class="tot"><td>합계</td><td class="hide-s"></td><td class="n">${fmt(ipRows.reduce((a, r) => a + r.sales, 0))}</td><td></td><td class="n">${fmt(T('onin'))}</td><td class="n hide-s">${fmt(-T('creative'))}</td><td class="n">${fmt(T('net'))}</td></tr></tbody></table></div></div>`;
+}
+
+/* ───────── 월말 마감 보고서 (대표만) ───────── */
+function josa(name, a, b) { const c = String(name).charCodeAt(String(name).length - 1); return (c >= 0xAC00 && c <= 0xD7A3 && (c - 0xAC00) % 28) ? a : b; }
+function ymAdd(ym, n) { const [y, m] = ym.split('-').map(Number); const t = new Date(Date.UTC(y, m - 1 + n, 1)); return `${t.getUTCFullYear()}-${String(t.getUTCMonth() + 1).padStart(2, '0')}`; }
+function monthEnd(ym) { const [y, m] = ym.split('-').map(Number); return `${ym}-${String(new Date(Date.UTC(y, m, 0)).getUTCDate()).padStart(2, '0')}`; }
+function monthDays(ym) { const b = monthEnd(ym), o = []; for (let d = ym + '-01'; d <= b; d = addDays(d, 1)) o.push(d); return o; }
+function closeYm() { const cap = today().slice(0, 7); let ym = S.ui.closeYm || ymPrev(cap); if (ym > cap) ym = cap; S.ui.closeYm = ym; return ym; }
+function numOrNull(v) { return v === '' || v == null || v === undefined ? null : +v; }
+function costOf(id) { const c = (S.biz && S.biz._cfg && S.biz._cfg[id]) || {}; return { cr: numOrNull(c.cr), labor: numOrNull(c.labor), rent: numOrNull(c.rent), goal: numOrNull(c.goal) }; }
+function profitOf(sales, c) { if (sales == null || c.cr == null || c.labor == null || c.rent == null) return null; return Math.round(sales * (1 - c.cr / 100) - c.labor - c.rent); }
+function storeDays(st, ym) { const mon = (S.sales[st] || {})[ym]; const days = {}; if (mon && mon.days) for (const [dd, r] of Object.entries(mon.days)) if (r) days[ym + '-' + dd] = r; return days; }
+function machMonth(st, ym) {
+  const mon = (S.sales[st] || {})[ym]; if (!mon || !mon.mach) return null;
+  let s = 0, n = 0, days = 0;
+  for (const m of Object.values(mon.mach)) for (const v of Object.values(m.days || {})) { s += v[0] || 0; n += v[1] || 0; days++; }
+  return days ? { s, n, days } : null;
+}
+function unitMonth(b, ym) {
+  const cost = costOf(b.id);
+  if (b.stores) {
+    const dayMap = {}, agg = {};
+    for (const st of b.stores) for (const [d, r] of Object.entries(storeDays(st, ym))) { const x = agg[d] ||= { s: 0, p: 0, q: 0 }; x.s += r.s || 0; x.p += r.p || 0; x.q += r.q || 0; }
+    let s = 0, p = 0, q = 0, last = '';
+    for (const [d, r] of Object.entries(agg)) { dayMap[d] = r.s; s += r.s; p += r.p; q += r.q; if (d > last) last = d; }
+    const mach = b.stores.map(st => machMonth(st, ym)).filter(Boolean);
+    const ms = mach.reduce((t, x) => t + x.s, 0), hasPos = !!last, hasMach = mach.length > 0;
+    const sales = hasPos || hasMach ? s + ms : null;
+    return { b, cost, sales, pos: hasPos ? s : null, mach: hasMach ? ms : null, p: hasPos ? p : null, q: hasPos ? q : null, days: Object.keys(agg).length, last, dayMap, memo: '' };
+  }
+  const recs = Object.entries(S.biz[b.id] || {}).filter(([d]) => d.slice(0, 7) === ym);
+  const sales = recs.length ? recs.reduce((t, [, v]) => t + (v.s || 0), 0) : null;
+  const p = recs.length ? recs.reduce((t, [, v]) => t + (v.p || 0), 0) : null;
+  const last = recs.reduce((a, [d]) => d > a ? d : a, '');
+  return { b, cost, sales, pos: null, mach: null, p, q: null, days: recs.length, last, dayMap: Object.fromEntries(recs.map(([d, v]) => [d, v.s || 0])), memo: recs.map(([, v]) => v.memo).filter(Boolean).join(' · ') };
+}
+function kujiPos(ym) {
+  let s = 0, q = 0, hit = false;
+  for (const r of Object.values(storeDays('suwon', ym))) for (const [ip, v] of Object.entries(r.ip || {})) if (/쿠지/.test(ip)) { hit = true; q += v[0] || 0; s += v[1] || 0; }
+  return hit ? { s, q } : null;
+}
+function topProducts(ym) {
+  const P = {};
+  for (const r of Object.values(storeDays('suwon', ym))) for (const [nm, v] of Object.entries(r.pr || {})) { const x = P[nm] ||= { q: 0, s: 0, ip: v[2] || '' }; x.q += v[0] || 0; x.s += v[1] || 0; }
+  return Object.entries(P).filter(([, x]) => x.q || x.s).sort((a, b) => b[1].s - a[1].s || b[1].q - a[1].q);
+}
+function closeStock(ym) {
+  const st = 'suwon', end = monthEnd(ym);
+  if (!S.products.length || !Object.keys(S.stock[st] || {}).length) return { missing: true, end };
+  const map = stockAtMap(st, end);
+  let kinds = 0, qty = 0, amt = 0, neg = 0, zero = 0, noPrice = 0; const negNames = [];
+  for (const p of S.products) {
+    if ((S.stock[st] || {})[p.id] == null) continue;
+    const t = map.at(p.id); kinds++;
+    if (t < 0) { neg++; negNames.push(p.name); }
+    else if (t === 0) zero++;
+    else { qty += t; const pr = priceOf(p); if (pr) amt += t * pr; else noPrice++; }
+  }
+  const sold = topProducts(ym); let unmatched = 0; const outs = [];
+  for (const [nm, x] of sold) {
+    if (!(x.q > 0)) continue;
+    const p = S.products.find(q => norm(q.name) === norm(nm));
+    if (!p || (S.stock[st] || {})[p.id] == null) { unmatched++; continue; }
+    const t = map.at(p.id); if (t <= 0) outs.push({ n: p.name, q: x.q, t });
+  }
+  return { missing: false, end, kinds, qty, amt, neg, zero, noPrice, negNames: negNames.slice(0, 5), negMore: Math.max(0, negNames.length - 5), outs, unmatched, incomplete: !!(map.oldest && map.oldest > end), oldest: map.oldest || '' };
+}
+function closeSettle(ym) { return settleRows().filter(r => r.month === ym); }
+function withCmp(u, ym) {
+  const prev = unitMonth(u.b, ymPrev(ym)), yoyM = ymAdd(ym, -12), yoy = unitMonth(u.b, yoyM);
+  u.prev = prev.sales; u.prevDays = prev.days; u.yoy = yoy.sales; u.yoyDays = yoy.days; u.yoyM = yoyM;
+  u.ch = u.sales != null && u.prev != null ? pct(u.sales, u.prev) : null;
+  u.yoyCh = u.sales != null && u.yoy != null ? pct(u.sales, u.yoy) : null;
+  u.profit = profitOf(u.sales, u.cost);
+  return u;
+}
+function closePack(ym) {
+  const sp = monthDays(ym), units = BIZ.map(b => withCmp(unitMonth(b, ym), ym));
+  const off = units.find(u => u.b.id === 'offline');
+  const weeks = [];
+  if (off) {
+    for (const d of sp) {
+      const k = periodKey(d, 'week'); let g = weeks[weeks.length - 1];
+      if (!g || g.k !== k) { g = { k, a: d, b: d, s: 0, n: 0, miss: 0 }; weeks.push(g); }
+      g.b = d; if (off.dayMap[d] == null) g.miss++; else { g.s += off.dayMap[d]; g.n++; }
+    }
+  }
+  return { ym, y: +ym.slice(0, 4), m: +ym.slice(5), a: ym + '-01', b: monthEnd(ym), dim: sp.length, days: sp, units, off, weeks, products: topProducts(ym), stock: closeStock(ym), settle: closeSettle(ym), kuji: kujiPos(ym) };
+}
+function closeWords(R) {
+  const good = [], bad = [], next = [], warn = [];
+  const named = R.units.filter(u => u.sales != null), miss = R.units.filter(u => u.sales == null);
+  const tot = named.reduce((t, u) => t + u.sales, 0);
+  if (named.length) {
+    const best = [...named].sort((a, b) => b.sales - a.sales)[0];
+    if (tot) good.push(`<b>${esc(best.b.name)}</b>${josa(best.b.name, '이', '가')} 자료가 있는 매출의 ${Math.round(best.sales / tot * 100)}%입니다 (${fmt(best.sales)}원).`);
+  }
+  for (const u of named) {
+    if (u.prev != null && u.sales > u.prev) good.push(`<b>${esc(u.b.name)}</b> 매출이 지난달 ${fmt(u.prev)}원보다 ${fmt(u.sales - u.prev)}원 많습니다.`);
+    if (u.ch != null && u.ch <= -10) bad.push(`<b>${esc(u.b.name)}</b> 매출이 지난달보다 ${Math.abs(Math.round(u.ch))}% 적습니다 (${fmt(u.prev)}원 → ${fmt(u.sales)}원).`);
+    if (u.profit != null && u.profit >= 0) good.push(`<b>${esc(u.b.name)}</b> 이익 ${fmt(u.profit)}원 (원가율 ${u.cost.cr}% · 인건비 ${fmt(u.cost.labor)}원 · 임대료 ${fmt(u.cost.rent)}원).`);
+    if (u.profit != null && u.profit < 0) bad.push(`<b>${esc(u.b.name)}</b> 이익이 ${fmt(u.profit)}원으로 적자입니다.`);
+    if (u.cost.goal != null && u.sales != null && u.sales >= u.cost.goal) good.push(`<b>${esc(u.b.name)}</b>${josa(u.b.name, '이', '가')} 월 목표 ${fmt(u.cost.goal)}원을 넘겼습니다.`);
+    if (u.cost.cr == null) { bad.push(`<b>${esc(u.b.name)}</b> 원가율이 없어 이익을 비워 두었습니다.`); next.push(`${esc(u.b.name)} 원가율을 사업부 화면에 입력하세요.`); }
+    else if (u.cost.labor == null || u.cost.rent == null) { bad.push(`<b>${esc(u.b.name)}</b> 인건비 또는 임대료가 비어 있어 이익을 비워 두었습니다.`); next.push(`${esc(u.b.name)} 인건비와 임대료를 입력하세요. 비어 있는 값을 0원으로 채우지 않았습니다.`); }
+    if (u.cost.goal == null && u.sales != null) next.push(`${esc(u.b.name)} 월 매출 목표가 없습니다.`);
+  }
+  const hint = { kuji: '쿠지 매출을 올리는 칸은 아직 없습니다. 토스포스에 쿠지 IP가 있으면 참고로만 보여 줍니다.', blog: '블로그 월 대행료를 사업부 화면에 입력하세요.', onkihote: '온키호테 스마트스토어 주문 엑셀을 사업부 화면에 올리세요.', offline: '수원 토스포스 매출 파일을 올리세요.' };
+  for (const u of miss) { bad.push(`<b>${esc(u.b.name)}</b> ${R.y}년 ${R.m}월 자료가 없습니다.`); next.push(hint[u.b.id] || `${esc(u.b.name)} 자료를 올리세요.`); }
+  if (R.kuji) warn.push(`토스포스 IP 쿠지 ${fmt(R.kuji.s)}원(${fmt(R.kuji.q)}개)은 오프라인 합계에 이미 들어 있습니다. 쿠지사업 칸과 다시 더하지 않았습니다.`);
+  if (R.off && R.off.days < R.dim) warn.push(`오프라인 매출 자료는 ${R.dim}일 중 ${R.off.days}일입니다. 빈 날은 0원이 아니라 자료 없음입니다.`);
+  if (R.stock.missing) warn.push('월말 재고를 계산할 수원 상품·재고 자료가 없습니다.');
+  else {
+    if (R.stock.neg) warn.push(`월말 재고 마이너스 ${fmt(R.stock.neg)}종${R.stock.negNames.length ? `: ${R.stock.negNames.map(esc).join(', ')}` : ''}${R.stock.negMore ? ` 외 ${fmt(R.stock.negMore)}종` : ''}.`);
+    if (R.stock.outs.length) { bad.push(`이번 달 팔리고 월말 재고가 0개 이하인 상품이 ${fmt(R.stock.outs.length)}종입니다.`); next.push(`품절 입고를 확인하세요: ${R.stock.outs.slice(0, 3).map(x => esc(x.n)).join(', ')}.`); }
+    if (R.stock.incomplete) warn.push(`입출고 기록이 ${md(R.stock.oldest)}부터라 ${md(R.stock.end)} 재고가 정확하지 않을 수 있습니다.`);
+    if (R.stock.unmatched) warn.push(`판매 이름 ${fmt(R.stock.unmatched)}종은 상품 목록과 맞지 않아 월말 재고를 보지 못했습니다.`);
+  }
+  if (!R.settle.length) warn.push('이 달 정산 행이 없습니다. 정산 금액은 비워 두었습니다.');
+  if (!good.length) good.push('자료로 확인할 좋은 점이 없습니다.');
+  if (!bad.length) bad.push('자료로 확인할 문제점이 없습니다.');
+  if (!next.length) next.push('비어 있는 입력칸을 채우면 다음 달 보고서가 더 완전해집니다.');
+  if (!warn.length) warn.push('추가로 경고할 항목이 없습니다.');
+  const missN = miss.map(u => esc(u.b.name));
+  let sum = named.length ? `${R.y}년 ${R.m}월 자료가 있는 사업부 매출 합계는 <b>${fmt(tot)}원</b>입니다. ${named.map(u => `${esc(u.b.name)} ${fmt(u.sales)}원`).join(', ')}.` : `${R.y}년 ${R.m}월 마감 보고서를 만들 매출 자료가 없습니다.`;
+  if (missN.length) sum += ` 자료가 없어 합계에 넣지 않은 사업부: ${missN.join(', ')}.`;
+  const off = R.off;
+  if (off && off.sales != null && off.prev != null && off.ch != null) sum += ` 오프라인 매장은 지난달 ${fmt(off.prev)}원 대비 ${off.ch >= 0 ? '+' : ''}${off.ch.toFixed(1)}%입니다.`;
+  else if (off && off.sales != null) sum += ' 오프라인 지난달 비교 자료가 없습니다.';
+  if (off && off.sales != null && off.yoy != null && off.yoyCh != null) sum += ` 작년 ${R.m}월 오프라인은 ${fmt(off.yoy)}원 (${off.yoyCh >= 0 ? '+' : ''}${off.yoyCh.toFixed(1)}%)입니다.`;
+  else if (off && off.sales != null) sum += ' 작년 같은 달 오프라인 자료가 없습니다.';
+  const prof = named.filter(u => u.profit != null);
+  sum += prof.length ? ` 이익을 계산한 사업부는 ${prof.length}곳, 합계 ${fmt(prof.reduce((t, u) => t + u.profit, 0))}원입니다. 원가율·인건비·임대료가 모두 있는 곳만 계산했습니다.` : ' 원가율·인건비·임대료가 모두 있는 사업부가 없어 이익 합계는 비워 두었습니다.';
+  return { good, bad, next, warn, sum };
+}
+function mcloseView() {
+  if (!canSettle()) return `${head('월말 마감 보고서', '대표만 볼 수 있습니다')}<div class="card"><div class="empty">정산과 같은 권한(대표)만 이 보고서를 엽니다.</div></div>`;
+  const ym = closeYm(), cap = today().slice(0, 7), R = closePack(ym), W = closeWords(R);
+  const miss = t => `<span class="blank">자료 없음${t ? ' · ' + esc(t) : ''}</span>`;
+  const need = t => `<span class="blank">미입력${t ? ' · ' + esc(t) : ''}</span>`;
+  const wonB = v => v == null ? miss() : `${fmt(v)}원`;
+  const kv = rows => `<table class="kv"><tbody>${rows.map(([k, v]) => `<tr><th>${k}</th><td>${v}</td></tr>`).join('')}</tbody></table>`;
+  const ul = L => `<ul>${L.map(x => `<li>${x}</li>`).join('')}</ul>`;
+  const on = id => (id === 'this' ? ym === cap : ym === ymPrev(cap)) ? ' on' : '';
+  const goalTxt = u => u.cost.goal == null ? need('월 매출 목표') : (u.sales == null ? miss() : `${fmt(u.sales)}원 / 목표 ${fmt(u.cost.goal)}원${u.sales >= u.cost.goal ? ' · 달성' : ` · ${fmt(u.cost.goal - u.sales)}원 부족`}`);
+  const salesRows = R.units.map(u => [esc(u.b.name), u.sales == null ? miss(u.b.id === 'blog' ? '월 대행료 없음' : '') : `${fmt(u.sales)}원${u.memo ? ` <span class="muted">${esc(u.memo)}</span>` : ''}${u.pos != null || u.mach != null ? `<div class="muted">${u.pos != null ? `토스포스 ${fmt(u.pos)}원` : '토스포스 자료 없음'}${u.mach != null ? ` + 자판기·기계 ${fmt(u.mach)}원` : ''}</div>` : ''}`]);
+  const tot = R.units.reduce((t, u) => t + (u.sales || 0), 0), totN = R.units.filter(u => u.sales != null).length;
+  salesRows.push(['자료가 있는 합계', totN ? `${fmt(tot)}원 <span class="muted">${totN}개 사업부</span>` : miss()]);
+  const costRows = [];
+  for (const u of R.units) {
+    costRows.push([esc(u.b.name) + ' 원가율', u.cost.cr == null ? need() : `${u.cost.cr}%`]);
+    costRows.push([esc(u.b.name) + ' 인건비', u.cost.labor == null ? need() : `${fmt(u.cost.labor)}원`]);
+    costRows.push([esc(u.b.name) + ' 임대료', u.cost.rent == null ? need() : `${fmt(u.cost.rent)}원`]);
+    costRows.push([esc(u.b.name) + ' 이익', u.profit == null ? need('원가율·인건비·임대료가 모두 있을 때만') : `${fmt(u.profit)}원`]);
+    costRows.push([esc(u.b.name) + ' 목표', goalTxt(u)]);
+  }
+  const prof = R.units.filter(u => u.profit != null);
+  costRows.push(['이익 합계', prof.length ? `${fmt(prof.reduce((t, u) => t + u.profit, 0))}원 <span class="muted">${prof.length}개 사업부</span>` : need('계산할 사업부 없음')]);
+  const cmp = R.units.map(u => `<h3 class="accent">${esc(u.b.name)}</h3>${kv([[`${R.m}월`, u.sales == null ? miss() : `${fmt(u.sales)}원 <span class="muted">${u.b.monthly ? '월 입력' : `자료 ${u.days}일 / ${R.dim}일`}</span>`], ['지난달', u.prev == null ? miss() : `${fmt(u.prev)}원 <span class="muted">자료 ${u.prevDays}일</span>`], ['지난달 대비', u.ch == null ? miss(u.sales != null && u.prev === 0 ? '기준이 0원이라 증감률 없음' : '') : chg(u.ch)], [`작년 ${R.m}월`, u.yoy == null ? miss() : `${fmt(u.yoy)}원 <span class="muted">자료 ${u.yoyDays}일</span>`], ['작년 대비', u.yoyCh == null ? miss() : chg(u.yoyCh)]])}`).join('');
+  const dayRows = R.off ? R.days.map(d => [md(d), R.off.dayMap[d] == null ? miss() : `${fmt(R.off.dayMap[d])}원`]) : [[ '오프라인', miss() ]];
+  const weekRows = R.weeks.length ? R.weeks.map(g => [`${mdc(g.a)}~${mdc(g.b)}`, g.n ? `${fmt(g.s)}원 <span class="muted">자료 ${g.n}일${g.miss ? ` · 없음 ${g.miss}일` : ''}</span>` : miss()]) : [['주별', miss()]];
+  const prodRows = R.products.length ? R.products.slice(0, 8).map(([n, x], i) => [`${i + 1}. ${esc(n.replace(/^에바30주년팝업_/, ''))}`, `${fmt(x.s)}원 <span class="muted">${fmt(x.q)}개${x.ip ? ' · ' + esc(x.ip) : ''}</span>`]) : [['상품', miss('토스포스 상품 매출 없음')]];
+  const st = R.stock;
+  const stockRows = st.missing ? [['월말 재고', miss('수원 상품·재고 없음')], ['금액', miss()], ['마이너스', miss()], ['품절', miss()]] : [
+    ['기준 날짜', md(st.end)], ['재고 있는 수량', `${fmt(st.qty)}개 <span class="muted">등록 ${fmt(st.kinds)}종</span>`],
+    ['재고 금액', `${fmt(st.amt)}원 <span class="muted">판매가 × 0개 초과${st.noPrice ? ` · 판매가 없는 ${fmt(st.noPrice)}종은 금액에서 뺌` : ''}</span>`],
+    ['품절', `${fmt(st.zero)}종`], ['마이너스', st.neg ? `${fmt(st.neg)}종` : '0종'],
+    ['이번 달 판매 후 월말 재고 0 이하', st.outs.length ? st.outs.slice(0, 5).map(x => `${esc(x.n)} ${fmt(x.q)}개 판매 · 재고 ${fmt(x.t)}`).join('<br>') : '없음'],
+  ];
+  const setRows = R.settle.length ? R.settle.map(r => [esc(r.ip), `${r.net === '' || r.net == null ? miss('요율 없음') : fmt(r.net) + '원'} <span class="muted">${esc(r.status || '')}${r.sales ? ' · 판매 ' + fmt(r.sales) + '원' : ''}</span>`]) : [['정산', miss('이 달 정산 행 없음')]];
+  if (R.settle.length) {
+    const net = R.settle.reduce((t, r) => t + (+r.net || 0), 0), sales = R.settle.filter(r => r.kind !== 'deduct').reduce((t, r) => t + (+r.sales || 0), 0);
+    setRows.push(['판매 금액 합계', `${fmt(sales)}원`]); setRows.push(['순수익 합계', `${fmt(net)}원`]);
+  }
+  const controls = `<button class="chip${on('this')}" data-cym="this">이번달</button><button class="chip${on('prev')}" data-cym="prev">지난달</button><button class="btn" data-cstep="-1">이전 달</button><button class="btn" data-cstep="1" ${ym >= cap ? 'disabled' : ''}>다음 달</button><button class="btn pri" id="closePrint">인쇄 / PDF 저장</button>`;
+  return `${head('월말 마감 보고서', '끝난 달이 기본 · 대표만 · 없는 숫자는 비워 둡니다', controls)}
+  <article class="mrep">
+    <header class="crep-hd"><div class="brand">온인터내셔널</div><h1>${R.y}년 ${R.m}월 월말 마감 보고서</h1><p>${fd(R.a)} ~ ${fd(R.b)} · ${R.dim}일 · 출력 ${esc(kst(new Date().toISOString()))}${S.user ? ' · ' + esc(whoText(S.user.name, userCo(S.user))) : ''}</p></header>
+    ${S.ui.closeSample ? '<p class="sample">시험 자료입니다. 실제 매출·재고·정산 숫자가 아닙니다. 빈칸은 일부러 비워 둔 항목입니다.</p>' : ''}
+    <section><h2>요약</h2><p class="sum">${W.sum}</p><div class="cols"><div><h3>잘한 점</h3>${ul(W.good)}</div><div><h3>문제점</h3>${ul(W.bad)}</div><div><h3>다음 행동 추천</h3>${ul(W.next)}</div><div><h3>경고</h3>${ul(W.warn)}</div></div></section>
+    <section><h2>사업부 매출</h2>${kv(salesRows)}${R.kuji ? `<p class="src">참고 · 토스포스 쿠지 IP ${fmt(R.kuji.s)}원 (${fmt(R.kuji.q)}개). 오프라인 합계에 포함되어 있어 위에 다시 더하지 않습니다.</p>` : `<p class="src">토스포스 상품 IP 이름에 “쿠지”가 없습니다. 쿠지사업 별도 자료도 없습니다.</p>`}</section>
+    <section><h2>원가 · 인건비 · 임대료 · 이익</h2><p class="src">이익 = 매출 − 매출×원가율 − 인건비 − 임대료. 셋 중 하나라도 비어 있으면 이익은 비웁니다. 비어 있는 값을 0원으로 바꾸지 않습니다. 이 값은 이 기기의 사업부 입력칸입니다.</p>${kv(costRows)}</section>
+    <section><h2>지난달 · 작년 같은 달</h2>${cmp}</section>
+    <section><h2>일별 · 주별 추이</h2><h3 class="accent">오프라인 토스포스 · 일별</h3>${R.off && R.off.mach != null ? `<p class="src">자판기·기계 ${fmt(R.off.mach)}원은 일별 칸에 나뉘어 있지 않아 일별 표에는 넣지 않았습니다.</p>` : ''}${kv(dayRows)}<h3 class="accent">오프라인 토스포스 · 주별 (월~일, 그 달 안의 날만)</h3>${kv(weekRows)}</section>
+    <section><h2>많이 팔린 상품</h2><p class="src">수원 토스포스 상품 매출 상위 8개. 쇼핑백을 따로 빼지 않았습니다.</p>${kv(prodRows)}</section>
+    <section><h2>월말 재고</h2><p class="src">수원 매장. 지금 재고에서 ${md(R.b)} 다음 날의 입출고를 되돌린 값입니다. 지금 상품 목록에 없는 상품은 빠집니다.</p>${kv(stockRows)}</section>
+    <section><h2>정산</h2>${kv(setRows)}<p class="src">자료 위치: 오프라인 토스포스 stores/suwon/sales/{월}.days · 자판기·기계 .mach · 온키호테·쿠지·블로그는 이 기기 oninter-biz (서버 저장 전) · 원가율·인건비·임대료·목표 oninter-biz._cfg · 정산 settle/{월}.rows · 재고 stores/suwon.q 와 moves.</p></section>
+  </article>`;
 }
 
 /* ───────── 관리 ───────── */
@@ -3120,6 +3310,13 @@ function bind() {
     if (t.id === 'smAll') { S.stores = [...myStores()]; S.sumStores = null; S.ui.range = null; S.ui.storeMenu = false; render(); return; }
     if (d.sg) { S.stores = [d.sg]; S.sumStores = null; S.ui.storeMenu = false; S.ui.range = null; render(); goTop(); return; }
     if (d.nav) { if (d.nav === 'more' && S.view === 'more') return; S.view = d.nav; S.ui.drawer = null; render(); goTop(); return; }
+    if (t.id === 'closePrint') { window.print(); return; }
+    if (d.cym || d.cstep) {
+      const cap = today().slice(0, 7);
+      let ym = d.cym === 'this' ? cap : d.cym === 'prev' ? ymPrev(cap) : ymAdd(closeYm(), +d.cstep || 0);
+      if (ym > cap) { toast('이번 달보다 앞은 아직 마감할 수 없습니다'); return; }
+      S.ui.closeYm = ym; render(); return;
+    }
     if (d.tzt) { S.ui.tzOpen = !S.ui.tzOpen; render(); return; }
     if (d.tz) { applyTextSize(parseFloat(d.tz)); S.ui.tzOpen = false; render(); return; }
     if (d.tone) { applyTheme(d.tone); render(); return; }
