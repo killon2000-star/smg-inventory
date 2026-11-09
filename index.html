@@ -303,8 +303,8 @@ table.tb tr.click.sel td:first-child{box-shadow:inset 3px 0 0 var(--red)}
 .flt{display:flex;flex-direction:column;gap:14px}
 .flt .fg{display:flex;align-items:center;gap:14px;flex-wrap:wrap}
 .flt .fl{width:76px;flex:none;font-size:12.5px;font-weight:800;color:var(--muted);letter-spacing:.02em}
-.flt .fseg{display:grid;grid-template-columns:repeat(5,minmax(78px,1fr));border:1px solid var(--line);border-radius:9px;overflow:hidden;background:var(--surface)}
-.flt .fseg button{height:40px;border:0;background:none;font-weight:700;font-size:14px;color:var(--ink-2)}
+.flt .fseg{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));border:1px solid var(--line);border-radius:9px;overflow:hidden;background:var(--surface);min-width:0;flex:1}
+.flt .fseg button{height:40px;border:0;background:none;font-weight:700;font-size:14px;color:var(--ink-2);min-width:0;padding:0 2px}
 .flt .fseg button+button{border-left:1px solid var(--line)}
 .flt .fseg button.on{background:var(--red);color:#fff}
 .flt .frange{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
@@ -313,15 +313,22 @@ table.tb tr.click.sel td:first-child{box-shadow:inset 3px 0 0 var(--red)}
 .flt .fsep{color:var(--muted);font-weight:700}
 .flt .dsel select.inp{height:40px;min-width:74px;font-weight:600}
 .flt .dsel select.inp:first-of-type{min-width:96px}
-.flt .fquick{display:grid;grid-template-columns:repeat(auto-fit,minmax(96px,1fr));gap:8px;flex:1;min-width:0}
-.flt .fquick button{height:40px;border:1px solid var(--line);border-radius:9px;background:var(--surface-2);font-weight:700;font-size:13.5px;color:var(--ink);white-space:nowrap}
+.flt .srange .fd{min-width:0;flex:1 1 200px}
+.flt .srange .dsel select.inp{min-width:0;flex:1 1 4.2em}
+.flt .srange .dsel select.inp:first-of-type{min-width:0;flex:1.15 1 5.2em}
+.flt .fquick{display:grid;grid-template-columns:repeat(auto-fit,minmax(108px,1fr));gap:8px;flex:1;min-width:0}
+.flt .fquick button{min-height:48px;height:auto;padding:6px 4px;border:1px solid var(--line);border-radius:9px;background:var(--surface-2);font-weight:700;font-size:13px;color:var(--ink);white-space:normal;line-height:1.2;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px}
+.flt .fquick button .spl{font-weight:800}
+.flt .fquick button .spd{font-size:11px;font-weight:600;font-variant-numeric:tabular-nums;opacity:.82;overflow-wrap:anywhere}
 .flt .fquick button:hover{border-color:var(--red)}
 .flt .fquick button.on{background:var(--red);border-color:var(--red);color:#fff}
+.flt .fquick button.on .spd{opacity:1}
+.speriod{margin:0;font-size:13.5px;line-height:1.45}
+.speriod b{font-weight:800}
 @media (max-width: 900px){
   .flt .fl{width:100%}
   .flt .fg{gap:8px}
-  .flt .fseg{width:100%;grid-template-columns:repeat(5,1fr)}
-  .flt .fquick{grid-template-columns:repeat(4,1fr)}
+  .flt .fseg{width:100%;grid-template-columns:repeat(5,minmax(0,1fr))}
   .flt .fquick button{font-size:13px}
   .flt .frange{width:100%}
   .flt .fsep{display:none}
@@ -664,7 +671,7 @@ td,th{font-variant-numeric:tabular-nums}
 <script defer src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 <script defer src="config.js"></script>
 <script defer src="firebase.js?v=31"></script>
-<script defer src="app.js?v=80"></script>
+<script defer src="app.js?v=81"></script>
 <script>if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});</script>
 
 </body></html>

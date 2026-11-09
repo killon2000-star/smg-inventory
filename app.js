@@ -118,7 +118,7 @@ const S = {
 };
 
 // 새로고침 전에 보던 화면·사업부·매장 되살리기
-try { const n = JSON.parse(localStorage.getItem('smg-nav') || 'null'); if (n && n.view) { S.view = n.view; ['adminTab', 'ib', 'ipF', 'bizF'].forEach(k => { if (n[k] != null) S.ui[k] = n[k]; }); if (Array.isArray(n.stores) && n.stores.length) S.stores = n.stores; } } catch (e) { }
+try { const n = JSON.parse(localStorage.getItem('smg-nav') || 'null'); if (n && n.view) { S.view = n.view; ['adminTab', 'ib', 'ipF', 'bizF'].forEach(k => { if (n[k] != null) S.ui[k] = n[k]; }); if (Array.isArray(n.stores) && n.stores.length) S.stores = n.stores; const p = n.salesPeriod; if (p && p.preset === 'custom' && /^\d{4}-\d{2}-\d{2}$/.test(p.a || '') && /^\d{4}-\d{2}-\d{2}$/.test(p.b || '')) S.ui.salesPeriod = { preset: 'custom', a: p.a, b: p.b }; else if (p && p.preset && p.preset !== 'custom') S.ui.salesPeriod = { preset: String(p.preset) }; } } catch (e) { }
 /* ───────── 데이터 계층 ───────── */
 const DemoBackend = {
   async load() {
@@ -244,7 +244,8 @@ const navSnap = () => ({ view: S.view, adminTab: S.ui.adminTab, ib: S.ui.ib, ipF
 const navKey = x => x ? [x.view, x.view === 'admin' ? x.adminTab : '', x.view === 'inbound' ? (x.ib || '') : ''].join('|') : '';
 function trackNav() {
   const cur = navSnap();
-  try { localStorage.setItem('smg-nav', JSON.stringify({ ...cur, bizF: S.ui.bizF, stores: S.stores })); } catch (e) { }   // 새로고침해도 보던 화면 그대로
+  if (S.view === 'sales') { try { rememberSalesPeriod(resolveSalesPeriod()); } catch (e) { } }
+  try { localStorage.setItem('smg-nav', JSON.stringify({ ...cur, bizF: S.ui.bizF, stores: S.stores, salesPeriod: S.ui.salesPeriod || null })); } catch (e) { }   // 새로고침해도 보던 화면 그대로. 매출 빠른 기간은 이름만 저장(오늘 기준으로 다시 계산), 직접 고른 날짜만 그대로 둠
   if (navLast && !navBackNow && navKey(cur) !== navKey(navLast)) {
     navStack.push(navLast); if (navStack.length > 30) navStack.shift();
     try { history.pushState({ smgNav: navStack.length }, ''); } catch (e) { }
@@ -703,12 +704,15 @@ function ceoSales(per, sum, stores, a, b) {
   const nm = k => esc(k.replace(/^에바30주년팝업_/, ''));
   const list = (L, top, isP) => `<ol class="rk">${L.map(([k, x], i) => `<li><span class="rn">${top ? i + 1 : (isP ? P : I).length - i}</span><span class="rt">${nm(k)}${isP ? `<small>${esc(x.ip || '')}</small>` : ''}</span><span class="rq">${fmt(x.q)}개</span><b class="rv">${fmt(x.s)}</b></li>`).join('')}</ol>`;
   const tb = (t, L) => L.length < 2 ? '' : `<div class="card"><h2>${t} <span class="r">${md(a)} ~ ${md(b)} · 매출(원)</span></h2><div class="grid2 tb5"><div><div class="tbh up">▲ 잘 팔린 TOP 5</div>${list(L.slice(0, 5), true, L === P)}</div><div><div class="tbh dn">▼ 덜 팔린 BOTTOM 5 <span class="muted">(1개 이상 팔린 것 중)</span></div>${list(L.slice(-5).reverse(), false, L === P)}</div></div></div>`;
-  // 이번 주(최근 7일) vs 지난 주
-  const last = latestSalesDate(sum); let sent = '';
-  if (last) { const w1 = salesSum(sum, addDays(last, -6), last), w0 = salesSum(sum, addDays(last, -13), addDays(last, -7)); const c = w0.s ? pct(w1.s, w0.s) : null;
-    const ipW = {}; for (const s of sum) for (let d = addDays(last, -13); d <= last; d = addDays(d, 1)) { const r = dayRec(s, d); if (!r) continue; const cur = d > addDays(last, -7); for (const [k, [, v]] of Object.entries(r.ip || {})) { const x = ipW[k] ||= [0, 0]; x[cur ? 1 : 0] += v; } }
+  // 고른 기간 vs 바로 앞 같은 일수 (마지막 올린 날 기준의 최근 7일을 따로 보여 주지 않음)
+  const len = daysBetween(a, b) + 1, prevA = addDays(a, -len), prevB = addDays(a, -1);
+  const w1 = salesSum(sum, a, b), w0 = salesSum(sum, prevA, prevB); const c = w0.s ? pct(w1.s, w0.s) : null;
+  let sent = '';
+  if (w1.s || w0.s) {
+    const ipW = {}; for (const s of sum) for (let d = prevA; d <= b; d = addDays(d, 1)) { const r = dayRec(s, d); if (!r) continue; const cur = d >= a; for (const [k, [, v]] of Object.entries(r.ip || {})) { const x = ipW[k] ||= [0, 0]; x[cur ? 1 : 0] += v; } }
     const best = Object.entries(ipW).sort((x, y) => (y[1][1] - y[1][0]) - (x[1][1] - x[1][0]))[0], worst = Object.entries(ipW).sort((x, y) => (x[1][1] - x[1][0]) - (y[1][1] - y[1][0]))[0];
-    sent = `<div class="card wk"><b>이번 주 한 줄 요약</b> — 최근 7일(${md(addDays(last, -6))} ~ ${md(last)}) 매출 <b class="ink">${won(w1.s)}</b>${c == null ? ', 그 전 주 자료가 없습니다.' : `, 지난 주보다 <b class="${c >= 0 ? 'up' : 'dn'}">${Math.abs(c).toFixed(1)}% ${c >= 0 ? '늘었습니다' : '줄었습니다'}</b> (지난 주 ${won(w0.s)}).`}${best && best[1][1] - best[1][0] > 0 ? ` 가장 많이 늘어난 IP는 <b>${esc(best[0])}</b>(+${man(best[1][1] - best[1][0])}원)` : ''}${worst && worst[1][1] - worst[1][0] < 0 ? `, 가장 많이 줄어든 IP는 <b>${esc(worst[0])}</b>(−${man(worst[1][0] - worst[1][1])}원)` : ''}${best || worst ? '입니다.' : ''}</div>`; }
+    sent = `<div class="card wk"><b>이 기간 한 줄</b> — ${md(a)} ~ ${md(b)} (${len}일) 매출 <b class="ink">${won(w1.s)}</b>${c == null ? ', 바로 앞 같은 일수 자료가 없습니다.' : `, 바로 앞 ${len}일(${md(prevA)} ~ ${md(prevB)})보다 <b class="${c >= 0 ? 'up' : 'dn'}">${Math.abs(c).toFixed(1)}% ${c >= 0 ? '늘었습니다' : '줄었습니다'}</b> (${won(w0.s)}).`}${best && best[1][1] - best[1][0] > 0 ? ` 가장 많이 늘어난 IP는 <b>${esc(best[0])}</b>(+${man(best[1][1] - best[1][0])}원)` : ''}${worst && worst[1][1] - worst[1][0] < 0 ? `, 가장 많이 줄어든 IP는 <b>${esc(worst[0])}</b>(−${man(worst[1][0] - worst[1][1])}원)` : ''}${best || worst ? '입니다.' : ''}</div>`;
+  }
   const R = sum.map(s => [s, per[s].s]).sort((x, y) => y[1] - x[1]), mx = Math.max(1, ...R.map(x => x[1])), tot = R.reduce((t, x) => t + x[1], 0);
   const rank = sum.length > 1 ? `<div class="card"><h2>매장 순위 <span class="r">${md(a)} ~ ${md(b)} · 매출(원)</span></h2><div class="hb">${R.map(([s, v], i) => `<span class="k"><span class="muted num">${i + 1}</span> ${sdot(s)}${esc(shortName(s))}</span><span class="tr"><i style="width:${v / mx * 100}%;background:${i === 0 ? 'var(--red)' : 'var(--ink-2)'}"></i></span><span class="v">${fmt(v)}<span class="muted" style="font-weight:500"> · ${tot ? (v / tot * 100).toFixed(1) : 0}%</span></span>`).join('')}</div></div>` : '';
   return sent + rank + tb('상품 TOP 5 · BOTTOM 5', P) + tb('IP TOP 5 · BOTTOM 5', I);
@@ -2001,13 +2005,58 @@ function firstSalesDate(stores) {
   for (const st of stores) for (const [ym, m] of Object.entries(S.sales[st] || {})) for (const dd of Object.keys(m.days || {})) { const d = ym + '-' + dd; if (d < best) best = d; }
   return best === '9999' ? '' : best;
 }
-function defaultRange(unit, last) {
-  if (!last) last = today();
-  if (unit === 'day') return [last, last];   // 기본: 마지막으로 올린 날 하루
-  if (unit === 'week') return [addDays(last, -7 * 8 + 1), last];
-  if (unit === 'month') return [addDays(last, -365).slice(0, 7) + '-01', last];
-  if (unit === 'year') return [firstSalesDate(S.stores) || last.slice(0, 4) + '-01-01', last];
-  if (unit === 'ip') return [last.slice(0, 7) + '-01', last];
+// 빠른 기간. 시작·끝 포함. 화면을 열 때 기본은 오늘.
+// 이번달 = 이번 달 1일 ~ 오늘(한국 날짜). 이번주 = 이번 주 월요일 ~ 오늘. 지난주 = 바로 앞 월~일. 지난달 = 바로 앞달 1일~말일.
+// 최근 7일·14일 = 오늘 포함 N일. 최근 1개월·3개월 = 같은 날짜만큼 이전(그달에 그 날이 없으면 그달 마지막 날) ~ 오늘. 올해 = 1월 1일 ~ 오늘.
+// 최근 올린 날·최근 자료 달·전체는 올려 둔 매출 날짜로 매번 다시 계산합니다. 이름은 저장하고, 날짜 숫자는 저장하지 않습니다.
+const SALES_PRESETS = [
+  { id: 'thisMonth', t: '이번달' }, { id: 'today', t: '오늘' }, { id: 'thisWeek', t: '이번주' }, { id: 'd7', t: '최근 7일' },
+  { id: 'd14', t: '최근 14일' }, { id: 'prevWeek', t: '지난주' }, { id: 'm1', t: '최근 1개월' }, { id: 'prevMonth', t: '지난달' },
+  { id: 'm3', t: '최근 3개월' }, { id: 'year', t: '올해' }, { id: 'lastDay', t: '최근 올린 날' }, { id: 'lastMonth', t: '최근 자료 달' }, { id: 'all', t: '전체' },
+];
+function salesPresetRange(id, now) {
+  now = now || today();
+  const stores = saleSt(S.stores || []);
+  const last = latestSalesDate(stores), first = firstSalesDate(stores);
+  if (id === 'thisMonth') return [now.slice(0, 7) + '-01', now];
+  if (id === 'thisWeek') return [periodKey(now, 'week'), now];
+  if (id === 'd7') return [addDays(now, -6), now];
+  if (id === 'd14') return [addDays(now, -13), now];
+  if (id === 'prevWeek') { const k = addDays(periodKey(now, 'week'), -7); return [k, addDays(k, 6)]; }
+  if (id === 'm1') return [addMonths(now, -1), now];
+  if (id === 'prevMonth') { const end = addDays(now.slice(0, 7) + '-01', -1); return [end.slice(0, 7) + '-01', end]; }
+  if (id === 'm3') return [addMonths(now, -3), now];
+  if (id === 'year') return [now.slice(0, 4) + '-01-01', now];
+  if (id === 'lastDay') return [last || now, last || now];
+  if (id === 'lastMonth') return last ? [last.slice(0, 7) + '-01', last] : [now, now];
+  if (id === 'all') return first && last ? [first, last] : [now, now];
+  return [now, now];
+}
+function presetSpan(a, b) {
+  const ymd = d => `${d.slice(2, 4)}.${d.slice(5, 7)}.${d.slice(8, 10)}`;
+  const mdn = d => `${d.slice(5, 7)}.${d.slice(8, 10)}`;
+  if (a.slice(0, 4) !== b.slice(0, 4)) return `${ymd(a)}~${ymd(b)}`;
+  return a === b ? ymd(a) : `${mdn(a)}~${mdn(b)}`;
+}
+function resolveSalesPeriod(now) {
+  now = now || today();
+  const p = S.ui.salesPeriod;
+  const ok = x => /^\d{4}-\d{2}-\d{2}$/.test(x || '');
+  if (p && p.preset === 'custom' && ok(p.a) && ok(p.b)) {
+    let a = p.a, b = p.b;
+    if (a > b) { const t = a; a = b; b = t; }
+    if (b > now) b = now;
+    if (a > now) a = now;
+    if (a > b) a = b;
+    return { preset: 'custom', a, b };
+  }
+  const id = p && SALES_PRESETS.some(x => x.id === p.preset) ? p.preset : 'today';
+  const [a, b] = salesPresetRange(id, now);
+  return { preset: id, a, b };
+}
+function rememberSalesPeriod(sp) {
+  S.ui.salesPeriod = sp.preset === 'custom' ? { preset: 'custom', a: sp.a, b: sp.b } : { preset: sp.preset };
+  S.ui.range = { unit: S.ui.salesUnit, ab: [sp.a, sp.b], preset: sp.preset };
 }
 function periodKey(d, unit) {
   if (unit === 'day') return d;
@@ -2260,8 +2309,8 @@ function salesView() {
   const stores = saleSt(S.stores); const last = latestSalesDate(stores);
   if (!stores.length) return `${head('매출', '토스포스 매출리포트 기준')}<div class="card"><div class="empty">국대출판물류는 물류창고라 매출이 없습니다. 위 매장 선택에서 판매 매장을 골라 주세요.</div></div>`;
   const unit = S.ui.salesUnit;
-  if (!S.ui.range || S.ui.range.unit !== unit) S.ui.range = { unit, ab: defaultRange(unit, last) };
-  const [a, b] = S.ui.range.ab;
+  const sp = resolveSalesPeriod(); rememberSalesPeriod(sp);
+  const a = sp.a, b = sp.b;
   const sum = (S.sumStores || stores).filter(s => stores.includes(s));
   const per = aggregate(stores, a, b);
   const len = daysBetween(a, b) + 1; const cr = cmpRange(a, b, S.ui.cmpMode || 'auto'); const pa = cr.pa, pb = cr.pb;
@@ -2273,21 +2322,26 @@ function salesView() {
   const multi = stores.length > 1;
   const ch = pct(cur.s, pre.s);
   const units = [['day', '일별'], ['week', '주별'], ['month', '월별'], ['year', '연도별'], ['ip', 'IP별']];
-  const quick = [['오늘', () => [today(), today()]], ['최근 올린 날', () => [last, last]], ['최근 14일', () => [addDays(last, -13), last]], ['이번주', () => { const k = periodKey(last, 'week'); return [k, last]; }], ['지난주', () => { const k = addDays(periodKey(last, 'week'), -7); return [k, addDays(k, 6)]; }], ['최근 자료 달', () => [last.slice(0, 7) + '-01', last]], ['지난달', () => { const f = addDays(last.slice(0, 7) + '-01', -1); return [f.slice(0, 7) + '-01', f]; }], ['올해', () => [last.slice(0, 4) + '-01-01', last]], ['전체', () => [firstSalesDate(stores), last]]];
-  S._quick = quick;
+  const presetBtns = SALES_PRESETS.map(p => { const [x, y] = salesPresetRange(p.id); const on = sp.preset === p.id; return `<button type="button" class="${on ? 'on' : ''}" data-sp="${p.id}" aria-pressed="${on}"><span class="spl">${p.t}</span><span class="spd">${presetSpan(x, y)}</span></button>`; }).join('');
   const noData = stores.filter(s => !per[s].days);
+  const posDays = sum.reduce((n, s) => n + per[s].days, 0);
+  const machTot = machAgg(sum, a, b).reduce((n, m) => n + m.s, 0);
+  const noSales = posDays === 0 && !machTot;
   const su = salesUpdated(stores);
+  const how = sp.preset === 'custom' ? '직접 선택' : ((SALES_PRESETS.find(x => x.id === sp.preset) || {}).t || '오늘');
   return `${head('매출', `토스포스 매출리포트 기준 · ${S.stores.length > 1 ? '매장마다 마감일이 다릅니다 (아래 표)' : `${last ? `<b>${fd(last)} 마감</b>까지` : '아직 자료 없음'}${su.up ? ` · 마지막 올림 ${kst(su.up.at)} ${esc(whoText(su.up.by, su.up.co))}` : ''}`}`, `<button class="btn" id="posBtn">토스포스 파일 올리기</button><button class="btn" id="machBtn">자판기·기계 매출 올리기</button>`)}${freshTable(S.stores)}
   ${grandTotal(sum, a, b, pa, pb, cur.s, pre.s, cr.label)}
   <div class="card" style="display:flex;flex-direction:column;gap:12px">
     <div class="flt">
       <div class="fg"><div class="fl">보기 단위</div><div class="fseg">${units.map(([k, t]) => `<button class="${unit === k ? 'on' : ''}" data-su="${k}">${t}</button>`).join('')}</div></div>
-      <div class="fg"><div class="fl">기간</div><div class="frange"><div class="fd"><span>시작</span>${dateSel('ra', a)}</div><span class="fsep">~</span><div class="fd"><span>종료</span>${dateSel('rb', b)}</div></div></div>
-      <div class="fg"><div class="fl">빠른 선택</div><div class="fquick">${quick.map(([t, fn], i) => { let on = false; try { const [x, y] = fn(); on = x === a && y === b; } catch (e) { } return `<button class="${on ? 'on' : ''}" data-qr="${i}">${t}</button>`; }).join('')}</div></div>
+      <div class="fg"><div class="fl">빠른 선택</div><div class="fquick" role="group" aria-label="빠른 기간">${presetBtns}</div></div>
+      <div class="fg"><div class="fl">기간</div><div class="frange srange"><div class="fd"><span>시작</span>${dateSel('ra', a)}</div><span class="fsep">~</span><div class="fd"><span>종료</span>${dateSel('rb', b)}</div></div></div>
     </div>
+    <p class="speriod">선택 기간 <b>${fr(a, b)}</b> <span class="muted">· ${len}일 · 시작·끝 포함 · ${how}</span></p>
     ${multi ? `<div class="field"><label>합산에 넣을 매장</label><div class="chips">${stores.map(s => `<label class="chip ${sum.includes(s) ? 'on' : ''}" style="display:inline-flex;gap:6px;align-items:center;cursor:pointer"><input type="checkbox" data-sum="${s}" ${sum.includes(s) ? 'checked' : ''} style="accent-color:var(--red)"><span class="dot" style="background:${storeColor(s)}"></span>${esc(storeName(s))}</label>`).join('')}</div></div>` : ''}
   </div>
-  ${noData.length ? `<div class="note">${noData.map(s => esc(storeName(s))).join(', ')} — 이 기간 매출 자료가 없습니다. [토스포스 파일 올리기]로 넣어 주세요.</div>` : ''}
+  ${noSales ? `<div class="card"><div class="empty">이 기간(${fr(a, b)}) 매출 자료가 없습니다.${last ? `<br>마지막으로 올린 날은 ${fd(last)}입니다.` : '<br>아직 올린 매출 파일이 없습니다.'}<br>다른 기간을 고르거나 [토스포스 파일 올리기]로 넣어 주세요.</div></div>` : ''}
+  ${noData.length && !noSales ? `<div class="note">${noData.map(s => esc(storeName(s))).join(', ')} — 이 기간 매출 자료가 없습니다. [토스포스 파일 올리기]로 넣어 주세요.</div>` : ''}
   <div class="tiles">
     <button class="tile tbtn" data-cmp="s"><span class="lb">토스포스 매출${multi ? ` · 합산 ${sum.length}곳` : ''}<span class="go">비교 ›</span></span><span class="v big${String(fmt(cur.s)).length>9?' long':''}">${fmt(cur.s)}<small>원</small></span><span class="d">${ch == null ? '<span class="muted">이전 기간 자료 없음</span>' : `${chg(ch)} <span class="muted">${cmpLabel}</span>`}</span></button>
     <button class="tile tbtn" data-cmp="p"><span class="lb">결제건수<span class="go">비교 ›</span></span><span class="v big${String(fmt(cur.p)).length>9?' long':''}">${fmt(cur.p)}<small>건</small></span><span class="d">${chg(pct(cur.p, pre.p))} <span class="muted">이전 ${fmt(pre.p)}건</span></span></button>
@@ -2299,8 +2353,7 @@ function salesView() {
   ${ceoSales(per, sum, stores, a, b)}
   ${unit !== 'ip' ? machBlock(sum, a, b, cur.s) : ''}
   ${multi ? storeCompare(per, sum, stores) : ''}
-  ${len === 1 && unit !== 'ip' ? `<div class="note" style="font-size:12.5px">${md(a)} 하루 매출입니다. 아래 그래프는 흐름을 보기 위해 그날까지 최근 14일을 보여 줍니다.</div>` : ''}
-  ${unit === 'ip' ? ipBlock(per, sum) : seriesBlock(len === 1 && unit === 'day' ? aggregate(stores, addDays(a, -13), a) : per, sum, stores, unit)}
+  ${unit === 'ip' ? ipBlock(per, sum) : seriesBlock(per, sum, stores, unit)}
   ${unit !== 'ip' ? ipBlock(per, sum, 10) : ''}
   ${productTop(per, sum)}`;
 }
@@ -3161,8 +3214,8 @@ function bind() {
     if (t.id === 'cReset') { S.ui.counts[S.stores[0]] = {}; render(); return; }
     if (d.recv) { await receive(d.recv); return; }
     if (d.rt != null) { S.ui.recType = d.rt; render(); return; }
-    if (d.su) { S.ui.salesUnit = d.su; S.ui.range = null; render(); return; }
-    if (d.qr != null) { S.ui.range = { unit: S.ui.salesUnit, ab: S._quick[+d.qr][1]() }; render(); return; }
+    if (d.su) { S.ui.salesUnit = d.su; render(); return; }
+    if (d.sp) { S.ui.salesPeriod = { preset: d.sp }; S.ui.range = null; render(); return; }
     if (t.id === 'machBtn') { S.ui.machPv = null; S.ui.drawer = machDrawer; render(); return; }
     if (t.id === 'machFileBtn') { const st = ($('#machStore') || {}).value || S.stores[0]; pickFile('.pdf,.xlsx,.xls,.csv', fs => { S.ui.machStore = st; readMachFiles(fs, st).catch(e => { S.ui.machPv = { store: st, mach: [], errs: [e.message || String(e)], files: [] }; render(); }); }, true); return; }
     if (t.id === 'machSave') { document.querySelectorAll('[data-mname]').forEach(x => { S.ui.machPv.mach[+x.dataset.mname].name = x.value; }); await saveMach(); return; }
@@ -3226,7 +3279,7 @@ function bind() {
     if (t.id === 'ra' || t.id === 'rb') { let a = $('#ra').value, b = $('#rb').value; if (!a || !b) return; let msg = '';
       if (a > b) { if (t.id === 'ra') { b = a; msg = `시작일이 종료일보다 늦어서 종료일도 ${md(a)}로 맞췄습니다`; } else { a = b; msg = `종료일이 시작일보다 빨라서 시작일도 ${md(b)}로 맞췄습니다`; } }
       if (b > today()) { b = today(); if (a > b) a = b; msg = '앞으로 올 날짜는 고를 수 없어 오늘까지로 맞췄습니다'; }
-      S.ui.range = { unit: S.ui.salesUnit, ab: [a, b] }; render(); if (msg) toast(msg); return; }
+      S.ui.salesPeriod = { preset: 'custom', a, b }; S.ui.range = { unit: S.ui.salesUnit, ab: [a, b], preset: 'custom' }; render(); if (msg) toast(msg); return; }
     if (d.sum) { const cur = (S.sumStores || S.stores).filter(s => s !== d.sum); if (t.checked) cur.push(d.sum); S.sumStores = cur.length ? cur : [d.sum]; render(); return; }
     if (t.id === 'setM') { S.ui.settleMonth = t.value; render(); return; }
     if (d.pst) { const [id, s] = d.pst.split(':'); const p = S.ui.draft[id]; p.stores = t.checked ? [...new Set([...p.stores, s])] : p.stores.filter(x => x !== s); render(); return; }
@@ -3408,7 +3461,19 @@ async function start() {
     $('#app').innerHTML = `<div class="login"><div class="note bad" style="margin:20px">🔺 앱을 여는 중 문제가 생겼습니다: ${esc(err.message || err)}</div></div>`;
   }
 }
-window.SMGApp = { S, render, indexProducts, setUser };
+// 매출 화면을 켜 둔 채로 날짜가 바뀌면 빠른 기간만 다시 계산 (직접 고른 날짜는 그대로)
+function salesPeriodRollover() {
+  if (S.view !== 'sales' || !S.user) return;
+  const p = S.ui.salesPeriod;
+  if (p && p.preset === 'custom') return;
+  const sp = resolveSalesPeriod();
+  const ab = (S.ui.range && S.ui.range.ab) || [];
+  if (ab[0] === sp.a && ab[1] === sp.b) return;
+  render();
+}
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') salesPeriodRollover(); });
+setInterval(salesPeriodRollover, 30000);
+window.SMGApp = { S, render, indexProducts, setUser, salesPresetRange, resolveSalesPeriod, salesPeriodRollover };
 start();
 })();
 
