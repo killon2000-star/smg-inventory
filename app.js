@@ -50,7 +50,7 @@ const PERM_DEF = [
 ];
 
 const DEFAULT_ORDER = STORES.map(s => s.id);
-const APP_VERSION = '2026-11-10 12:40';   // 앱 화면을 마지막으로 고친 시각 (한국 시간)
+const APP_VERSION = '2026-11-10 19:10';   // 앱 화면을 마지막으로 고친 시각 (한국 시간)
 /* ───────── 작은 도구 ───────── */
 const $ = (s, el = document) => el.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -2764,84 +2764,150 @@ function closeSvg(title, w, h, inner, cls) {
   return `<figure class="cfig${cls ? ' ' + cls : ''}"><figcaption>${esc(title)}</figcaption><svg viewBox="0 0 ${w} ${h}" width="100%" role="img" aria-label="${esc(title)}">${inner}</svg></figure>`;
 }
 function chartEmpty(title) { return `<figure class="cfig"><figcaption>${esc(title)}</figcaption><div class="cnone">자료 없음</div></figure>`; }
-function closeHBars(title, rows, kind) {
-  const known = rows.filter(r => r.v != null);
+function estW(s, fs) {
+  let w = 0;
+  for (const ch of String(s)) w += ch.charCodeAt(0) > 255 ? fs * 1.08 : fs * 0.72;
+  return w + 4;
+}
+function barText(r) {
+  if (r.v == null) return r.miss || '자료 없음';
+  if (r.text) return r.text;
+  const unit = r.unit == null ? '원' : r.unit;
+  let s = (r.v < 0 ? '-' : '') + fmt(Math.abs(r.v)) + unit;
+  if (r.qty != null) s += ' · ' + fmt(r.qty) + '개';
+  if (r.pct != null) s += ' · ' + r.pct + '%';
+  return s;
+}
+function drawBars(title, lines, kind) {
+  const bars = lines.filter(l => l.kind !== 'head');
+  const known = bars.filter(l => l.v != null && !isNaN(l.v));
   if (!known.length) return chartEmpty(title);
-  const mx = Math.max(...known.map(r => Math.abs(r.v)), 1);
-  const rowH = 22, H = rows.length * rowH + 6;
-  const nameW = kind === 'side' ? 72 : kind === 'half' ? 108 : 148;
-  const valW = 58;
-  const W = kind === 'side' ? 300 : kind === 'half' ? 390 : 640;
-  const barMax = Math.max(36, W - nameW - valW);
-  const cut = kind === 'side' ? 8 : kind === 'half' ? 12 : 16;
+  const fs = 12;
+  const valW = Math.ceil(Math.max(84, ...bars.map(r => estW(barText(r), fs))) + 8);
+  const nameNeed = Math.max(52, ...bars.map(l => estW(l.name || '', fs) + 12));
+  const nameCap = kind === 'side' ? 100 : kind === 'half' ? 150 : 210;
+  const nameW = Math.min(nameCap, Math.max(kind === 'side' ? 70 : 96, nameNeed));
+  const rowH = 26, headH = 20;
+  let H = 8;
+  lines.forEach(l => { H += l.kind === 'head' ? headH : rowH; });
+  const W = Math.max(kind === 'side' ? 380 : kind === 'half' ? 540 : 860, nameW + valW + 140);
+  const plotL = nameW + 12, plotR = W - 8;
+  const hasNeg = known.some(r => r.v < 0), hasPos = known.some(r => r.v > 0);
+  const minV = Math.min(0, ...known.map(r => r.v)), maxV = Math.max(0, ...known.map(r => r.v));
+  const span = (maxV - minV) || 1;
+  const innerL = plotL + (hasNeg ? valW + 14 : 0);
+  const innerR = plotR - (hasPos ? valW : 0);
+  const innerW = Math.max(28, innerR - innerL);
+  const xOf = v => innerL + (v - minV) / span * innerW;
+  const zero = xOf(0);
   let g = '';
-  rows.forEach((r, i) => {
-    const y = 4 + i * rowH, mid = y + 15;
-    const tip = esc(r.name) + (r.v == null ? ' 자료 없음' : ' ' + fmt(r.v) + (r.unit || ''));
-    g += `<text class="lab" font-size="12" x="0" y="${mid}">${esc(clipLab(r.name, cut))}</text><title>${tip}</title>`;
-    if (r.v == null) g += `<text class="miss" font-size="12" x="${nameW}" y="${mid}">${esc(r.miss || '자료 없음')}</text>`;
-    else {
-      const neg = r.v < 0, w = Math.max(2, Math.abs(r.v) / mx * barMax);
-      const fill = neg ? '#9B3A3A' : (r.color || '#19776A');
-      g += `<rect x="${nameW}" y="${y + 5}" width="${w.toFixed(1)}" height="12" rx="2" fill="${fill}"/>`;
-      g += `<text class="lab" font-size="12" font-weight="800" x="${(nameW + w + 6).toFixed(1)}" y="${mid}">${esc(man(r.v))}</text>`;
+  if (hasNeg) g += `<line class="grid" x1="${zero.toFixed(1)}" x2="${zero.toFixed(1)}" y1="4" y2="${H - 4}"/>`;
+  let y = 6;
+  lines.forEach(r => {
+    if (r.kind === 'head') {
+      g += `<text class="lab" font-size="12" font-weight="800" x="0" y="${y + 13}">${esc(r.name)}</text>`;
+      y += headH;
+      return;
     }
+    const mid = y + 16, label = barText(r);
+    let nm = r.name || '';
+    while (nm.length > 1 && estW(nm, fs) > nameW - 8) nm = nm.slice(0, -1);
+    if (nm !== (r.name || '')) nm += '…';
+    g += `<text class="lab" font-size="${fs}" x="0" y="${mid}">${esc(nm)}</text><title>${esc((r.name ? r.name + ' ' : '') + label)}</title>`;
+    if (r.v == null) g += `<text class="miss" font-size="${fs}" x="${plotL}" y="${mid}">${esc(label)}</text>`;
+    else {
+      const fill = r.v < 0 ? '#9B3A3A' : (r.color || '#19776A');
+      const x1 = xOf(Math.min(0, r.v)), x2 = xOf(Math.max(0, r.v));
+      const w = Math.max(r.v === 0 ? 2 : 3, x2 - x1);
+      g += `<rect x="${x1.toFixed(1)}" y="${y + 6}" width="${w.toFixed(1)}" height="12" rx="2" fill="${fill}"/>`;
+      if (r.v < 0) g += `<text class="lab" font-size="${fs}" font-weight="800" text-anchor="end" x="${(x1 - 8).toFixed(1)}" y="${mid}">${esc(label)}</text>`;
+      else g += `<text class="lab" font-size="${fs}" font-weight="800" x="${(x2 + 8).toFixed(1)}" y="${mid}">${esc(label)}</text>`;
+    }
+    y += rowH;
   });
   return closeSvg(title, W, H, g);
 }
-function closeVBars(title, items, opt) {
+function closeHBars(title, rows, kind) { return drawBars(title, rows, kind); }
+function closeVBars(title, items) {
   const known = items.filter(r => r.v != null);
   if (!known.length) return chartEmpty(title);
   const mx = Math.max(...known.map(r => Math.abs(r.v)), 1);
-  const W = 700, H = 158, L = 48, Rt = 8, T = 22, B = 26, n = items.length;
-  const slot = (W - L - Rt) / n, bw = Math.max(3, Math.min(18, slot - 3));
-  const base = H - B;
-  const Y = v => base - Math.abs(v) / mx * (base - T);
-  let g = '';
-  for (let k = 0; k <= 3; k++) {
-    const v = mx * k / 3, y = Y(k ? v : 0);
-    g += `<line class="grid" x1="${L}" x2="${W - Rt}" y1="${y.toFixed(1)}" y2="${y.toFixed(1)}"/><text class="lab" x="${L - 4}" y="${(y + 3).toFixed(1)}" text-anchor="end">${k ? esc(man(v)) : '0'}</text>`;
-  }
-  let lastRight = -99;
+  const W = 760, L = 16, Rt = 10, B = 28, n = items.length;
+  const slot = (W - L - Rt) / n, bw = Math.max(4, Math.min(16, slot - 4));
+  const marks = [];
+  let lastRight = -99, needRot = 0;
+  items.forEach((r, i) => {
+    if (r.v == null) { marks.push(null); return; }
+    const lab = (r.v < 0 ? '-' : '') + fmt(Math.abs(r.v)) + (r.unit == null ? '원' : r.unit);
+    const lw = estW(lab, 11), cx = L + i * slot + slot / 2;
+    const rot = cx - lw / 2 < lastRight + 3;
+    if (rot) needRot = Math.max(needRot, lw + 8);
+    else lastRight = cx + lw / 2;
+    marks.push({ lab, lw, cx, rot, v: r.v, name: r.name });
+  });
+  const T = Math.max(32, needRot);
+  const plotH = 96, H = T + plotH + B, base = T + plotH;
+  const Y = v => base - Math.abs(v) / mx * plotH;
+  let g = `<line class="grid" x1="${L}" x2="${W - Rt}" y1="${base}" y2="${base}"/>`;
   items.forEach((r, i) => {
     const x = L + i * slot + (slot - bw) / 2;
     const day = r.short != null ? r.short : clipLab(r.name, 3);
-    if (r.v == null) {
-      g += `<line class="grid" x1="${(x + bw / 2).toFixed(1)}" x2="${(x + bw / 2).toFixed(1)}" y1="${base - 3}" y2="${base}"><title>${esc(r.name)} 자료 없음</title></line>`;
-    } else {
-      const y = Y(r.v), h = Math.max(2, base - y), neg = r.v < 0;
-      const fill = neg ? '#9B3A3A' : (r.color || '#19776A');
-      g += `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${bw.toFixed(1)}" height="${h.toFixed(1)}" rx="1.5" fill="${fill}"><title>${esc(r.name)} ${fmt(r.v)}${r.unit || ''}</title></rect>`;
-      const lab = man(r.v), lw = lab.length * 6.4, cx = x + bw / 2;
-      if (cx - lw / 2 >= lastRight + 3 && y - 4 > 10) {
-        g += `<text class="lab" font-weight="800" x="${cx.toFixed(1)}" y="${(y - 4).toFixed(1)}" text-anchor="middle">${esc(lab)}</text>`;
-        lastRight = cx + lw / 2;
-      }
+    const m = marks[i];
+    if (!m) g += `<line class="grid" x1="${(x + bw / 2).toFixed(1)}" x2="${(x + bw / 2).toFixed(1)}" y1="${base - 3}" y2="${base}"><title>${esc(r.name)} 자료 없음</title></line>`;
+    else {
+      const y = Y(m.v), h = Math.max(2, base - y);
+      const fill = m.v < 0 ? '#9B3A3A' : '#19776A';
+      g += `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${bw.toFixed(1)}" height="${h.toFixed(1)}" rx="1.5" fill="${fill}"><title>${esc(m.name)} ${esc(m.lab)}</title></rect>`;
+      if (m.rot) g += `<text class="lab" font-size="11" font-weight="800" text-anchor="start" transform="rotate(-90 ${m.cx.toFixed(1)} ${(y - 8).toFixed(1)})" x="${m.cx.toFixed(1)}" y="${(y - 8).toFixed(1)}">${esc(m.lab)}</text>`;
+      else g += `<text class="lab" font-size="11" font-weight="800" text-anchor="middle" x="${m.cx.toFixed(1)}" y="${(y - 10).toFixed(1)}">${esc(m.lab)}</text>`;
     }
-    const showX = opt && opt.axis ? opt.axis(i, n) : (n <= 8 || i % Math.ceil(n / 8) === 0 || i === n - 1);
-    if (showX) g += `<text class="lab" x="${(x + bw / 2).toFixed(1)}" y="${H - 8}" text-anchor="middle">${esc(String(day))}</text>`;
+    const step = Math.max(1, Math.ceil(n / 10));
+    if (i % step === 0 || i === n - 1) g += `<text class="lab" font-size="11" x="${(x + bw / 2).toFixed(1)}" y="${H - 8}" text-anchor="middle">${esc(String(day))}</text>`;
   });
   return closeSvg(title, W, H, g, 'day');
 }
 function closeDonut(R) {
   const parts = R.units.filter(u => u.sales != null && u.sales > 0);
-  const rest = R.units.filter(u => u.sales == null || u.sales === 0);
+  const rest = R.units.filter(u => u.sales == null || u.sales <= 0);
   if (!parts.length) return chartEmpty('사업부 매출 비중');
   const tot = parts.reduce((t, u) => t + u.sales, 0);
   const colors = ['#19776A', '#0D4A42', '#2F6FDB', '#C4A35A'];
-  const cx = 100, cy = 92, rad = 62, sw = 24, C = 2 * Math.PI * rad;
-  let off = 0, arcs = '';
+  const W = 820, H = 230, cx = 400, cy = 104, rad = 62, sw = 22, C = 2 * Math.PI * rad;
+  let off = 0, arcs = '', ang = 0;
+  const labs = [];
   if (parts.length === 1) arcs = `<circle cx="${cx}" cy="${cy}" r="${rad}" fill="none" stroke="${colors[0]}" stroke-width="${sw}"/>`;
-  else parts.forEach((u, i) => {
-    const len = i === parts.length - 1 ? C - off : u.sales / tot * C;
-    arcs += `<circle cx="${cx}" cy="${cy}" r="${rad}" fill="none" stroke="${colors[i % colors.length]}" stroke-width="${sw}" stroke-dasharray="${len.toFixed(2)} ${(C - len).toFixed(2)}" stroke-dashoffset="${(-off).toFixed(2)}" transform="rotate(-90 ${cx} ${cy})"><title>${esc(u.b.name)} ${fmt(u.sales)}원</title></circle>`;
-    off += len;
+  parts.forEach((u, i) => {
+    const frac = u.sales / tot;
+    const len = parts.length === 1 ? C : (i === parts.length - 1 ? C - off : frac * C);
+    if (parts.length > 1) arcs += `<circle cx="${cx}" cy="${cy}" r="${rad}" fill="none" stroke="${colors[i % colors.length]}" stroke-width="${sw}" stroke-dasharray="${len.toFixed(2)} ${(C - len).toFixed(2)}" stroke-dashoffset="${(-off).toFixed(2)}" transform="rotate(-90 ${cx} ${cy})"/>`;
+    const sweep = frac * 2 * Math.PI, mid = ang + sweep / 2;
+    ang += sweep; off += len;
+    const name = CSHORT[u.b.id] || u.b.name;
+    const text = `${name} ${fmt(u.sales)}원 ${Math.round(frac * 100)}%`;
+    labs.push({
+      x1: cx + Math.sin(mid) * rad, y1: cy - Math.cos(mid) * rad,
+      x2: cx + Math.sin(mid) * (rad + 14), y2: cy - Math.cos(mid) * (rad + 14),
+      right: Math.sin(mid) >= -0.15, text, name
+    });
+  });
+  const nudge = arr => {
+    arr.sort((a, b) => a.y2 - b.y2);
+    for (let i = 1; i < arr.length; i++) if (arr[i].y2 < arr[i - 1].y2 + 16) arr[i].y2 = arr[i - 1].y2 + 16;
+    for (let i = arr.length - 2; i >= 0; i--) if (arr[i].y2 > arr[i + 1].y2 - 16) arr[i].y2 = arr[i + 1].y2 - 16;
+    arr.forEach(l => { l.y2 = Math.max(14, Math.min(H - 28, l.y2)); });
+  };
+  nudge(labs.filter(l => l.right));
+  nudge(labs.filter(l => !l.right));
+  labs.forEach(l => {
+    const x3 = l.right ? cx + rad + 58 : cx - rad - 58;
+    arcs += `<polyline fill="none" stroke="#666" stroke-width="1" points="${l.x1.toFixed(1)},${l.y1.toFixed(1)} ${l.x2.toFixed(1)},${l.y2.toFixed(1)} ${x3.toFixed(1)},${l.y2.toFixed(1)}"/>`;
+    arcs += `<text class="lab" font-size="12" font-weight="800" y="${(l.y2 + 4).toFixed(1)}" text-anchor="${l.right ? 'start' : 'end'}" x="${(l.right ? x3 + 4 : x3 - 4).toFixed(1)}">${esc(l.text)}</text>`;
   });
   arcs += `<circle class="hole" cx="${cx}" cy="${cy}" r="${rad - sw / 2 - 1}" fill="var(--surface)"/>`;
-  arcs += `<text class="lab" x="${cx}" y="${cy - 2}" text-anchor="middle" font-size="13" font-weight="800">${esc(man(tot))}</text><text class="lab" x="${cx}" y="${cy + 14}" text-anchor="middle" font-size="10">합계</text>`;
-  const leg = parts.map((u, i) => `<li><i style="background:${colors[i % colors.length]}"></i><span>${esc(CSHORT[u.b.id] || u.b.name)} ${fmt(u.sales)}원 · ${Math.round(u.sales / tot * 100)}%</span></li>`).join('')
-    + rest.map(u => `<li class="gap"><i></i><span>${esc(CSHORT[u.b.id] || u.b.name)} · ${u.sales === 0 ? '0원' : '자료 없음'}</span></li>`).join('');
-  return closeSvg('사업부 매출 비중', 200, 184, arcs, 'donut') + `<ul class="cleg">${leg}</ul>`;
+  const totLab = fmt(tot) + '원';
+  arcs += `<text class="lab" x="${cx}" y="${cy - 6}" text-anchor="middle" font-size="11">합계</text><text class="lab" x="${cx}" y="${cy + 12}" text-anchor="middle" font-size="14" font-weight="800">${esc(totLab)}</text>`;
+  if (rest.length) arcs += `<text class="miss" font-size="12" x="${cx}" y="${H - 10}" text-anchor="middle">${esc(rest.map(u => (CSHORT[u.b.id] || u.b.name) + (u.sales === 0 ? ' 0원' : ' 자료 없음')).join(' · '))}</text>`;
+  return closeSvg('사업부 매출 비중', W, H, arcs, 'donut');
 }
 function closeDailyChart(R) {
   const map = R.off && R.off.dayMap;
@@ -2856,63 +2922,38 @@ function closeWeekChart(R) {
 function closeCmpChart(R) {
   const rows = R.units;
   if (!rows.some(u => u.sales != null || u.prev != null || u.yoy != null)) return chartEmpty('지난달·작년 비교');
-  const vals = [];
-  rows.forEach(u => [u.sales, u.prev, u.yoy].forEach(v => { if (v != null) vals.push(Math.abs(v)); }));
-  const mx = Math.max(...vals, 1);
-  const labels = ['이번달', '지난달', '작년'];
   const colors = ['#19776A', '#7DCEC0', '#2F6FDB'];
-  const rh = 58, H = rows.length * rh + 20, W = 980, nameW = 100, barMax = W - nameW - 80;
-  let g = '';
-  labels.forEach((t, i) => { const x = i * 78; g += `<rect x="${x}" y="0" width="10" height="10" fill="${colors[i]}"/><text class="lab" x="${x + 14}" y="9">${t}</text>`; });
-  rows.forEach((u, i) => {
-    const y = 20 + i * rh;
-    g += `<text class="lab" font-size="12" x="0" y="${y + 12}">${esc(CSHORT[u.b.id] || u.b.name)}</text>`;
-    [u.sales, u.prev, u.yoy].forEach((v, k) => {
-      const by = y + 16 + k * 14;
-      if (v == null) g += `<text class="miss" font-size="11" x="${nameW}" y="${by + 9}">${labels[k]} 자료 없음</text>`;
-      else {
-        const w = Math.max(v === 0 ? 2 : 3, Math.abs(v) / mx * barMax);
-        g += `<rect x="${nameW}" y="${by}" width="${w.toFixed(1)}" height="9" rx="2" fill="${v < 0 ? '#9B3A3A' : colors[k]}"><title>${esc(CSHORT[u.b.id] || u.b.name)} ${labels[k]} ${fmt(v)}원</title></rect><text class="lab" font-size="11" font-weight="800" x="${(nameW + w + 4).toFixed(1)}" y="${by + 8}">${esc(man(v))}</text>`;
-      }
+  const lines = [];
+  rows.forEach(u => {
+    lines.push({ kind: 'head', name: CSHORT[u.b.id] || u.b.name });
+    [['이번달', u.sales, colors[0]], ['지난달', u.prev, colors[1]], ['작년', u.yoy, colors[2]]].forEach(([name, v, color]) => {
+      lines.push({ name, v, color, miss: name + ' 자료 없음' });
     });
   });
-  return closeSvg('사업부별 이번달 · 지난달 · 작년', W, H, g);
+  return drawBars('사업부별 이번달 · 지난달 · 작년', lines);
 }
 function closeGoalChart(R) {
   const rows = R.units;
   if (!rows.some(u => u.cost.goal != null)) return chartEmpty('이번달 매출과 목표');
-  const vals = [];
-  rows.forEach(u => { if (u.sales != null) vals.push(Math.abs(u.sales)); if (u.cost.goal != null) vals.push(u.cost.goal); });
-  const mx = Math.max(...vals, 1);
-  const rh = 40, H = rows.length * rh + 18, W = 720, nameW = 88, barMax = W - nameW - 70;
-  let g = `<rect x="0" y="0" width="10" height="10" fill="#19776A"/><text class="lab" x="14" y="9">이번달</text><rect x="78" y="0" width="10" height="10" fill="#C4A35A"/><text class="lab" x="92" y="9">목표</text>`;
-  rows.forEach((u, i) => {
-    const y = 18 + i * rh;
-    const name = CSHORT[u.b.id] || u.b.name;
-    g += `<text class="lab" font-size="12" x="0" y="${y + 12}">${esc(name)}</text>`;
-    const draw = (v, k, color) => {
-      const by = y + 14 + k * 12;
-      if (v == null) g += `<text class="miss" font-size="11" x="${nameW}" y="${by + 9}">${k ? '목표 없음' : '자료 없음'}</text>`;
-      else {
-        const w = Math.max(v === 0 ? 2 : 3, Math.abs(v) / mx * barMax);
-        g += `<rect x="${nameW}" y="${by}" width="${w.toFixed(1)}" height="9" rx="2" fill="${color}"><title>${esc(name)} ${k ? '목표' : '이번달'} ${fmt(v)}원</title></rect><text class="lab" font-size="11" font-weight="800" x="${(nameW + w + 4).toFixed(1)}" y="${by + 8}">${esc(man(v))}</text>`;
-      }
-    };
-    draw(u.sales, 0, '#19776A');
-    draw(u.cost.goal, 1, '#C4A35A');
+  const lines = [];
+  rows.forEach(u => {
+    const rate = u.sales != null && u.cost.goal ? Math.round(u.sales / u.cost.goal * 100) : null;
+    lines.push({ kind: 'head', name: CSHORT[u.b.id] || u.b.name });
+    lines.push({ name: '이번달', v: u.sales, color: '#19776A', pct: rate, miss: '이번달 자료 없음' });
+    lines.push({ name: '목표', v: u.cost.goal, color: '#C4A35A', miss: '목표 없음' });
   });
-  return closeSvg('이번달 매출과 목표', W, H, g);
+  return drawBars('이번달 매출과 목표', lines);
 }
 function closeProdChart(R) {
-  const rows = R.products.slice(0, 8).map(([n, x]) => ({ name: n.replace(/^에바30주년팝업_/, ''), v: x.s }));
+  const rows = R.products.slice(0, 8).map(([n, x]) => ({ name: n.replace(/^에바30주년팝업_/, ''), v: x.s, qty: x.q }));
   return rows.length ? closeHBars('상품 매출 상위', rows, 'half') : chartEmpty('많이 팔린 상품');
 }
 function closeStockChart(R) {
   const st = R.stock;
   if (st.missing) return chartEmpty('월말 재고');
   const have = Math.max(0, st.kinds - st.zero - st.neg);
-  const counts = closeHBars('월말 재고 상태 (종)', [{ name: '재고 있음', v: have, color: '#19776A' }, { name: '품절', v: st.zero, color: '#C4A35A' }, { name: '마이너스', v: st.neg, color: '#9B3A3A' }], 'half');
-  const outs = st.outs.length ? closeHBars('팔린 뒤 재고 0 이하 · 판매 수량', st.outs.slice(0, 5).map(x => ({ name: x.n, v: x.q, color: '#9B3A3A' })), 'half') : chartEmpty('팔린 뒤 재고 0 이하');
+  const counts = closeHBars('월말 재고 상태 (종)', [{ name: '재고 있음', v: have, unit: '종', color: '#19776A' }, { name: '품절', v: st.zero, unit: '종', color: '#C4A35A' }, { name: '마이너스', v: st.neg, unit: '종', color: '#9B3A3A' }], 'half');
+  const outs = st.outs.length ? closeHBars('팔린 뒤 재고 0 이하 · 판매 수량', st.outs.slice(0, 5).map(x => ({ name: x.n, v: x.q, unit: '개', color: '#9B3A3A' })), 'half') : chartEmpty('팔린 뒤 재고 0 이하');
   return counts + outs;
 }
 function closeProfitChart(R) {
@@ -2927,14 +2968,15 @@ function closeMachChart(R) {
   const mon = ((S.sales.suwon || {})[R.ym] || {}).mach;
   if (!mon) return '';
   const rows = Object.values(mon).map(m => {
-    let s = 0, n = 0;
-    for (const v of Object.values(m.days || {})) if (v && ((v[0] || 0) || (v[1] || 0))) { s += v[0] || 0; n++; }
-    return n ? { name: m.name || '기계', v: s, color: '#2F6FDB', unit: '원' } : null;
+    let s = 0, q = 0, n = 0;
+    for (const v of Object.values(m.days || {})) if (v && ((v[0] || 0) || (v[1] || 0))) { s += v[0] || 0; q += v[1] || 0; n++; }
+    return n ? { name: m.name || '기계', v: s, qty: q, color: '#2F6FDB' } : null;
   }).filter(Boolean);
   return rows.length ? closeHBars('자판기·기계 · 오프라인 합계에 포함', rows) : '';
 }
 function closeShareBars(R) {
-  return closeHBars('사업부 매출', R.units.map(u => ({ name: BLAB[u.b.id] || u.b.name, v: u.sales, unit: '원' }))) + closeMachChart(R);
+  const tot = R.units.reduce((t, u) => t + (u.sales > 0 ? u.sales : 0), 0);
+  return closeHBars('사업부 매출', R.units.map(u => ({ name: BLAB[u.b.id] || u.b.name, v: u.sales, pct: u.sales != null && tot ? Math.round(u.sales / tot * 100) : null }))) + closeMachChart(R);
 }
 function mcloseView() {
   if (!canSettle()) return `${head('월말 마감 보고서', '대표만 볼 수 있습니다')}<div class="card"><div class="empty">정산과 같은 권한(대표)만 이 보고서를 엽니다.</div></div>`;
