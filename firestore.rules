@@ -99,5 +99,7 @@ service cloud.firestore {
 
     // 정산: 대표만
     match /settle/{m} { allow read, write: if isOwner(); }
+    // 팝업 시공비: 대표와 승인권자(본부장)만
+    match /popups/{id} { allow read, write: if isOwner() || perm('approve'); }
   }
 }

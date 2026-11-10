@@ -110,7 +110,7 @@ const S = {
   warehouse: {},           // 창고 보관 수량 pid → qty
   moves: [], transfers: [],
   sales: {},               // sales[store][YYYY-MM].days[DD]
-  settle: [], users: [], asof: '',
+  settle: [], popups: [], users: [], asof: '',
   places: [],
   inbounds: [],            // 입고 예정: {id, store, date, title, ip, from, items:[{key,pid,name,code,plan,price,actual}], extra:[], status, ...}              // 외부 장소 (행사장·팝업 등): {id, name, kind, start, end, addr, person, memo, q:{pid:qty}}
   zipPw: { suwon: '0000' },
@@ -131,7 +131,7 @@ const DemoBackend = {
     if (d.incoming && d.incoming.length) S.inbounds.push({ id: 'IB-261112-AOT', store: 'suwon', date: d.incoming[0].date, title: '진격의 거인 팝업 입고 예정 (SMG 상품리스트)', ip: '진격의 거인', from: 'SMG 홀딩스', status: 'planned', by: '', at: '2026-10-29',
       items: d.incoming.map(x => { const p = d.products.find(q => q.id === x.pid) || {}; return { key: 'p:' + x.pid, pid: x.pid, name: p.name || x.pid, code: p.barcode || p.sku || x.pid, plan: x.qty, price: p.price || null, actual: null }; }), extra: [] });
     S.sales = { suwon: d.sales.suwon, boxcafe: {}, museum: {}, omake: {}, limission: {}, gukdae: {} };
-    S.settle = d.settle; S.settleRules = d.settleRules || null;
+    S.settle = d.settle; S.settleRules = d.settleRules || null; S.popups = [];
     S.users = demoUsers();
   },
   async saveMoves(list) { /* 미리보기: 화면 안에서만 반영 */ return true; },
@@ -224,6 +224,7 @@ const NAV = [   // 관련 메뉴끼리 묶음(g): 요약 → 매출 분석 → �
   { id: 'biz', t: '사업부 매출', g: 2, show: () => can('sales') },
   { id: 'collab', t: '콜라보 분석', g: 2, show: () => can('sales') },
   { id: 'settle', t: '정산', g: 2, show: () => canSettle() },
+  { id: 'popup', t: '팝업 비용', g: 2, show: () => canSettle() || can('approve') },
   { id: 'products', t: '상품·재고', i: 'box', grp: '재고', g: 3, show: () => true },
   { id: 'entry', t: '입출고 등록', i: 'plus', g: 3, show: () => can('move') },
   { id: 'inbound', t: '입고 확인', g: 3, show: () => can('move') },
@@ -306,7 +307,7 @@ function render() {
   if (tw && tt && tw.scrollWidth > tw.clientWidth && !tw.dataset.sc) { tw.scrollLeft = Math.max(0, tt.offsetLeft - 108 - tw.clientWidth * 0.2); tw.dataset.sc = 1; }
 }
 // 아래 메뉴: 권한 있는 메뉴를 모두 보여 줌 (6개 넘으면 두 줄)
-const TAB = { home: ['홈', 'home'], ipnow: ['IP현황', 'star'], products: ['상품', 'box'], entry: ['입출고', 'plus'], count: ['실사', 'check'], inbound: ['입고확인', 'truck'], transfer: ['매장이동', 'swap'], records: ['기록', 'list'], files: ['파일', 'list'], sales: ['매출', 'chart'], biz: ['사업부', 'chart'], collab: ['콜라보', 'star'], settle: ['정산', 'won'], admin: ['관리', 'user'], more: ['설정', 'gear'] };
+const TAB = { home: ['홈', 'home'], ipnow: ['IP현황', 'star'], products: ['상품', 'box'], entry: ['입출고', 'plus'], count: ['실사', 'check'], inbound: ['입고확인', 'truck'], transfer: ['매장이동', 'swap'], records: ['기록', 'list'], files: ['파일', 'list'], sales: ['매출', 'chart'], biz: ['사업부', 'chart'], collab: ['콜라보', 'star'], settle: ['정산', 'won'], popup: ['팝업비용', 'won'], admin: ['관리', 'user'], more: ['설정', 'gear'] };
 const TAB_MAIN = ['home', 'products', 'entry', 'transfer', 'sales', 'count'];
 // 아래 메뉴 글씨가 칸 밖으로 나가지 않게: 넘치면 그 칸만 글씨를 줄임 (최소 8px)
 function fitTabLabels() {
@@ -442,6 +443,7 @@ function pageView() {
     case 'biz': return bizView();
     case 'collab': return collabView();
     case 'settle': return settleView();
+    case 'popup': return popupView();
     case 'mclose': return mcloseView();
     case 'admin': return adminView();
     case 'more': return moreView();
@@ -2599,6 +2601,110 @@ function settleRows() {
   return done.concat(calc);
 }
 
+/* ───────── 팝업 시공비 (견적서 수원 AK, 2026-10-01 확인) ───────── */
+const POPUP_XLS = 'SMG___AK________________261027_8a2e.xls';
+function popupQuote() {
+  const lines = [
+    { name: '라이팅 패널 필름', spec: '1059*2160', qty: 1, price: 90000, amount: 90000, note: '' },
+    { name: '솔벤 텐트천 포토존', spec: '5000*3000', qty: 1, price: 380000, amount: 380000, note: '' },
+    { name: '내부 현수막', spec: '900*3000', qty: 5, price: 60000, amount: 300000, note: '알루미늄 족자' },
+    { name: '거울 시트지', spec: '2000*2000', qty: 1, price: 80000, amount: 80000, note: '' },
+    { name: '우드락 등신대', spec: '', qty: 6, price: 50000, amount: 300000, note: '' },
+    { name: '매대용 삽지', spec: '910*290', qty: 8, price: 15000, amount: 120000, note: '' },
+  ];
+  return {
+    id: '', ip: '진격의 거인 팝업', place: '수원 AK플라자 (수원 SMG STORE)', vendor: '주식회사 포시',
+    quoteDate: '2026-10-01', mailNote: 'SMG 한지우 님 메일 2026-11-10 전달', shipDate: '2026-11-11', month: '2026-11',
+    lines, overhead: 63500, freight: 80000, freightSpec: '성수-수원', confirmed: 1490000,
+    memo: '시공물 2026-11-11(수) 발송 예정. 견적서 칸 이름은 총계(천단위 절삭)이나 1,413,500원을 천 원 단위로 자르면 1,413,000원이다.',
+    fileName: POPUP_XLS, sheet: '견적서_수원_최종', biz: 'offline',
+  };
+}
+function popupNums(p) {
+  const lines = (p.lines || []).map(l => ({ ...l, qty: +l.qty || 0, price: +l.price || 0, amount: +l.amount || 0 }));
+  const sub = lines.reduce((t, l) => t + l.amount, 0);
+  const overhead = +p.overhead || 0, freight = +p.freight || 0, confirmed = +p.confirmed || 0;
+  const sum = sub + overhead + freight, gap = confirmed - sum, vat = Math.round(confirmed * 0.1), gross = confirmed + vat;
+  return { lines, sub, overhead, freight, sum, confirmed, gap, vat, gross };
+}
+function popupsIn(ym, biz) { return (S.popups || []).filter(p => p.month === ym && (p.biz || 'offline') === biz); }
+function canPopup() { return isOwner() || can('approve'); }
+function popupView() {
+  if (!canPopup()) return `${head('팝업 비용', '대표·본부장만')}<div class="card"><div class="empty">대표 또는 승인 권한이 있는 본부장만 팝업 시공비를 넣습니다.</div></div>`;
+  const f = S.ui.popupForm || (S.ui.popupForm = popupQuote());
+  const n = popupNums(f);
+  const inp = (k, label, v, extra = '') => `<label class="field"><span>${label}</span><input class="inp" data-pc="${k}" value="${esc(v == null ? '' : v)}" ${extra}></label>`;
+  const lineRow = (l, i) => `<tr data-pline="${i}"><td><input class="inp" data-lk="name" value="${esc(l.name)}"></td><td><input class="inp" data-lk="spec" value="${esc(l.spec || '')}"></td><td><input class="inp" data-lk="qty" inputmode="numeric" value="${l.qty}"></td><td><input class="inp" data-lk="price" inputmode="numeric" value="${l.price}"></td><td class="n">${fmt(l.amount)}</td><td><input class="inp" data-lk="note" value="${esc(l.note || '')}"></td></tr>`;
+  return `${head('팝업 비용', '정산 옆 · 팝업 한 건의 시공비 · 대표·본부장', '<button class="btn" id="pcLoad">견적 불러오기</button><button class="btn pri" id="pcSave">이 견적 저장</button>')}
+  <div class="popgrid">
+    <div class="card">
+      <h2>입력</h2>
+      <div class="formgrid">
+        ${inp('ip', 'IP / 팝업명', f.ip)}
+        ${inp('place', '장소', f.place)}
+        ${inp('vendor', '업체', f.vendor)}
+        ${inp('quoteDate', '견적일', f.quoteDate, 'type="date"')}
+        ${inp('shipDate', '발송일', f.shipDate, 'type="date"')}
+        ${inp('month', '반영 월', f.month, 'inputmode="numeric" placeholder="2026-11"')}
+        ${inp('confirmed', '공급가 확정 금액 (부가세 별도)', f.confirmed, 'inputmode="numeric"')}
+        ${inp('overhead', '공과잡비·기업이윤', f.overhead, 'inputmode="numeric"')}
+        ${inp('freight', '운송', f.freight, 'inputmode="numeric"')}
+      </div>
+      <label class="field" style="margin-top:8px"><span>전달 메모</span><input class="inp" data-pc="mailNote" value="${esc(f.mailNote || '')}"></label>
+      <label class="field" style="margin-top:8px"><span>메모</span><input class="inp" data-pc="memo" value="${esc(f.memo || '')}"></label>
+      <p class="src">원본 파일 ${esc(f.fileName || '')}${f.sheet ? ' · 시트 ' + esc(f.sheet) : ''}. 견적 불러오기는 이 파일에서 확인한 품목·수량·금액을 칸에 채웁니다. 저장하기 전에는 서버에 올리지 않습니다.</p>
+    </div>
+    <div class="card">
+      <h2>항목 내역</h2>
+      <div class="tw"><table><thead><tr><th>품목</th><th>규격</th><th class="n">수량</th><th class="n">단가</th><th class="n">금액</th><th>비고</th></tr></thead><tbody>
+        ${n.lines.map(lineRow).join('')}
+        <tr class="tot"><td colspan="4">소계</td><td class="n">${fmt(n.sub)}</td><td></td></tr>
+        <tr><td colspan="4">공과잡비·기업이윤</td><td class="n">${fmt(n.overhead)}</td><td></td></tr>
+        <tr><td colspan="4">운송 ${esc(f.freightSpec || '')}</td><td class="n">${fmt(n.freight)}</td><td></td></tr>
+        <tr class="tot"><td colspan="4">합계</td><td class="n">${fmt(n.sum)}</td><td></td></tr>
+        <tr class="tot"><td colspan="4">확정 공급가</td><td class="n">${fmt(n.confirmed)}</td><td>부가세 별도</td></tr>
+        <tr><td colspan="4">차액 (확정 − 합계)</td><td class="n">${fmt(n.gap)}</td><td>${n.gap === 76500 ? '업체 이윤으로 봄' : ''}</td></tr>
+        <tr><td colspan="4">부가세</td><td class="n">${fmt(n.vat)}</td><td>견적서에 칸 없음 · 확정 공급가의 10%</td></tr>
+        <tr class="tot"><td colspan="4">부가세 포함</td><td class="n">${fmt(n.gross)}</td><td></td></tr>
+      </tbody></table></div>
+      <p class="src">시트 칸 이름은 총계(천단위 절삭) ${fmt(1490000)}원입니다. 합계 ${fmt(1413500)}원을 천 원 단위로 자르면 ${fmt(1413000)}원이지 ${fmt(1490000)}원이 아닙니다. 차액 ${fmt(76500)}원은 업체 이윤으로 봅니다. 이익에서는 부가세 별도 확정 금액만 뺍니다.</p>
+      <h2 style="margin-top:14px">저장된 팝업</h2>
+      ${(S.popups || []).length ? `<div class="tw"><table><thead><tr><th>팝업</th><th>반영 월</th><th class="n">확정</th><th></th></tr></thead><tbody>${S.popups.map(p => `<tr><td>${esc(p.ip)}<div class="muted">${esc(p.place || '')}</div></td><td>${esc(p.month)}</td><td class="n">${fmt(p.confirmed)}</td><td><button class="btn sm" data-pcdel="${esc(p.id)}">지우기</button></td></tr>`).join('')}</tbody></table></div>` : '<div class="empty">아직 저장된 팝업 비용이 없습니다. 위 견적을 확인한 뒤 저장하세요.</div>'}
+    </div>
+  </div>`;
+}
+function readPopupForm() {
+  const g = k => { const el = document.querySelector(`[data-pc="${k}"]`); return el ? el.value.trim() : ''; };
+  const num = s => { const x = String(s == null ? '' : s).replace(/[^\d.-]/g, ''); return x === '' || x === '-' ? 0 : +x; };
+  const lines = [...document.querySelectorAll('[data-pline]')].map(tr => {
+    const v = k => { const el = tr.querySelector(`[data-lk="${k}"]`); return el ? el.value.trim() : ''; };
+    const qty = num(v('qty')), price = num(v('price'));
+    const typed = v('amount');
+    const amount = typed === '' ? qty * price : num(typed);
+    return { name: v('name'), spec: v('spec'), qty, price, amount, note: v('note') };
+  }).filter(l => l.name);
+  const base = S.ui.popupForm || popupQuote();
+  return { ...base, ip: g('ip'), place: g('place'), vendor: g('vendor'), quoteDate: g('quoteDate'), shipDate: g('shipDate'), month: g('month'), mailNote: g('mailNote'), memo: g('memo'), confirmed: num(g('confirmed')), overhead: num(g('overhead')), freight: num(g('freight')), lines };
+}
+async function savePopupForm() {
+  const p = readPopupForm();
+  if (!p.ip || !p.month) { alertBox('팝업명과 반영 월이 필요합니다'); return; }
+  if (!/^\d{4}-\d{2}$/.test(p.month)) { alertBox('반영 월은 2026-11처럼 쓰세요'); return; }
+  p.id = p.id || ('pc-' + Date.now().toString(36));
+  const n = popupNums(p);
+  p.subtotal = n.sub; p.sum = n.sum; p.gap = n.gap; p.vat = n.vat; p.gross = n.gross;
+  p.gapNote = n.gap === 76500 ? '업체 이윤으로 봄' : '';
+  if (DB.savePopup) await DB.savePopup(p);
+  S.popups = (S.popups || []).filter(x => x.id !== p.id).concat(p);
+  S.ui.popupForm = { ...p, id: '' };
+  toast('팝업 비용을 저장했습니다'); render();
+}
+async function deletePopup(id) {
+  if (DB.deletePopup) await DB.deletePopup(id);
+  S.popups = (S.popups || []).filter(p => p.id !== id);
+  toast('지웠습니다'); render();
+}
+
 /* ───────── 정산 (대표만) ───────── */
 function settleView() {
   if (!canSettle()) return '';
@@ -2696,7 +2802,10 @@ function withCmp(u, ym) {
   u.prev = prev.sales; u.prevDays = prev.days; u.yoy = yoy.sales; u.yoyDays = yoy.days; u.yoyM = yoyM;
   u.ch = u.sales != null && u.prev != null ? pct(u.sales, u.prev) : null;
   u.yoyCh = u.sales != null && u.yoy != null ? pct(u.sales, u.yoy) : null;
-  u.profit = profitOf(u.sales, u.cost);
+  u.profitBase = profitOf(u.sales, u.cost);
+  u.popups = popupsIn(ym, u.b.id);
+  u.popup = u.popups.reduce((t, p) => t + (+p.confirmed || 0), 0);
+  u.profit = u.profitBase == null ? null : u.profitBase - (u.popup || 0);
   return u;
 }
 function closePack(ym) {
@@ -2710,7 +2819,8 @@ function closePack(ym) {
       g.b = d; if (off.dayMap[d] == null) g.miss++; else { g.s += off.dayMap[d]; g.n++; }
     }
   }
-  return { ym, y: +ym.slice(0, 4), m: +ym.slice(5), a: ym + '-01', b: monthEnd(ym), dim: sp.length, days: sp, units, off, weeks, products: topProducts(ym), stock: closeStock(ym), settle: closeSettle(ym), kuji: kujiPos(ym) };
+  const popups = (S.popups || []).filter(p => p.month === ym);
+  return { ym, y: +ym.slice(0, 4), m: +ym.slice(5), a: ym + '-01', b: monthEnd(ym), dim: sp.length, days: sp, units, off, weeks, products: topProducts(ym), stock: closeStock(ym), settle: closeSettle(ym), kuji: kujiPos(ym), popups };
 }
 function closeWords(R) {
   const good = [], bad = [], next = [], warn = [];
@@ -2936,6 +3046,16 @@ function closeStockChart(R) {
 function closeProfitChart(R) {
   return closeHBars('사업부 이익', R.units.map(u => ({ name: CSHORT[u.b.id] || u.b.name, v: u.profit })));
 }
+function closePopupChart(R) {
+  const rows = [];
+  for (const p of R.popups || []) {
+    for (const ln of p.lines || []) if (ln.amount) rows.push({ name: ln.name, v: ln.amount, qty: ln.qty });
+    if (p.overhead) rows.push({ name: '공과잡비·기업이윤', v: +p.overhead });
+    if (p.freight) rows.push({ name: '운송', v: +p.freight });
+    if (p.confirmed) rows.push({ name: (p.ip || '팝업') + ' 확정', v: +p.confirmed, color: '#0D4A42' });
+  }
+  return rows.length ? closeHBars('팝업 시공비', rows) : chartEmpty('팝업 시공비');
+}
 function closeSettleChart(R) {
   const rows = R.settle.filter(r => r.net !== '' && r.net != null).map(r => ({ name: r.ip, v: +r.net }));
   return rows.length ? closeHBars('정산 순수익', rows) : chartEmpty('정산');
@@ -2973,7 +3093,7 @@ function mcloseView() {
     costRows.push([esc(u.b.name) + ' 원가율', u.cost.cr == null ? need() : `${u.cost.cr}%`]);
     costRows.push([esc(u.b.name) + ' 인건비', u.cost.labor == null ? need() : `<span class="amt">${fmt(u.cost.labor)}원</span>`]);
     costRows.push([esc(u.b.name) + ' 임대료', u.cost.rent == null ? need() : `<span class="amt">${fmt(u.cost.rent)}원</span>`]);
-    costRows.push([esc(u.b.name) + ' 이익', u.profit == null ? need('원가율·인건비·임대료가 모두 있을 때만') : `<span class="amt">${fmt(u.profit)}원</span>`]);
+    costRows.push([esc(u.b.name) + ' 이익', u.profit == null ? need('원가율·인건비·임대료가 모두 있을 때만') : `<span class="amt">${fmt(u.profit)}원</span>${u.popup ? ` <span class="muted">팝업 시공 ${fmt(u.popup)}원 뺀 뒤${u.profitBase != null ? ' · 빼기 전 ' + fmt(u.profitBase) + '원' : ''}</span>` : ''}`]);
     costRows.push([esc(u.b.name) + ' 목표', goalTxt(u)]);
   }
   const prof = R.units.filter(u => u.profit != null);
@@ -3002,7 +3122,8 @@ function mcloseView() {
     ${(() => { const box = (title, inner, chart, cls) => `<section class="split ${cls}"><h2>${title}</h2><div class="pane"><div class="txt">${inner}</div><aside class="cht">${chart}</aside></div></section>`; return [
       box('요약', `<p class="sum">${W.sum}</p><div class="cols"><div><h3>잘한 점</h3>${ul(W.good)}</div><div><h3>문제점</h3>${ul(W.bad)}</div><div><h3>다음 행동 추천</h3>${ul(W.next)}</div><div><h3>경고</h3>${ul(W.warn)}</div></div>`, closeDonut(R), 'pack'),
       box('사업부 매출', `${kv(salesRows)}${R.kuji ? `<p class="src">참고 · 토스포스 쿠지 IP ${fmt(R.kuji.s)}원 (${fmt(R.kuji.q)}개). 오프라인 합계에 포함되어 있어 위에 다시 더하지 않습니다.</p>` : `<p class="src">토스포스 상품 IP 이름에 “쿠지”가 없습니다. 쿠지사업 별도 자료도 없습니다.</p>`}`, closeShareBars(R), 'pack'),
-      box('원가 · 인건비 · 임대료 · 이익', `<p class="src">이익 = 매출 − 매출×원가율 − 인건비 − 임대료. 셋 중 하나라도 비어 있으면 이익은 비웁니다. 비어 있는 값을 0원으로 바꾸지 않습니다. 이 값은 이 기기의 사업부 입력칸입니다.</p>${kv(costRows)}`, closeProfitChart(R) + closeGoalChart(R), 'pack'),
+      box('원가 · 인건비 · 임대료 · 이익', `<p class="src">이익 = 매출 − 매출×원가율 − 인건비 − 임대료 − 그 달 팝업 시공 확정 금액(부가세 별도). 원가율·인건비·임대료 중 하나라도 비어 있으면 이익은 비웁니다. 월 시공비 차감은 정산 순수익에만 있고 여기서 다시 빼지 않습니다.</p>${kv(costRows)}${R.units.some(u => u.popup && S.settleRules && S.settleRules.construction != null) ? `<p class="src">이 달에는 정산 요율의 월 시공비 ${fmt(S.settleRules.construction)}원과 팝업 시공비가 둘 다 있습니다. 이익에서는 팝업 확정 금액만 뺍니다.</p>` : ''}`, closeProfitChart(R) + closeGoalChart(R), 'pack'),
+      box('팝업 비용', R.popups.length ? R.popups.map(p => `<p class="src">${esc(p.ip)} · ${esc(p.place || '')} · ${esc(p.vendor || '')} · 견적 ${esc(p.quoteDate || '')} · 반영 ${esc(p.month)}. 확정 ${fmt(p.confirmed)}원, 부가세 ${fmt(p.vat)}원, 포함 ${fmt(p.gross)}원. 합계 ${fmt(p.sum)}원과의 차액 ${fmt(p.gap)}원${p.gapNote ? ' · ' + esc(p.gapNote) : ''}.</p>`).join('') + kv(R.popups.flatMap(p => (p.lines || []).map(l => [esc(l.name), `<span class="amt">${fmt(l.amount)}원</span> <span class="muted">${fmt(l.qty)}개${l.note ? ' · ' + esc(l.note) : ''}</span>`])).concat([['확정 공급가', `<span class="amt">${fmt(R.popups.reduce((t, p) => t + (+p.confirmed || 0), 0))}원</span>`]])) : `<p class="src">이 달 반영으로 저장된 팝업 시공비가 없습니다.</p>${kv([['팝업 시공', miss()]])}`, closePopupChart(R), 'pack'),
       box('지난달 · 작년 같은 달', cmp, closeCmpChart(R), 'pack'),
       `<section class="split multi"><h2>일별 · 주별 추이</h2>
         <div class="pane"><div class="txt"><h3 class="accent">오프라인 토스포스 · 일별</h3>${R.off && R.off.mach != null ? `<p class="src">자판기·기계 ${fmt(R.off.mach)}원은 일별 표에 넣지 않았습니다.</p>` : ''}${kv(dayRows)}</div><aside class="cht">${closeDailyChart(R)}</aside></div>
@@ -3515,6 +3636,9 @@ function bind() {
     if (d.sg) { S.stores = [d.sg]; S.sumStores = null; S.ui.storeMenu = false; S.ui.range = null; render(); goTop(); return; }
     if (d.nav) { if (d.nav === 'more' && S.view === 'more') return; S.view = d.nav; S.ui.drawer = null; render(); goTop(); return; }
     if (t.id === 'closePrint') { window.print(); return; }
+    if (t.id === 'pcLoad') { S.ui.popupForm = popupQuote(); render(); toast('견적서 숫자를 칸에 채웠습니다'); return; }
+    if (t.id === 'pcSave') { await savePopupForm(); return; }
+    if (d.pcdel) { await deletePopup(d.pcdel); return; }
     if (d.cym || d.cstep) {
       const cap = today().slice(0, 7);
       let ym = d.cym === 'this' ? cap : d.cym === 'prev' ? ymPrev(cap) : ymAdd(closeYm(), +d.cstep || 0);

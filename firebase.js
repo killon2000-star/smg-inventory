@@ -82,6 +82,7 @@ window.SMG_FIREBASE = function (S, X) {
     if (S.user.perms.approve || S.user.owner) unsub.push(db.collection('users').onSnapshot(q => { S.users = q.docs.map(d => ({ uid: d.id, ...d.data() })); R(); }));
     else S.users = [S.user];
     if (S.user.owner) unsub.push(db.collection('settle').onSnapshot(q => { S.settle = q.docs.filter(d => d.id !== '_rules').flatMap(d => d.data().rows || []); const r = q.docs.find(d => d.id === '_rules'); S.settleRules = r ? r.data() : null; R(); }, () => { }));
+    if (S.user.owner || (S.user.perms && S.user.perms.approve)) unsub.push(db.collection('popups').onSnapshot(q => { S.popups = q.docs.map(d => ({ id: d.id, ...d.data() })); R(); }, () => { }));
   }
   function mergeTransfers(q) {
     const m = new Map(S.transfers.map(t => [t.id, t])); q.docs.forEach(d => m.set(d.id, { id: d.id, ...d.data() }));
@@ -124,6 +125,8 @@ window.SMG_FIREBASE = function (S, X) {
     },
     async saveInbound(ib) { await db.collection('inbounds').doc(ib.id).set(JSON.parse(JSON.stringify(ib))); },
     async saveSettleRules(r) { await db.collection('settle').doc('_rules').set(r); },
+    async savePopup(p) { await db.collection('popups').doc(p.id).set(p); },
+    async deletePopup(id) { await db.collection('popups').doc(id).delete(); },
     async savePlace(p) { await db.collection('places').doc(p.id).set(p); },
     async saveMe(upd) { await db.collection('users').doc(S.user.uid).update({ ...upd, updatedAt: ts(), updatedBy: upd.name }); return true; },
     async saveStoreOrder(order) { await db.collection('users').doc(S.user.uid).update({ storeOrder: order }); },
@@ -177,7 +180,7 @@ window.SMG_FIREBASE = function (S, X) {
   return {
     backend, signIn, signOut,
     async start() {
-      S.users = []; S.transfers = []; S.moves = []; S.products = []; S.stock = {}; S.sales = {}; S.settle = [];
+      S.users = []; S.transfers = []; S.moves = []; S.products = []; S.stock = {}; S.sales = {}; S.settle = []; S.popups = [];
       await auth.getRedirectResult().catch(() => { });
       watchAuth();
     },
