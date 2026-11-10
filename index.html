@@ -592,12 +592,14 @@ tr.flag td{background:var(--warn-bg)}
 .mrep ul{margin:0;padding-left:18px;line-height:1.5}
 .mrep table.kv{width:100%;border-collapse:collapse;table-layout:fixed}
 .mrep table.kv th,.mrep table.kv td{border-bottom:1px solid var(--line);padding:7px 4px;text-align:left;vertical-align:top;overflow-wrap:anywhere}
-.mrep table.kv th{width:46%;color:var(--muted);font-size:13px;font-weight:700}
-.mrep table.kv td{font-variant-numeric:tabular-nums;font-weight:700}
+.mrep .txt{width:100%}
+.mrep table.kv th{width:38%;color:var(--muted);font-size:13px;font-weight:700}
+.mrep table.kv td{font-variant-numeric:tabular-nums;font-weight:700;text-align:right}
 .mrep .blank{display:inline-block;font-weight:700;color:var(--muted);border:1px dashed var(--muted);border-radius:6px;padding:1px 8px}
 .mrep .src{font-size:12px;color:var(--muted);line-height:1.5;margin:8px 0 0}
 .mrep .sample{background:#fff6d8;color:#5c4300;border:1px solid #e2c56a;border-radius:8px;padding:8px 10px;font-weight:700}
 .mrep .ponly{display:none}
+.mrep .pair{display:contents}
 .mrep section.split{display:flex;flex-direction:column;gap:8px}
 .mrep .pane{display:flex;flex-direction:column;gap:12px;min-width:0}
 .mrep .txt,.mrep .cht{min-width:0;max-width:100%}
@@ -639,14 +641,19 @@ body.mclose-on .page{max-width:none;width:100%}
   body.mclose-on .mrep .brand,body.mclose-on .mrep h2,body.mclose-on .mrep h3.accent{color:#19776A!important}
   body.mclose-on .mrep h2{border-left:4px solid #19776A!important}
   @page{size:A4 portrait;margin:11mm}
-  body.mclose-on .mrep{gap:6px}
-  body.mclose-on .mrep > section{break-before:auto;page-break-before:auto;break-inside:auto;page-break-inside:auto;padding:0 0 4px}
-  body.mclose-on .mrep > section.tight{break-inside:avoid;page-break-inside:avoid}
+  body.mclose-on .mrep{gap:4px}
+  body.mclose-on .mrep > section{break-before:auto;page-break-before:auto;break-inside:auto;page-break-inside:auto;padding:0 0 3px}
   body.mclose-on .mrep section.split{display:block!important}
-  body.mclose-on .mrep .pane{display:flex!important;flex-direction:column!important}
-  body.mclose-on .mrep .cht{order:-1;position:static!important;display:flex!important;flex-direction:row;gap:8px;margin:0 0 4px}
-  body.mclose-on .mrep .cht .cfig{flex:1 1 0;min-width:0}
-  body.mclose-on .mrep .cfig svg{width:100%!important;max-height:58mm;height:auto}
+  body.mclose-on .mrep .pane{display:grid!important;grid-template-columns:minmax(0,.78fr) minmax(0,1.22fr)!important;gap:2mm 4mm!important;align-items:start}
+  body.mclose-on .mrep .cht{order:0;position:static!important;display:block!important}
+  body.mclose-on .mrep .txt,body.mclose-on .mrep table.kv{width:100%!important}
+  body.mclose-on .mrep .cfig svg{width:100%!important;max-height:46mm;height:auto}
+  body.mclose-on .mrep section.multi .pane{display:block!important}
+  body.mclose-on .mrep section.multi .cht{display:grid!important;grid-template-columns:1fr 1fr;gap:3mm;margin-bottom:2mm}
+  body.mclose-on .mrep section.multi .cfig svg{max-height:40mm}
+  body.mclose-on .mrep .pair{display:grid!important;grid-template-columns:1fr 1fr;gap:4mm;break-inside:avoid;page-break-inside:avoid;margin-top:2mm}
+  body.mclose-on .mrep .pair .pane{display:block!important}
+  body.mclose-on .mrep .pair .cfig svg{max-height:38mm}
   body.mclose-on .mrep h2,body.mclose-on .mrep h3{break-after:avoid;page-break-after:avoid}
   body.mclose-on .mrep tr,body.mclose-on .mrep li,body.mclose-on .mrep .cfig{break-inside:avoid;page-break-inside:avoid}
   body.mclose-on .mrep table.kv th,body.mclose-on .mrep table.kv td{padding:2px 3px!important;font-size:10.5px!important}
@@ -749,7 +756,7 @@ td,th{font-variant-numeric:tabular-nums}
 <script defer src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 <script defer src="config.js"></script>
 <script defer src="firebase.js?v=31"></script>
-<script defer src="app.js?v=83"></script>
+<script defer src="app.js?v=84"></script>
 <script>if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});</script>
 
 </body></html>

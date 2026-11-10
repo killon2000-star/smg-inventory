@@ -2927,9 +2927,11 @@ function mcloseView() {
       box('원가 · 인건비 · 임대료 · 이익', `<p class="src">이익 = 매출 − 매출×원가율 − 인건비 − 임대료. 셋 중 하나라도 비어 있으면 이익은 비웁니다. 비어 있는 값을 0원으로 바꾸지 않습니다. 이 값은 이 기기의 사업부 입력칸입니다.</p>${kv(costRows)}`, closeProfitChart(R), 'pack'),
       box('지난달 · 작년 같은 달', cmp, closeCmpChart(R), 'pack'),
       box('일별 · 주별 추이', `<h3 class="accent">오프라인 토스포스 · 일별</h3>${R.off && R.off.mach != null ? `<p class="src">자판기·기계 ${fmt(R.off.mach)}원은 일별 칸에 나뉘어 있지 않아 일별 표에는 넣지 않았습니다.</p>` : ''}${kv(dayRows)}<h3 class="accent">오프라인 토스포스 · 주별 (월~일, 그 달 안의 날만)</h3>${kv(weekRows)}`, closeDailyChart(R) + closeWeekChart(R), 'multi'),
-      box('많이 팔린 상품', `<p class="src">수원 토스포스 상품 매출 상위 8개. 쇼핑백을 따로 빼지 않았습니다.</p>${kv(prodRows)}`, closeProdChart(R), 'pack'),
-      box('월말 재고', `<p class="src">수원 매장. 지금 재고에서 ${md(R.b)} 다음 날의 입출고를 되돌린 값입니다. 지금 상품 목록에 없는 상품은 빠집니다.</p>${kv(stockRows)}`, closeStockChart(R), 'pack multi'),
-      box('정산', `${kv(setRows)}<p class="src">자료 위치: 오프라인 토스포스 stores/suwon/sales/{월}.days · 자판기·기계 .mach · 온키호테·쿠지·블로그는 이 기기 oninter-biz (서버 저장 전) · 원가율·인건비·임대료·목표 oninter-biz._cfg · 정산 settle/{월}.rows · 재고 stores/suwon.q 와 moves.</p>`, closeSettleChart(R), 'tight'),
+      box('월말 재고', `<p class="src">수원 매장. 지금 재고에서 ${md(R.b)} 다음 날의 입출고를 되돌린 값입니다.</p>${kv(stockRows)}`, closeStockChart(R), 'pack multi'),
+      '<div class="pair">',
+      box('많이 팔린 상품', `<p class="src">수원 토스포스 상품 매출 상위 8개입니다.</p>${kv(prodRows)}`, closeProdChart(R), 'pair-item'),
+      box('정산', `${kv(setRows)}<p class="src">온키호테·쿠지·블로그 금액과 원가율·인건비·임대료는 이 기기에 입력된 값입니다.</p>`, closeSettleChart(R), 'pair-item'),
+      '</div>',
     ].join(''); })()}
   </article>`;
 }
