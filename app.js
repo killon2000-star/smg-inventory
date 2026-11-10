@@ -50,7 +50,7 @@ const PERM_DEF = [
 ];
 
 const DEFAULT_ORDER = STORES.map(s => s.id);
-const APP_VERSION = '2026-11-10 19:40';   // 앱 화면을 마지막으로 고친 시각 (한국 시간)
+const APP_VERSION = '2026-11-10 19:50';   // 앱 화면을 마지막으로 고친 시각 (한국 시간)
 /* ───────── 작은 도구 ───────── */
 const $ = (s, el = document) => el.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -2634,9 +2634,13 @@ function popupView() {
   const f = S.ui.popupForm || (S.ui.popupForm = popupQuote());
   const n = popupNums(f);
   const inp = (k, label, v, extra = '') => `<label class="field"><span>${label}</span><input class="inp" data-pc="${k}" value="${esc(v == null ? '' : v)}" ${extra}></label>`;
-  const lineRow = (l, i) => `<tr data-pline="${i}"><td><input class="inp" data-lk="name" value="${esc(l.name)}"></td><td><input class="inp" data-lk="spec" value="${esc(l.spec || '')}"></td><td><input class="inp" data-lk="qty" inputmode="numeric" value="${l.qty}"></td><td><input class="inp" data-lk="price" inputmode="numeric" value="${l.price}"></td><td class="n">${fmt(l.amount)}</td><td><input class="inp" data-lk="note" value="${esc(l.note || '')}"></td></tr>`;
+  const area = (k, v) => `<textarea class="inp" data-lk="${k}" rows="1">${esc(v || '')}</textarea>`;
+  const lineRow = (l, i) => `<tr data-pline="${i}"><td class="pl-name">${area('name', l.name)}</td><td class="pl-spec">${area('spec', l.spec)}</td><td class="pl-qty"><input class="inp" data-lk="qty" inputmode="numeric" value="${l.qty}"></td><td class="pl-price"><input class="inp" data-lk="price" inputmode="numeric" value="${l.price}"></td><td class="n">${fmt(l.amount)}</td><td class="pl-note">${area('note', l.note)}</td></tr>`;
+  const saved = `<h2>저장된 팝업</h2>
+      ${(S.popups || []).length ? `<div class="tw"><table><thead><tr><th>팝업</th><th>반영 월</th><th class="n">확정</th><th></th></tr></thead><tbody>${S.popups.map(p => `<tr><td>${esc(p.ip)}<div class="muted">${esc(p.place || '')}</div></td><td>${esc(p.month)}</td><td class="n">${fmt(p.confirmed)}</td><td><button class="btn sm" data-pcdel="${esc(p.id)}">지우기</button></td></tr>`).join('')}</tbody></table></div>` : '<div class="empty">아직 저장된 팝업 비용이 없습니다. 위 견적을 확인한 뒤 저장하세요.</div>'}`;
   return `${head('팝업 비용', '정산 옆 · 팝업 한 건의 시공비 · 대표·본부장', '<button class="btn" id="pcLoad">견적 불러오기</button><button class="btn pri" id="pcSave">이 견적 저장</button>')}
   <div class="popgrid">
+    <div class="popcol">
     <div class="card">
       <h2>입력</h2>
       <div class="formgrid">
@@ -2654,9 +2658,11 @@ function popupView() {
       <label class="field" style="margin-top:8px"><span>메모</span><input class="inp" data-pc="memo" value="${esc(f.memo || '')}"></label>
       <p class="src">원본 파일 ${esc(f.fileName || '')}${f.sheet ? ' · 시트 ' + esc(f.sheet) : ''}. 견적 불러오기는 이 파일에서 확인한 품목·수량·금액을 칸에 채웁니다. 저장하기 전에는 서버에 올리지 않습니다.</p>
     </div>
+    <div class="card">${saved}</div>
+    </div>
     <div class="card">
       <h2>항목 내역</h2>
-      <div class="tw"><table><thead><tr><th>품목</th><th>규격</th><th class="n">수량</th><th class="n">단가</th><th class="n">금액</th><th>비고</th></tr></thead><tbody>
+      <div class="tw"><table class="plines"><colgroup><col class="c-name"><col class="c-spec"><col class="c-qty"><col class="c-price"><col class="c-amt"><col class="c-note"></colgroup><thead><tr><th>품목</th><th>규격</th><th class="n">수량</th><th class="n">단가</th><th class="n">금액</th><th>비고</th></tr></thead><tbody>
         ${n.lines.map(lineRow).join('')}
         <tr class="tot"><td colspan="4">소계</td><td class="n">${fmt(n.sub)}</td><td></td></tr>
         <tr><td colspan="4">공과잡비·기업이윤</td><td class="n">${fmt(n.overhead)}</td><td></td></tr>
@@ -2668,8 +2674,6 @@ function popupView() {
         <tr class="tot"><td colspan="4">부가세 포함</td><td class="n">${fmt(n.gross)}</td><td></td></tr>
       </tbody></table></div>
       <p class="src">시트 칸 이름은 총계(천단위 절삭) ${fmt(1490000)}원입니다. 합계 ${fmt(1413500)}원을 천 원 단위로 자르면 ${fmt(1413000)}원이지 ${fmt(1490000)}원이 아닙니다. 차액 ${fmt(76500)}원은 업체 이윤으로 봅니다. 이익에서는 부가세 별도 확정 금액만 뺍니다.</p>
-      <h2 style="margin-top:14px">저장된 팝업</h2>
-      ${(S.popups || []).length ? `<div class="tw"><table><thead><tr><th>팝업</th><th>반영 월</th><th class="n">확정</th><th></th></tr></thead><tbody>${S.popups.map(p => `<tr><td>${esc(p.ip)}<div class="muted">${esc(p.place || '')}</div></td><td>${esc(p.month)}</td><td class="n">${fmt(p.confirmed)}</td><td><button class="btn sm" data-pcdel="${esc(p.id)}">지우기</button></td></tr>`).join('')}</tbody></table></div>` : '<div class="empty">아직 저장된 팝업 비용이 없습니다. 위 견적을 확인한 뒤 저장하세요.</div>'}
     </div>
   </div>`;
 }

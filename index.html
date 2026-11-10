@@ -609,7 +609,15 @@ tr.flag td{background:var(--warn-bg)}
 .mrep .cfig figcaption{font-size:13px;font-weight:800;color:var(--ink);margin:0 0 6px}
 .mrep .cfig svg{display:block;width:100%;height:auto;max-width:100%}
 .mrep .cnone{border:1px dashed var(--muted);border-radius:8px;padding:22px 10px;text-align:center;font-weight:800;color:var(--ink)}
-.popgrid{display:grid;grid-template-columns:minmax(0,1.05fr) minmax(0,.95fr);gap:14px;align-items:start}
+.popgrid{display:grid;grid-template-columns:minmax(280px,.7fr) minmax(0,1.3fr);gap:14px;align-items:stretch}
+.popgrid>.popcol{display:flex;flex-direction:column;gap:14px;min-width:0}
+.popgrid>.popcol>.card:last-child{flex:1}
+.popgrid table.plines{width:100%;table-layout:fixed}
+.popgrid col.c-name{width:31%}.popgrid col.c-spec{width:16%}.popgrid col.c-qty{width:8%}.popgrid col.c-price{width:14%}.popgrid col.c-amt{width:14%}.popgrid col.c-note{width:17%}
+.popgrid .plines th,.popgrid .plines td{padding:6px 4px}
+.popgrid .plines input.inp,.popgrid .plines textarea.inp{box-sizing:border-box;width:100%;min-width:0;padding:6px 6px}
+.popgrid td.pl-name textarea,.popgrid td.pl-spec textarea,.popgrid td.pl-note textarea{white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.35;min-height:38px;resize:vertical;field-sizing:content}
+.popgrid td.pl-price input,.popgrid td.pl-qty input{text-align:right;font-variant-numeric:tabular-nums}
 @media (max-width:900px){.popgrid{grid-template-columns:1fr}}
 .mrep .donut-row{display:flex;flex-direction:column;align-items:stretch;gap:8px}
 .mrep .donut-row svg{width:100%;height:auto;max-width:100%}
@@ -798,7 +806,7 @@ td,th{font-variant-numeric:tabular-nums}
 <script defer src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 <script defer src="config.js"></script>
 <script defer src="firebase.js?v=31"></script>
-<script defer src="app.js?v=91"></script>
+<script defer src="app.js?v=92"></script>
 <script>if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});</script>
 
 </body></html>
