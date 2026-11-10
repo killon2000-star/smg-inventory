@@ -591,6 +591,7 @@ tr.flag td{background:var(--warn-bg)}
 .mrep .cols{display:grid;grid-template-columns:1fr 1fr;gap:12px}
 .mrep ul{margin:0;padding-left:18px;line-height:1.5}
 .mrep table.kv{width:100%;border-collapse:collapse;table-layout:fixed}
+.mrep table.kv thead{display:none}
 .mrep table.kv th,.mrep table.kv td{border-bottom:1px solid var(--line);padding:7px 4px;text-align:left;vertical-align:top;overflow-wrap:anywhere}
 .mrep .txt{width:100%}
 .mrep table.kv th{width:38%;color:var(--muted);font-size:13px;font-weight:700}
@@ -667,8 +668,11 @@ body.mclose-on .page{max-width:none;width:100%}
   body.mclose-on .mrep .brand,body.mclose-on .mrep h2,body.mclose-on .mrep h3.accent{color:#19776A!important}
   body.mclose-on .mrep h2{border-left:4px solid #19776A!important}
   @page{size:A4 portrait;margin:11mm}
-  body.mclose-on .mrep{gap:4px}
-  body.mclose-on .mrep > section{break-before:auto;page-break-before:auto;break-inside:auto;page-break-inside:auto;padding:0 0 3px}
+  body.mclose-on .mrep{display:block!important;gap:4px}
+  body.mclose-on .mrep > section{break-before:auto;page-break-before:auto;break-inside:avoid;page-break-inside:avoid;padding:0 0 3px}
+  body.mclose-on .mrep > section.multi{break-inside:auto;page-break-inside:auto}
+  body.mclose-on .mrep > section.multi > .pane{break-inside:avoid;page-break-inside:avoid}
+  body.mclose-on .mrep .pair,body.mclose-on .mrep .cfig,body.mclose-on .mrep .crep-hd,body.mclose-on .mrep .sample{break-inside:avoid;page-break-inside:avoid}
   body.mclose-on .mrep section.split{display:block!important;width:188mm!important;max-width:188mm!important}
   body.mclose-on .mrep .pane,body.mclose-on .mrep .txt,body.mclose-on .mrep .cht{display:block!important;width:188mm!important;max-width:188mm!important;min-width:0!important;float:none!important;position:static!important}
   body.mclose-on .mrep table.kv{width:188mm!important;max-width:188mm!important;min-width:188mm!important;table-layout:fixed!important}
@@ -678,7 +682,7 @@ body.mclose-on .page{max-width:none;width:100%}
   body.mclose-on .mrep .cfig{margin:0 0 1.5mm!important}
   body.mclose-on .mrep .cfig svg{display:block;width:188mm!important;max-width:188mm!important;height:auto!important;max-height:78mm!important;overflow:hidden}
   body.mclose-on .mrep .donut-row{flex-direction:row!important;align-items:center;gap:5mm}
-  body.mclose-on .mrep .cfig.donut svg,body.mclose-on .mrep .donut-row svg{width:78mm!important;max-width:78mm!important;height:auto!important;max-height:90mm!important;flex:none}
+  body.mclose-on .mrep .cfig.donut svg,body.mclose-on .mrep .donut-row svg{width:62mm!important;max-width:62mm!important;height:auto!important;max-height:68mm!important;flex:none}
   body.mclose-on .mrep .cleg,body.mclose-on .mrep .brows,body.mclose-on .mrep .brow,body.mclose-on .mrep .bn,body.mclose-on .mrep .bv,body.mclose-on .mrep .bmiss,body.mclose-on .mrep .bhead{font-size:10.5pt!important;line-height:1.25}
   body.mclose-on .mrep .brows{gap:0.5mm}
   body.mclose-on .mrep .bhead{margin-top:1.2mm}
@@ -702,9 +706,10 @@ body.mclose-on .page{max-width:none;width:100%}
   body.mclose-on .mrep .pair table.kv td{width:56mm!important}
   body.mclose-on .mrep .pair .cfig{width:90mm!important;max-width:90mm!important}
   body.mclose-on .mrep .pair .cfig svg{width:90mm!important;max-width:90mm!important;height:auto!important;max-height:36mm!important}
-  body.mclose-on .mrep h2,body.mclose-on .mrep h3{break-after:avoid;page-break-after:avoid}
-  body.mclose-on .mrep tr,body.mclose-on .mrep li,body.mclose-on .mrep .brow,body.mclose-on .mrep .bhead,body.mclose-on .mrep .cfig.day,body.mclose-on .mrep .cfig.donut{break-inside:avoid;page-break-inside:avoid}
-  body.mclose-on .mrep .cfig.bars{break-inside:auto;page-break-inside:auto}
+  body.mclose-on .mrep h2,body.mclose-on .mrep h3{break-after:avoid;page-break-after:avoid;break-inside:avoid;page-break-inside:avoid}
+  body.mclose-on .mrep tr,body.mclose-on .mrep li,body.mclose-on .mrep .brow,body.mclose-on .mrep .bhead,body.mclose-on .mrep .cfig.day,body.mclose-on .mrep .cfig.donut,body.mclose-on .mrep .cfig.bars{break-inside:avoid;page-break-inside:avoid}
+  body.mclose-on .mrep table.kv thead{display:table-header-group!important}
+  body.mclose-on .mrep table.kv thead th{width:auto!important;text-align:left!important;color:#19776A!important}
   body.mclose-on .mrep table.kv th,body.mclose-on .mrep table.kv td{padding:2px 3px!important;font-size:10.5px!important}
   body.mclose-on .mrep svg text{fill:#111!important}
   body.mclose-on .mrep svg text.onslice{fill:#fff!important}
@@ -805,8 +810,8 @@ td,th{font-variant-numeric:tabular-nums}
 <script defer src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
 <script defer src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 <script defer src="config.js"></script>
-<script defer src="firebase.js?v=92"></script>
-<script defer src="app.js?v=92"></script>
+<script defer src="firebase.js?v=93"></script>
+<script defer src="app.js?v=93"></script>
 <script>if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});</script>
 
 </body></html>

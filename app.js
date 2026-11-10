@@ -50,7 +50,7 @@ const PERM_DEF = [
 ];
 
 const DEFAULT_ORDER = STORES.map(s => s.id);
-const APP_VERSION = '2026-11-10 19:50';   // 앱 화면을 마지막으로 고친 시각 (한국 시간)
+const APP_VERSION = '2026-11-10 21:30';   // 앱 화면을 마지막으로 고친 시각 (한국 시간)
 /* ───────── 작은 도구 ───────── */
 const $ = (s, el = document) => el.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -3085,7 +3085,7 @@ function mcloseView() {
   const miss = t => `<span class="blank">자료 없음${t ? ' · ' + esc(t) : ''}</span>`;
   const need = t => `<span class="blank">미입력${t ? ' · ' + esc(t) : ''}</span>`;
   const wonB = v => v == null ? miss() : `<span class="amt">${fmt(v)}원</span>`;
-  const kv = rows => `<table class="kv"><tbody>${rows.map(([k, v]) => `<tr><th>${k}</th><td>${v}</td></tr>`).join('')}</tbody></table>`;
+  const kv = (rows, cap) => `<table class="kv"><thead><tr><th colspan="2">${cap || '항목'}</th></tr></thead><tbody>${rows.map(([k, v]) => `<tr><th>${k}</th><td>${v}</td></tr>`).join('')}</tbody></table>`;
   const ul = L => `<ul>${L.map(x => `<li>${x}</li>`).join('')}</ul>`;
   const on = id => (id === 'this' ? ym === cap : ym === ymPrev(cap)) ? ' on' : '';
   const goalTxt = u => u.cost.goal == null ? need('월 매출 목표') : (u.sales == null ? miss() : `<span class="amt">${fmt(u.sales)}원</span> / 목표 <span class="amt">${fmt(u.cost.goal)}원</span>${u.sales >= u.cost.goal ? ' · 달성' : ` · <span class="amt">${fmt(u.cost.goal - u.sales)}원</span> 부족`}`);
@@ -3102,7 +3102,7 @@ function mcloseView() {
   }
   const prof = R.units.filter(u => u.profit != null);
   costRows.push(['이익 합계', prof.length ? `<span class="amt">${fmt(prof.reduce((t, u) => t + u.profit, 0))}원</span> <span class="muted">${prof.length}개 사업부</span>` : need('계산할 사업부 없음')]);
-  const cmp = R.units.map(u => `<h3 class="accent">${esc(u.b.name)}</h3>${kv([[`${R.m}월`, u.sales == null ? miss() : `<span class="amt">${fmt(u.sales)}원</span> <span class="muted">${u.b.monthly ? '월 입력' : `자료 ${u.days}일 / ${R.dim}일`}</span>`], ['지난달', u.prev == null ? miss() : `<span class="amt">${fmt(u.prev)}원</span> <span class="muted">자료 ${u.prevDays}일</span>`], ['지난달 대비', u.ch == null ? miss(u.sales != null && u.prev === 0 ? '기준이 0원이라 증감률 없음' : '') : chg(u.ch)], [`작년 ${R.m}월`, u.yoy == null ? miss() : `<span class="amt">${fmt(u.yoy)}원</span> <span class="muted">자료 ${u.yoyDays}일</span>`], ['작년 대비', u.yoyCh == null ? miss() : chg(u.yoyCh)]])}`).join('');
+  const cmp = R.units.map(u => `<h3 class="accent">${esc(u.b.name)}</h3>${kv([[`${R.m}월`, u.sales == null ? miss() : `<span class="amt">${fmt(u.sales)}원</span> <span class="muted">${u.b.monthly ? '월 입력' : `자료 ${u.days}일 / ${R.dim}일`}</span>`], ['지난달', u.prev == null ? miss() : `<span class="amt">${fmt(u.prev)}원</span> <span class="muted">자료 ${u.prevDays}일</span>`], ['지난달 대비', u.ch == null ? miss(u.sales != null && u.prev === 0 ? '기준이 0원이라 증감률 없음' : '') : chg(u.ch)], [`작년 ${R.m}월`, u.yoy == null ? miss() : `<span class="amt">${fmt(u.yoy)}원</span> <span class="muted">자료 ${u.yoyDays}일</span>`], ['작년 대비', u.yoyCh == null ? miss() : chg(u.yoyCh)]], esc(u.b.name))}`).join('');
   const dayRows = R.off ? R.days.map(d => [md(d), R.off.dayMap[d] == null ? miss() : `<span class="amt">${fmt(R.off.dayMap[d])}원</span>`]) : [[ '오프라인', miss() ]];
   const weekRows = R.weeks.length ? R.weeks.map(g => [`${mdc(g.a)}~${mdc(g.b)}`, g.n ? `<span class="amt">${fmt(g.s)}원</span>` : miss()]) : [['주별', miss()]];
   const prodRows = R.products.length ? R.products.slice(0, 8).map(([n, x], i) => [`${i + 1}. ${esc(n.replace(/^에바30주년팝업_/, ''))}`, `<span class="amt">${fmt(x.s)}원</span> <span class="muted">${fmt(x.q)}개${x.ip ? ' · ' + esc(x.ip) : ''}</span>`]) : [['상품', miss('토스포스 상품 매출 없음')]];
@@ -3125,19 +3125,19 @@ function mcloseView() {
     ${S.ui.closeSample ? '<p class="sample">시험 자료입니다. 실제 매출·재고·정산 숫자가 아닙니다. 빈칸은 일부러 비워 둔 항목입니다.</p>' : ''}
     ${(() => { const box = (title, inner, chart, cls) => `<section class="split ${cls}"><h2>${title}</h2><div class="pane"><div class="txt">${inner}</div><aside class="cht">${chart}</aside></div></section>`; return [
       box('요약', `<p class="sum">${W.sum}</p><div class="cols"><div><h3>잘한 점</h3>${ul(W.good)}</div><div><h3>문제점</h3>${ul(W.bad)}</div><div><h3>다음 행동 추천</h3>${ul(W.next)}</div><div><h3>경고</h3>${ul(W.warn)}</div></div>`, closeDonut(R), 'pack'),
-      box('사업부 매출', `${kv(salesRows)}${R.kuji ? `<p class="src">참고 · 토스포스 쿠지 IP ${fmt(R.kuji.s)}원 (${fmt(R.kuji.q)}개). 오프라인 합계에 포함되어 있어 위에 다시 더하지 않습니다.</p>` : `<p class="src">토스포스 상품 IP 이름에 “쿠지”가 없습니다. 쿠지사업 별도 자료도 없습니다.</p>`}`, closeShareBars(R), 'pack'),
-      box('원가 · 인건비 · 임대료 · 이익', `<p class="src">이익 = 매출 − 매출×원가율 − 인건비 − 임대료 − 그 달 팝업 시공 확정 금액(부가세 별도). 원가율·인건비·임대료 중 하나라도 비어 있으면 이익은 비웁니다. 월 시공비 차감은 정산 순수익에만 있고 여기서 다시 빼지 않습니다.</p>${kv(costRows)}${R.units.some(u => u.popup && S.settleRules && S.settleRules.construction != null) ? `<p class="src">이 달에는 정산 요율의 월 시공비 ${fmt(S.settleRules.construction)}원과 팝업 시공비가 둘 다 있습니다. 이익에서는 팝업 확정 금액만 뺍니다.</p>` : ''}`, closeProfitChart(R) + closeGoalChart(R), 'pack'),
-      box('팝업 비용', R.popups.length ? R.popups.map(p => `<p class="src">${esc(p.ip)} · ${esc(p.place || '')} · ${esc(p.vendor || '')} · 견적 ${esc(p.quoteDate || '')} · 반영 ${esc(p.month)}. 확정 ${fmt(p.confirmed)}원, 부가세 ${fmt(p.vat)}원, 포함 ${fmt(p.gross)}원. 합계 ${fmt(p.sum)}원과의 차액 ${fmt(p.gap)}원${p.gapNote ? ' · ' + esc(p.gapNote) : ''}.</p>`).join('') + kv(R.popups.flatMap(p => (p.lines || []).map(l => [esc(l.name), `<span class="amt">${fmt(l.amount)}원</span> <span class="muted">${fmt(l.qty)}개${l.note ? ' · ' + esc(l.note) : ''}</span>`])).concat([['확정 공급가', `<span class="amt">${fmt(R.popups.reduce((t, p) => t + (+p.confirmed || 0), 0))}원</span>`]])) : `<p class="src">이 달 반영으로 저장된 팝업 시공비가 없습니다.</p>${kv([['팝업 시공', miss()]])}`, closePopupChart(R), 'pack'),
+      box('사업부 매출', `${kv(salesRows, '사업부 매출')}${R.kuji ? `<p class="src">참고 · 토스포스 쿠지 IP ${fmt(R.kuji.s)}원 (${fmt(R.kuji.q)}개). 오프라인 합계에 포함되어 있어 위에 다시 더하지 않습니다.</p>` : `<p class="src">토스포스 상품 IP 이름에 “쿠지”가 없습니다. 쿠지사업 별도 자료도 없습니다.</p>`}`, closeShareBars(R), 'pack'),
+      box('원가 · 인건비 · 임대료 · 이익', `<p class="src">이익 = 매출 − 매출×원가율 − 인건비 − 임대료 − 그 달 팝업 시공 확정 금액(부가세 별도). 원가율·인건비·임대료 중 하나라도 비어 있으면 이익은 비웁니다. 월 시공비 차감은 정산 순수익에만 있고 여기서 다시 빼지 않습니다.</p>${kv(costRows, '원가 · 인건비 · 임대료 · 이익')}${R.units.some(u => u.popup && S.settleRules && S.settleRules.construction != null) ? `<p class="src">이 달에는 정산 요율의 월 시공비 ${fmt(S.settleRules.construction)}원과 팝업 시공비가 둘 다 있습니다. 이익에서는 팝업 확정 금액만 뺍니다.</p>` : ''}`, closeProfitChart(R) + closeGoalChart(R), 'pack'),
+      box('팝업 비용', R.popups.length ? R.popups.map(p => `<p class="src">${esc(p.ip)} · ${esc(p.place || '')} · ${esc(p.vendor || '')} · 견적 ${esc(p.quoteDate || '')} · 반영 ${esc(p.month)}. 확정 ${fmt(p.confirmed)}원, 부가세 ${fmt(p.vat)}원, 포함 ${fmt(p.gross)}원. 합계 ${fmt(p.sum)}원과의 차액 ${fmt(p.gap)}원${p.gapNote ? ' · ' + esc(p.gapNote) : ''}.</p>`).join('') + kv(R.popups.flatMap(p => (p.lines || []).map(l => [esc(l.name), `<span class="amt">${fmt(l.amount)}원</span> <span class="muted">${fmt(l.qty)}개${l.note ? ' · ' + esc(l.note) : ''}</span>`])).concat([['확정 공급가', `<span class="amt">${fmt(R.popups.reduce((t, p) => t + (+p.confirmed || 0), 0))}원</span>`]]), '팝업 비용') : `<p class="src">이 달 반영으로 저장된 팝업 시공비가 없습니다.</p>${kv([['팝업 시공', miss()]], '팝업 비용')}`, closePopupChart(R), 'pack'),
       box('지난달 · 작년 같은 달', cmp, closeCmpChart(R), 'pack'),
       `<section class="split multi"><h2>일별 · 주별 추이</h2>
-        <div class="pane"><div class="txt"><h3 class="accent">오프라인 토스포스 · 일별</h3>${R.off && R.off.mach != null ? `<p class="src">자판기·기계 ${fmt(R.off.mach)}원은 일별 표에 넣지 않았습니다.</p>` : ''}${kv(dayRows)}</div><aside class="cht">${closeDailyChart(R)}</aside></div>
-        <div class="pane beside"><div class="txt"><h3 class="accent">주별 (월~일, 그 달 안)</h3>${kv(weekRows)}</div><aside class="cht">${closeWeekChart(R)}</aside></div>
+        <div class="pane"><div class="txt"><h3 class="accent">오프라인 토스포스 · 일별</h3>${R.off && R.off.mach != null ? `<p class="src">자판기·기계 ${fmt(R.off.mach)}원은 일별 표에 넣지 않았습니다.</p>` : ''}${kv(dayRows, '오프라인 일별')}</div><aside class="cht">${closeDailyChart(R)}</aside></div>
+        <div class="pane beside"><div class="txt"><h3 class="accent">주별 (월~일, 그 달 안)</h3>${kv(weekRows, '주별')}</div><aside class="cht">${closeWeekChart(R)}</aside></div>
       </section>`,
       '<div class="pair">',
-      box('월말 재고', `<p class="src">수원 매장. 지금 재고에서 ${md(R.b)} 다음 날의 입출고를 되돌린 값입니다.</p>${kv(stockRows)}`, closeStockChart(R), 'pair-item'),
-      box('많이 팔린 상품', `<p class="src">수원 토스포스 상품 매출 상위 8개입니다.</p>${kv(prodRows)}`, closeProdChart(R), 'pair-item'),
+      box('월말 재고', `<p class="src">수원 매장. 지금 재고에서 ${md(R.b)} 다음 날의 입출고를 되돌린 값입니다.</p>${kv(stockRows, '월말 재고')}`, closeStockChart(R), 'pair-item'),
+      box('많이 팔린 상품', `<p class="src">수원 토스포스 상품 매출 상위 8개입니다.</p>${kv(prodRows, '많이 팔린 상품')}`, closeProdChart(R), 'pair-item'),
       '</div>',
-      box('정산', `${kv(setRows)}<p class="src">온키호테·쿠지·블로그 금액과 원가율·인건비·임대료는 이 기기에 입력된 값입니다.</p>`, closeSettleChart(R), 'pack'),
+      box('정산', `${kv(setRows, '정산')}<p class="src">온키호테·쿠지·블로그 금액과 원가율·인건비·임대료는 이 기기에 입력된 값입니다.</p>`, closeSettleChart(R), 'pack'),
     ].join(''); })()}
   </article>`;
 }
