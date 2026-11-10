@@ -595,6 +595,7 @@ tr.flag td{background:var(--warn-bg)}
 .mrep .txt{width:100%}
 .mrep table.kv th{width:38%;color:var(--muted);font-size:13px;font-weight:700}
 .mrep table.kv td{font-variant-numeric:tabular-nums;font-weight:700;text-align:right}
+.mrep table.kv td .amt{white-space:nowrap}
 .mrep .blank{display:inline-block;font-weight:700;color:var(--muted);border:1px dashed var(--muted);border-radius:6px;padding:1px 8px}
 .mrep .src{font-size:12px;color:var(--muted);line-height:1.5;margin:8px 0 0}
 .mrep .sample{background:#fff6d8;color:#5c4300;border:1px solid #e2c56a;border-radius:8px;padding:8px 10px;font-weight:700}
@@ -643,17 +644,29 @@ body.mclose-on .page{max-width:none;width:100%}
   @page{size:A4 portrait;margin:11mm}
   body.mclose-on .mrep{gap:4px}
   body.mclose-on .mrep > section{break-before:auto;page-break-before:auto;break-inside:auto;page-break-inside:auto;padding:0 0 3px}
-  body.mclose-on .mrep section.split{display:block!important}
-  body.mclose-on .mrep .pane{display:grid!important;grid-template-columns:minmax(0,.78fr) minmax(0,1.22fr)!important;gap:2mm 4mm!important;align-items:start}
-  body.mclose-on .mrep .cht{order:0;position:static!important;display:block!important}
-  body.mclose-on .mrep .txt,body.mclose-on .mrep table.kv{width:100%!important}
-  body.mclose-on .mrep .cfig svg{width:100%!important;max-height:46mm;height:auto}
-  body.mclose-on .mrep section.multi .pane{display:block!important}
-  body.mclose-on .mrep section.multi .cht{display:grid!important;grid-template-columns:1fr 1fr;gap:3mm;margin-bottom:2mm}
-  body.mclose-on .mrep section.multi .cfig svg{max-height:40mm}
-  body.mclose-on .mrep .pair{display:grid!important;grid-template-columns:1fr 1fr;gap:4mm;break-inside:avoid;page-break-inside:avoid;margin-top:2mm}
-  body.mclose-on .mrep .pair .pane{display:block!important}
-  body.mclose-on .mrep .pair .cfig svg{max-height:38mm}
+  body.mclose-on .mrep section.split{display:block!important;width:188mm!important;max-width:188mm!important}
+  body.mclose-on .mrep .pane,body.mclose-on .mrep .txt,body.mclose-on .mrep .cht{display:block!important;width:188mm!important;max-width:188mm!important;min-width:0!important;float:none!important;position:static!important}
+  body.mclose-on .mrep table.kv{width:188mm!important;max-width:188mm!important;min-width:188mm!important;table-layout:fixed!important}
+  body.mclose-on .mrep table.kv th{width:58mm!important}
+  body.mclose-on .mrep table.kv td{width:130mm!important;white-space:normal!important}
+  body.mclose-on .mrep table.kv td .amt{white-space:nowrap!important}
+  body.mclose-on .mrep .cfig,body.mclose-on .mrep .cfig svg{width:188mm!important;max-width:188mm!important;max-height:42mm;height:auto}
+  body.mclose-on .mrep .pane.beside{display:table!important;width:188mm!important;min-width:188mm!important;max-width:188mm!important;table-layout:fixed!important;border-spacing:4mm 0;break-inside:avoid;page-break-inside:avoid}
+  body.mclose-on .mrep .pane.beside>.txt,body.mclose-on .mrep .pane.beside>.cht{display:table-cell!important;float:none!important;vertical-align:top}
+  body.mclose-on .mrep .pane.beside>.txt{width:116mm!important;min-width:116mm!important;max-width:116mm!important}
+  body.mclose-on .mrep .pane.beside>.cht{width:68mm!important;min-width:68mm!important;max-width:68mm!important}
+  body.mclose-on .mrep .pane.beside table.kv{width:116mm!important;min-width:116mm!important;max-width:116mm!important}
+  body.mclose-on .mrep .pane.beside table.kv th{width:40mm!important}
+  body.mclose-on .mrep .pane.beside table.kv td{width:76mm!important}
+  body.mclose-on .mrep .pane.beside .cfig,body.mclose-on .mrep .pane.beside .cfig svg{width:68mm!important;max-width:68mm!important}
+  body.mclose-on .mrep section.multi .cht{display:block!important}
+  body.mclose-on .mrep .pair{display:table!important;width:188mm!important;min-width:188mm!important;max-width:188mm!important;table-layout:fixed!important;border-spacing:4mm 0;margin-top:1mm}
+  body.mclose-on .mrep .pair>section{display:table-cell!important;width:92mm!important;min-width:92mm!important;max-width:92mm!important;vertical-align:top}
+  body.mclose-on .mrep .pair .pane,body.mclose-on .mrep .pair .txt,body.mclose-on .mrep .pair .cht{display:block!important;width:90mm!important;min-width:90mm!important;max-width:90mm!important}
+  body.mclose-on .mrep .pair table.kv{width:90mm!important;min-width:90mm!important;max-width:90mm!important}
+  body.mclose-on .mrep .pair table.kv th{width:34mm!important}
+  body.mclose-on .mrep .pair table.kv td{width:56mm!important}
+  body.mclose-on .mrep .pair .cfig,body.mclose-on .mrep .pair .cfig svg{width:90mm!important;max-width:90mm!important;max-height:32mm}
   body.mclose-on .mrep h2,body.mclose-on .mrep h3{break-after:avoid;page-break-after:avoid}
   body.mclose-on .mrep tr,body.mclose-on .mrep li,body.mclose-on .mrep .cfig{break-inside:avoid;page-break-inside:avoid}
   body.mclose-on .mrep table.kv th,body.mclose-on .mrep table.kv td{padding:2px 3px!important;font-size:10.5px!important}
@@ -756,7 +769,7 @@ td,th{font-variant-numeric:tabular-nums}
 <script defer src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 <script defer src="config.js"></script>
 <script defer src="firebase.js?v=31"></script>
-<script defer src="app.js?v=84"></script>
+<script defer src="app.js?v=85"></script>
 <script>if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});</script>
 
 </body></html>

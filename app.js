@@ -50,7 +50,7 @@ const PERM_DEF = [
 ];
 
 const DEFAULT_ORDER = STORES.map(s => s.id);
-const APP_VERSION = '2026-11-10 10:30';   // 앱 화면을 마지막으로 고친 시각 (한국 시간)
+const APP_VERSION = '2026-11-10 10:50';   // 앱 화면을 마지막으로 고친 시각 (한국 시간)
 /* ───────── 작은 도구 ───────── */
 const $ = (s, el = document) => el.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -2882,39 +2882,39 @@ function mcloseView() {
   const ym = closeYm(), cap = today().slice(0, 7), R = closePack(ym), W = closeWords(R);
   const miss = t => `<span class="blank">자료 없음${t ? ' · ' + esc(t) : ''}</span>`;
   const need = t => `<span class="blank">미입력${t ? ' · ' + esc(t) : ''}</span>`;
-  const wonB = v => v == null ? miss() : `${fmt(v)}원`;
+  const wonB = v => v == null ? miss() : `<span class="amt">${fmt(v)}원</span>`;
   const kv = rows => `<table class="kv"><tbody>${rows.map(([k, v]) => `<tr><th>${k}</th><td>${v}</td></tr>`).join('')}</tbody></table>`;
   const ul = L => `<ul>${L.map(x => `<li>${x}</li>`).join('')}</ul>`;
   const on = id => (id === 'this' ? ym === cap : ym === ymPrev(cap)) ? ' on' : '';
-  const goalTxt = u => u.cost.goal == null ? need('월 매출 목표') : (u.sales == null ? miss() : `${fmt(u.sales)}원 / 목표 ${fmt(u.cost.goal)}원${u.sales >= u.cost.goal ? ' · 달성' : ` · ${fmt(u.cost.goal - u.sales)}원 부족`}`);
-  const salesRows = R.units.map(u => [esc(u.b.name), u.sales == null ? miss(u.b.id === 'blog' ? '월 대행료 없음' : '') : `${fmt(u.sales)}원${u.memo ? ` <span class="muted">${esc(u.memo)}</span>` : ''}${u.pos != null || u.mach != null ? `<div class="muted">${u.pos != null ? `토스포스 ${fmt(u.pos)}원` : '토스포스 자료 없음'}${u.mach != null ? ` + 자판기·기계 ${fmt(u.mach)}원` : ''}</div>` : ''}`]);
+  const goalTxt = u => u.cost.goal == null ? need('월 매출 목표') : (u.sales == null ? miss() : `<span class="amt">${fmt(u.sales)}원</span> / 목표 <span class="amt">${fmt(u.cost.goal)}원</span>${u.sales >= u.cost.goal ? ' · 달성' : ` · <span class="amt">${fmt(u.cost.goal - u.sales)}원</span> 부족`}`);
+  const salesRows = R.units.map(u => [esc(u.b.name), u.sales == null ? miss(u.b.id === 'blog' ? '월 대행료 없음' : '') : `<span class="amt">${fmt(u.sales)}원</span>${u.memo ? ` <span class="muted">${esc(u.memo)}</span>` : ''}${u.pos != null || u.mach != null ? `<div class="muted">${u.pos != null ? `토스포스 ${fmt(u.pos)}원` : '토스포스 자료 없음'}${u.mach != null ? ` + 자판기·기계 ${fmt(u.mach)}원` : ''}</div>` : ''}`]);
   const tot = R.units.reduce((t, u) => t + (u.sales || 0), 0), totN = R.units.filter(u => u.sales != null).length;
-  salesRows.push(['자료가 있는 합계', totN ? `${fmt(tot)}원 <span class="muted">${totN}개 사업부</span>` : miss()]);
+  salesRows.push(['자료가 있는 합계', totN ? `<span class="amt">${fmt(tot)}원</span> <span class="muted">${totN}개 사업부</span>` : miss()]);
   const costRows = [];
   for (const u of R.units) {
     costRows.push([esc(u.b.name) + ' 원가율', u.cost.cr == null ? need() : `${u.cost.cr}%`]);
-    costRows.push([esc(u.b.name) + ' 인건비', u.cost.labor == null ? need() : `${fmt(u.cost.labor)}원`]);
-    costRows.push([esc(u.b.name) + ' 임대료', u.cost.rent == null ? need() : `${fmt(u.cost.rent)}원`]);
-    costRows.push([esc(u.b.name) + ' 이익', u.profit == null ? need('원가율·인건비·임대료가 모두 있을 때만') : `${fmt(u.profit)}원`]);
+    costRows.push([esc(u.b.name) + ' 인건비', u.cost.labor == null ? need() : `<span class="amt">${fmt(u.cost.labor)}원</span>`]);
+    costRows.push([esc(u.b.name) + ' 임대료', u.cost.rent == null ? need() : `<span class="amt">${fmt(u.cost.rent)}원</span>`]);
+    costRows.push([esc(u.b.name) + ' 이익', u.profit == null ? need('원가율·인건비·임대료가 모두 있을 때만') : `<span class="amt">${fmt(u.profit)}원</span>`]);
     costRows.push([esc(u.b.name) + ' 목표', goalTxt(u)]);
   }
   const prof = R.units.filter(u => u.profit != null);
-  costRows.push(['이익 합계', prof.length ? `${fmt(prof.reduce((t, u) => t + u.profit, 0))}원 <span class="muted">${prof.length}개 사업부</span>` : need('계산할 사업부 없음')]);
-  const cmp = R.units.map(u => `<h3 class="accent">${esc(u.b.name)}</h3>${kv([[`${R.m}월`, u.sales == null ? miss() : `${fmt(u.sales)}원 <span class="muted">${u.b.monthly ? '월 입력' : `자료 ${u.days}일 / ${R.dim}일`}</span>`], ['지난달', u.prev == null ? miss() : `${fmt(u.prev)}원 <span class="muted">자료 ${u.prevDays}일</span>`], ['지난달 대비', u.ch == null ? miss(u.sales != null && u.prev === 0 ? '기준이 0원이라 증감률 없음' : '') : chg(u.ch)], [`작년 ${R.m}월`, u.yoy == null ? miss() : `${fmt(u.yoy)}원 <span class="muted">자료 ${u.yoyDays}일</span>`], ['작년 대비', u.yoyCh == null ? miss() : chg(u.yoyCh)]])}`).join('');
-  const dayRows = R.off ? R.days.map(d => [md(d), R.off.dayMap[d] == null ? miss() : `${fmt(R.off.dayMap[d])}원`]) : [[ '오프라인', miss() ]];
-  const weekRows = R.weeks.length ? R.weeks.map(g => [`${mdc(g.a)}~${mdc(g.b)}`, g.n ? `${fmt(g.s)}원 <span class="muted">자료 ${g.n}일${g.miss ? ` · 없음 ${g.miss}일` : ''}</span>` : miss()]) : [['주별', miss()]];
-  const prodRows = R.products.length ? R.products.slice(0, 8).map(([n, x], i) => [`${i + 1}. ${esc(n.replace(/^에바30주년팝업_/, ''))}`, `${fmt(x.s)}원 <span class="muted">${fmt(x.q)}개${x.ip ? ' · ' + esc(x.ip) : ''}</span>`]) : [['상품', miss('토스포스 상품 매출 없음')]];
+  costRows.push(['이익 합계', prof.length ? `<span class="amt">${fmt(prof.reduce((t, u) => t + u.profit, 0))}원</span> <span class="muted">${prof.length}개 사업부</span>` : need('계산할 사업부 없음')]);
+  const cmp = R.units.map(u => `<h3 class="accent">${esc(u.b.name)}</h3>${kv([[`${R.m}월`, u.sales == null ? miss() : `<span class="amt">${fmt(u.sales)}원</span> <span class="muted">${u.b.monthly ? '월 입력' : `자료 ${u.days}일 / ${R.dim}일`}</span>`], ['지난달', u.prev == null ? miss() : `<span class="amt">${fmt(u.prev)}원</span> <span class="muted">자료 ${u.prevDays}일</span>`], ['지난달 대비', u.ch == null ? miss(u.sales != null && u.prev === 0 ? '기준이 0원이라 증감률 없음' : '') : chg(u.ch)], [`작년 ${R.m}월`, u.yoy == null ? miss() : `<span class="amt">${fmt(u.yoy)}원</span> <span class="muted">자료 ${u.yoyDays}일</span>`], ['작년 대비', u.yoyCh == null ? miss() : chg(u.yoyCh)]])}`).join('');
+  const dayRows = R.off ? R.days.map(d => [md(d), R.off.dayMap[d] == null ? miss() : `<span class="amt">${fmt(R.off.dayMap[d])}원</span>`]) : [[ '오프라인', miss() ]];
+  const weekRows = R.weeks.length ? R.weeks.map(g => [`${mdc(g.a)}~${mdc(g.b)}`, g.n ? `<span class="amt">${fmt(g.s)}원</span>` : miss()]) : [['주별', miss()]];
+  const prodRows = R.products.length ? R.products.slice(0, 8).map(([n, x], i) => [`${i + 1}. ${esc(n.replace(/^에바30주년팝업_/, ''))}`, `<span class="amt">${fmt(x.s)}원</span> <span class="muted">${fmt(x.q)}개${x.ip ? ' · ' + esc(x.ip) : ''}</span>`]) : [['상품', miss('토스포스 상품 매출 없음')]];
   const st = R.stock;
   const stockRows = st.missing ? [['월말 재고', miss('수원 상품·재고 없음')], ['금액', miss()], ['마이너스', miss()], ['품절', miss()]] : [
     ['기준 날짜', md(st.end)], ['재고 있는 수량', `${fmt(st.qty)}개 <span class="muted">등록 ${fmt(st.kinds)}종</span>`],
-    ['재고 금액', `${fmt(st.amt)}원 <span class="muted">판매가 × 0개 초과${st.noPrice ? ` · 판매가 없는 ${fmt(st.noPrice)}종은 금액에서 뺌` : ''}</span>`],
+    ['재고 금액', `<span class="amt">${fmt(st.amt)}원</span> <span class="muted">판매가 × 0개 초과${st.noPrice ? ` · 판매가 없는 ${fmt(st.noPrice)}종은 금액에서 뺌` : ''}</span>`],
     ['품절', `${fmt(st.zero)}종`], ['마이너스', st.neg ? `${fmt(st.neg)}종` : '0종'],
     ['이번 달 판매 후 월말 재고 0 이하', st.outs.length ? st.outs.slice(0, 5).map(x => `${esc(x.n)} ${fmt(x.q)}개 판매 · 재고 ${fmt(x.t)}`).join('<br>') : '없음'],
   ];
-  const setRows = R.settle.length ? R.settle.map(r => [esc(r.ip), `${r.net === '' || r.net == null ? miss('요율 없음') : fmt(r.net) + '원'} <span class="muted">${esc(r.status || '')}${r.sales ? ' · 판매 ' + fmt(r.sales) + '원' : ''}</span>`]) : [['정산', miss('이 달 정산 행 없음')]];
+  const setRows = R.settle.length ? R.settle.map(r => [esc(r.ip), `${r.net === '' || r.net == null ? miss('요율 없음') : `<span class="amt">${fmt(r.net)}원</span>`} <span class="muted">${esc(r.status || '')}${r.sales ? ' · 판매 ' + fmt(r.sales) + '원' : ''}</span>`]) : [['정산', miss('이 달 정산 행 없음')]];
   if (R.settle.length) {
     const net = R.settle.reduce((t, r) => t + (+r.net || 0), 0), sales = R.settle.filter(r => r.kind !== 'deduct').reduce((t, r) => t + (+r.sales || 0), 0);
-    setRows.push(['판매 금액 합계', `${fmt(sales)}원`]); setRows.push(['순수익 합계', `${fmt(net)}원`]);
+    setRows.push(['판매 금액 합계', `<span class="amt">${fmt(sales)}원</span>`]); setRows.push(['순수익 합계', `<span class="amt">${fmt(net)}원</span>`]);
   }
   const controls = `<button class="chip${on('this')}" data-cym="this">이번달</button><button class="chip${on('prev')}" data-cym="prev">지난달</button><button class="btn" data-cstep="-1">이전 달</button><button class="btn" data-cstep="1" ${ym >= cap ? 'disabled' : ''}>다음 달</button><button class="btn pri" id="closePrint">인쇄 / PDF 저장</button>`;
   return `${head('월말 마감 보고서', '끝난 달이 기본 · 대표만 · 없는 숫자는 비워 둡니다', controls)}
@@ -2926,12 +2926,15 @@ function mcloseView() {
       box('사업부 매출', `${kv(salesRows)}${R.kuji ? `<p class="src">참고 · 토스포스 쿠지 IP ${fmt(R.kuji.s)}원 (${fmt(R.kuji.q)}개). 오프라인 합계에 포함되어 있어 위에 다시 더하지 않습니다.</p>` : `<p class="src">토스포스 상품 IP 이름에 “쿠지”가 없습니다. 쿠지사업 별도 자료도 없습니다.</p>`}`, closeShareBars(R), 'pack'),
       box('원가 · 인건비 · 임대료 · 이익', `<p class="src">이익 = 매출 − 매출×원가율 − 인건비 − 임대료. 셋 중 하나라도 비어 있으면 이익은 비웁니다. 비어 있는 값을 0원으로 바꾸지 않습니다. 이 값은 이 기기의 사업부 입력칸입니다.</p>${kv(costRows)}`, closeProfitChart(R), 'pack'),
       box('지난달 · 작년 같은 달', cmp, closeCmpChart(R), 'pack'),
-      box('일별 · 주별 추이', `<h3 class="accent">오프라인 토스포스 · 일별</h3>${R.off && R.off.mach != null ? `<p class="src">자판기·기계 ${fmt(R.off.mach)}원은 일별 칸에 나뉘어 있지 않아 일별 표에는 넣지 않았습니다.</p>` : ''}${kv(dayRows)}<h3 class="accent">오프라인 토스포스 · 주별 (월~일, 그 달 안의 날만)</h3>${kv(weekRows)}`, closeDailyChart(R) + closeWeekChart(R), 'multi'),
-      box('월말 재고', `<p class="src">수원 매장. 지금 재고에서 ${md(R.b)} 다음 날의 입출고를 되돌린 값입니다.</p>${kv(stockRows)}`, closeStockChart(R), 'pack multi'),
+      `<section class="split multi"><h2>일별 · 주별 추이</h2>
+        <div class="pane"><div class="txt"><h3 class="accent">오프라인 토스포스 · 일별</h3>${R.off && R.off.mach != null ? `<p class="src">자판기·기계 ${fmt(R.off.mach)}원은 일별 표에 넣지 않았습니다.</p>` : ''}${kv(dayRows)}</div><aside class="cht">${closeDailyChart(R)}</aside></div>
+        <div class="pane beside"><div class="txt"><h3 class="accent">주별 (월~일, 그 달 안)</h3>${kv(weekRows)}</div><aside class="cht">${closeWeekChart(R)}</aside></div>
+      </section>`,
       '<div class="pair">',
+      box('월말 재고', `<p class="src">수원 매장. 지금 재고에서 ${md(R.b)} 다음 날의 입출고를 되돌린 값입니다.</p>${kv(stockRows)}`, closeStockChart(R), 'pair-item'),
       box('많이 팔린 상품', `<p class="src">수원 토스포스 상품 매출 상위 8개입니다.</p>${kv(prodRows)}`, closeProdChart(R), 'pair-item'),
-      box('정산', `${kv(setRows)}<p class="src">온키호테·쿠지·블로그 금액과 원가율·인건비·임대료는 이 기기에 입력된 값입니다.</p>`, closeSettleChart(R), 'pair-item'),
       '</div>',
+      box('정산', `${kv(setRows)}<p class="src">온키호테·쿠지·블로그 금액과 원가율·인건비·임대료는 이 기기에 입력된 값입니다.</p>`, closeSettleChart(R), 'pack'),
     ].join(''); })()}
   </article>`;
 }
