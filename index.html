@@ -590,18 +590,47 @@ tr.flag td{background:var(--warn-bg)}
 .mrep .sum{font-size:15px;line-height:1.6;margin:0 0 10px}
 .mrep .cols{display:grid;grid-template-columns:1fr 1fr;gap:12px}
 .mrep ul{margin:0;padding-left:18px;line-height:1.5}
-.mrep table.kv{width:100%;border-collapse:collapse}
-.mrep table.kv th,.mrep table.kv td{border-bottom:1px solid var(--line);padding:7px 4px;text-align:left;vertical-align:top}
+.mrep table.kv{width:100%;border-collapse:collapse;table-layout:fixed}
+.mrep table.kv th,.mrep table.kv td{border-bottom:1px solid var(--line);padding:7px 4px;text-align:left;vertical-align:top;overflow-wrap:anywhere}
 .mrep table.kv th{width:46%;color:var(--muted);font-size:13px;font-weight:700}
 .mrep table.kv td{font-variant-numeric:tabular-nums;font-weight:700}
 .mrep .blank{display:inline-block;font-weight:700;color:var(--muted);border:1px dashed var(--muted);border-radius:6px;padding:1px 8px}
 .mrep .src{font-size:12px;color:var(--muted);line-height:1.5;margin:8px 0 0}
 .mrep .sample{background:#fff6d8;color:#5c4300;border:1px solid #e2c56a;border-radius:8px;padding:8px 10px;font-weight:700}
 .mrep .ponly{display:none}
-@media (max-width:640px){.mrep .cols{grid-template-columns:1fr}.mrep h1{font-size:19px}.mrep table.kv th{width:42%}}
+.mrep section.split{display:flex;flex-direction:column;gap:8px}
+.mrep .pane{display:flex;flex-direction:column;gap:12px;min-width:0}
+.mrep .txt,.mrep .cht{min-width:0;max-width:100%}
+.mrep .cht{display:flex;flex-direction:column;gap:10px}
+.mrep .cfig{margin:0;min-width:0}
+.mrep .cfig figcaption{font-size:13px;font-weight:800;color:var(--ink);margin:0 0 6px}
+.mrep .cfig svg{display:block;width:100%;height:auto;max-width:100%}
+.mrep .cnone{border:1px dashed var(--muted);border-radius:8px;padding:22px 10px;text-align:center;font-weight:800;color:var(--ink)}
+.mrep .cleg{list-style:none;margin:8px 0 0;padding:0;font-size:13px}
+.mrep .cleg li{display:flex;gap:6px;align-items:flex-start;margin:3px 0;min-width:0}
+.mrep .cleg i{width:10px;height:10px;border-radius:2px;flex:none;margin-top:4px;background:#bbb}
+.mrep .cleg .gap i{background:transparent;border:1px dashed var(--muted)}
+.mrep svg .lab{font-size:11px;fill:currentColor}
+.mrep svg .miss{font-size:11px;fill:currentColor;opacity:.75}
+.mrep svg .grid{stroke:currentColor;stroke-opacity:.2}
+body.mclose-on .page{max-width:none;width:100%}
+@media (min-width:701px){
+  .mrep .pane{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,.9fr);gap:8px 20px;align-items:start}
+}
+@media (min-width:901px){
+  .mrep .cht{position:sticky;top:calc(env(safe-area-inset-top,0px) + 68px)}
+}
+@media (min-width:1440px){
+  .mrep .pane{grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:12px 28px}
+}
+@media (min-width:1800px){
+  .mrep .pane{grid-template-columns:minmax(0,.9fr) minmax(0,1.2fr)}
+  .mrep section.multi .cht{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);align-items:start}
+  .mrep .cols{grid-template-columns:1fr 1fr 1fr 1fr}
+}
+@media (max-width:700px){.mrep .cols{grid-template-columns:1fr}.mrep h1{font-size:19px}.mrep table.kv th{width:42%}}
 @media print{
   .top,.side,.tabbar{display:none}
-  @page{size:A4 portrait;margin:12mm}
   body.mclose-on{background:#fff!important;-webkit-print-color-adjust:exact;print-color-adjust:exact}
   body.mclose-on .top,body.mclose-on .side,body.mclose-on .tabbar,body.mclose-on .demobar,body.mclose-on .storebar,body.mclose-on .ph,body.mclose-on .toast,body.mclose-on .no-print{display:none!important}
   body.mclose-on .shell,body.mclose-on main,body.mclose-on .page{display:block!important;background:#fff!important;color:#111!important;padding:0!important;margin:0!important;max-width:none!important;min-height:0!important}
@@ -609,12 +638,25 @@ tr.flag td{background:var(--warn-bg)}
   body.mclose-on .mrep section{border:0!important;border-radius:0!important;padding:0 0 8px}
   body.mclose-on .mrep .brand,body.mclose-on .mrep h2,body.mclose-on .mrep h3.accent{color:#19776A!important}
   body.mclose-on .mrep h2{border-left:4px solid #19776A!important}
-  body.mclose-on .mrep > section{break-before:page;page-break-before:always}
-  body.mclose-on .mrep > section:first-of-type{break-before:auto;page-break-before:auto}
-  body.mclose-on .mrep tr,body.mclose-on .mrep li{break-inside:avoid;page-break-inside:avoid}
+  @page{size:A4 portrait;margin:11mm}
+  body.mclose-on .mrep{gap:6px}
+  body.mclose-on .mrep > section{break-before:auto;page-break-before:auto;break-inside:auto;page-break-inside:auto;padding:0 0 4px}
+  body.mclose-on .mrep > section.tight{break-inside:avoid;page-break-inside:avoid}
+  body.mclose-on .mrep section.split{display:block!important}
+  body.mclose-on .mrep .pane{display:flex!important;flex-direction:column!important}
+  body.mclose-on .mrep .cht{order:-1;position:static!important;display:flex!important;flex-direction:row;gap:8px;margin:0 0 4px}
+  body.mclose-on .mrep .cht .cfig{flex:1 1 0;min-width:0}
+  body.mclose-on .mrep .cfig svg{width:100%!important;max-height:58mm;height:auto}
+  body.mclose-on .mrep h2,body.mclose-on .mrep h3{break-after:avoid;page-break-after:avoid}
+  body.mclose-on .mrep tr,body.mclose-on .mrep li,body.mclose-on .mrep .cfig{break-inside:avoid;page-break-inside:avoid}
+  body.mclose-on .mrep table.kv th,body.mclose-on .mrep table.kv td{padding:2px 3px!important;font-size:10.5px!important}
+  body.mclose-on .mrep svg text{fill:#111!important}
+  body.mclose-on .mrep svg .hole{fill:#fff!important}
+  body.mclose-on .mrep .cnone{color:#111!important;border-color:#777!important}
   body.mclose-on .mrep .blank{color:#333!important;border-color:#777!important}
   body.mclose-on .mrep .sample{background:#fff!important;color:#111!important;border:1px solid #19776A!important}
-  body.mclose-on .mrep .cols{grid-template-columns:1fr 1fr}
+  body.mclose-on .mrep .cols{display:block!important;column-count:2;column-gap:10px}
+  body.mclose-on .mrep .cols > div{break-inside:avoid;page-break-inside:avoid;margin-bottom:6px}
 }
 
 /* ── 2026.11 리디자인: 머리줄 도구(글자 크기·화면 색), 화이트톤 머리줄, 넓은 화면 폭, 드롭 영역, 정렬 ── */
@@ -707,7 +749,7 @@ td,th{font-variant-numeric:tabular-nums}
 <script defer src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 <script defer src="config.js"></script>
 <script defer src="firebase.js?v=31"></script>
-<script defer src="app.js?v=82"></script>
+<script defer src="app.js?v=83"></script>
 <script>if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});</script>
 
 </body></html>
