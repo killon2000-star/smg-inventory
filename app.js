@@ -50,7 +50,7 @@ const PERM_DEF = [
 ];
 
 const DEFAULT_ORDER = STORES.map(s => s.id);
-const APP_VERSION = '2026-11-10 19:10';   // 앱 화면을 마지막으로 고친 시각 (한국 시간)
+const APP_VERSION = '2026-11-10 19:20';   // 앱 화면을 마지막으로 고친 시각 (한국 시간)
 /* ───────── 작은 도구 ───────── */
 const $ = (s, el = document) => el.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -2778,68 +2778,41 @@ function barText(r) {
   if (r.pct != null) s += ' · ' + r.pct + '%';
   return s;
 }
-function drawBars(title, lines, kind) {
+function drawBars(title, lines) {
   const bars = lines.filter(l => l.kind !== 'head');
   const known = bars.filter(l => l.v != null && !isNaN(l.v));
   if (!known.length) return chartEmpty(title);
-  const fs = 12;
-  const valW = Math.ceil(Math.max(84, ...bars.map(r => estW(barText(r), fs))) + 8);
-  const nameNeed = Math.max(52, ...bars.map(l => estW(l.name || '', fs) + 12));
-  const nameCap = kind === 'side' ? 100 : kind === 'half' ? 150 : 210;
-  const nameW = Math.min(nameCap, Math.max(kind === 'side' ? 70 : 96, nameNeed));
-  const rowH = 26, headH = 20;
-  let H = 8;
-  lines.forEach(l => { H += l.kind === 'head' ? headH : rowH; });
-  const W = Math.max(kind === 'side' ? 380 : kind === 'half' ? 540 : 860, nameW + valW + 140);
-  const plotL = nameW + 12, plotR = W - 8;
+  const maxAbs = Math.max(...known.map(r => Math.abs(r.v)), 1);
   const hasNeg = known.some(r => r.v < 0), hasPos = known.some(r => r.v > 0);
-  const minV = Math.min(0, ...known.map(r => r.v)), maxV = Math.max(0, ...known.map(r => r.v));
-  const span = (maxV - minV) || 1;
-  const innerL = plotL + (hasNeg ? valW + 14 : 0);
-  const innerR = plotR - (hasPos ? valW : 0);
-  const innerW = Math.max(28, innerR - innerL);
-  const xOf = v => innerL + (v - minV) / span * innerW;
-  const zero = xOf(0);
-  let g = '';
-  if (hasNeg) g += `<line class="grid" x1="${zero.toFixed(1)}" x2="${zero.toFixed(1)}" y1="4" y2="${H - 4}"/>`;
-  let y = 6;
-  lines.forEach(r => {
-    if (r.kind === 'head') {
-      g += `<text class="lab" font-size="12" font-weight="800" x="0" y="${y + 13}">${esc(r.name)}</text>`;
-      y += headH;
-      return;
+  const mode = hasNeg && hasPos ? 'both' : hasNeg ? 'neg' : 'pos';
+  const html = lines.map(r => {
+    if (r.kind === 'head') return `<div class="bhead">${esc(r.name)}</div>`;
+    const label = barText(r);
+    if (r.v == null) return `<div class="brow"><span class="bn">${esc(r.name || '')}</span><span class="bmiss">${esc(label)}</span></div>`;
+    const fill = r.v < 0 ? '#9B3A3A' : (r.color || '#19776A');
+    const p = Math.max(0.04, Math.abs(r.v) / maxAbs);
+    const barW = `calc(${p.toFixed(4)} * (100% - 13.5em))`;
+    if (mode === 'both') {
+      const neg = r.v < 0;
+      return `<div class="brow"><span class="bn">${esc(r.name || '')}</span><span class="bscale both"><span class="bl">${neg ? `<i style="width:${(p * 100).toFixed(1)}%;background:${fill}"></i>` : ''}</span><span class="br">${neg ? '' : `<i style="width:${(p * 100).toFixed(1)}%;background:${fill}"></i>`}</span></span><span class="bv">${esc(label)}</span></div>`;
     }
-    const mid = y + 16, label = barText(r);
-    let nm = r.name || '';
-    while (nm.length > 1 && estW(nm, fs) > nameW - 8) nm = nm.slice(0, -1);
-    if (nm !== (r.name || '')) nm += '…';
-    g += `<text class="lab" font-size="${fs}" x="0" y="${mid}">${esc(nm)}</text><title>${esc((r.name ? r.name + ' ' : '') + label)}</title>`;
-    if (r.v == null) g += `<text class="miss" font-size="${fs}" x="${plotL}" y="${mid}">${esc(label)}</text>`;
-    else {
-      const fill = r.v < 0 ? '#9B3A3A' : (r.color || '#19776A');
-      const x1 = xOf(Math.min(0, r.v)), x2 = xOf(Math.max(0, r.v));
-      const w = Math.max(r.v === 0 ? 2 : 3, x2 - x1);
-      g += `<rect x="${x1.toFixed(1)}" y="${y + 6}" width="${w.toFixed(1)}" height="12" rx="2" fill="${fill}"/>`;
-      if (r.v < 0) g += `<text class="lab" font-size="${fs}" font-weight="800" text-anchor="end" x="${(x1 - 8).toFixed(1)}" y="${mid}">${esc(label)}</text>`;
-      else g += `<text class="lab" font-size="${fs}" font-weight="800" x="${(x2 + 8).toFixed(1)}" y="${mid}">${esc(label)}</text>`;
-    }
-    y += rowH;
-  });
-  return closeSvg(title, W, H, g);
+    return `<div class="brow ${mode}"><span class="bn">${esc(r.name || '')}</span><span class="bmain ${mode}"><i style="width:${barW};background:${fill}"></i><em class="bv">${esc(label)}</em></span></div>`;
+  }).join('');
+  return `<figure class="cfig bars"><figcaption>${esc(title)}</figcaption><div class="brows ${mode}">${html}</div></figure>`;
 }
 function closeHBars(title, rows, kind) { return drawBars(title, rows, kind); }
 function closeVBars(title, items) {
   const known = items.filter(r => r.v != null);
   if (!known.length) return chartEmpty(title);
   const mx = Math.max(...known.map(r => Math.abs(r.v)), 1);
-  const W = 760, L = 16, Rt = 10, B = 28, n = items.length;
+  const W = 460, L = 8, Rt = 8, B = 30, n = items.length;
   const slot = (W - L - Rt) / n, bw = Math.max(4, Math.min(16, slot - 4));
   const marks = [];
   let lastRight = -99, needRot = 0;
   items.forEach((r, i) => {
     if (r.v == null) { marks.push(null); return; }
     const lab = (r.v < 0 ? '-' : '') + fmt(Math.abs(r.v)) + (r.unit == null ? '원' : r.unit);
-    const lw = estW(lab, 11), cx = L + i * slot + slot / 2;
+    const lw = estW(lab, 16), cx = L + i * slot + slot / 2;
     const rot = cx - lw / 2 < lastRight + 3;
     if (rot) needRot = Math.max(needRot, lw + 8);
     else lastRight = cx + lw / 2;
@@ -2858,11 +2831,11 @@ function closeVBars(title, items) {
       const y = Y(m.v), h = Math.max(2, base - y);
       const fill = m.v < 0 ? '#9B3A3A' : '#19776A';
       g += `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${bw.toFixed(1)}" height="${h.toFixed(1)}" rx="1.5" fill="${fill}"><title>${esc(m.name)} ${esc(m.lab)}</title></rect>`;
-      if (m.rot) g += `<text class="lab" font-size="11" font-weight="800" text-anchor="start" transform="rotate(-90 ${m.cx.toFixed(1)} ${(y - 8).toFixed(1)})" x="${m.cx.toFixed(1)}" y="${(y - 8).toFixed(1)}">${esc(m.lab)}</text>`;
-      else g += `<text class="lab" font-size="11" font-weight="800" text-anchor="middle" x="${m.cx.toFixed(1)}" y="${(y - 10).toFixed(1)}">${esc(m.lab)}</text>`;
+      if (m.rot) g += `<text class="lab" font-size="16" font-weight="800" text-anchor="start" transform="rotate(-90 ${m.cx.toFixed(1)} ${(y - 8).toFixed(1)})" x="${m.cx.toFixed(1)}" y="${(y - 8).toFixed(1)}">${esc(m.lab)}</text>`;
+      else g += `<text class="lab" font-size="16" font-weight="800" text-anchor="middle" x="${m.cx.toFixed(1)}" y="${(y - 12).toFixed(1)}">${esc(m.lab)}</text>`;
     }
     const step = Math.max(1, Math.ceil(n / 10));
-    if (i % step === 0 || i === n - 1) g += `<text class="lab" font-size="11" x="${(x + bw / 2).toFixed(1)}" y="${H - 8}" text-anchor="middle">${esc(String(day))}</text>`;
+    if (i % step === 0 || i === n - 1) g += `<text class="lab" font-size="15" x="${(x + bw / 2).toFixed(1)}" y="${H - 8}" text-anchor="middle">${esc(String(day))}</text>`;
   });
   return closeSvg(title, W, H, g, 'day');
 }
@@ -2872,42 +2845,20 @@ function closeDonut(R) {
   if (!parts.length) return chartEmpty('사업부 매출 비중');
   const tot = parts.reduce((t, u) => t + u.sales, 0);
   const colors = ['#19776A', '#0D4A42', '#2F6FDB', '#C4A35A'];
-  const W = 820, H = 230, cx = 400, cy = 104, rad = 62, sw = 22, C = 2 * Math.PI * rad;
-  let off = 0, arcs = '', ang = 0;
-  const labs = [];
+  const cx = 100, cy = 100, rad = 72, sw = 26, C = 2 * Math.PI * rad;
+  let off = 0, arcs = '';
   if (parts.length === 1) arcs = `<circle cx="${cx}" cy="${cy}" r="${rad}" fill="none" stroke="${colors[0]}" stroke-width="${sw}"/>`;
   parts.forEach((u, i) => {
     const frac = u.sales / tot;
     const len = parts.length === 1 ? C : (i === parts.length - 1 ? C - off : frac * C);
-    if (parts.length > 1) arcs += `<circle cx="${cx}" cy="${cy}" r="${rad}" fill="none" stroke="${colors[i % colors.length]}" stroke-width="${sw}" stroke-dasharray="${len.toFixed(2)} ${(C - len).toFixed(2)}" stroke-dashoffset="${(-off).toFixed(2)}" transform="rotate(-90 ${cx} ${cy})"/>`;
-    const sweep = frac * 2 * Math.PI, mid = ang + sweep / 2;
-    ang += sweep; off += len;
-    const name = CSHORT[u.b.id] || u.b.name;
-    const text = `${name} ${fmt(u.sales)}원 ${Math.round(frac * 100)}%`;
-    labs.push({
-      x1: cx + Math.sin(mid) * rad, y1: cy - Math.cos(mid) * rad,
-      x2: cx + Math.sin(mid) * (rad + 14), y2: cy - Math.cos(mid) * (rad + 14),
-      right: Math.sin(mid) >= -0.15, text, name
-    });
-  });
-  const nudge = arr => {
-    arr.sort((a, b) => a.y2 - b.y2);
-    for (let i = 1; i < arr.length; i++) if (arr[i].y2 < arr[i - 1].y2 + 16) arr[i].y2 = arr[i - 1].y2 + 16;
-    for (let i = arr.length - 2; i >= 0; i--) if (arr[i].y2 > arr[i + 1].y2 - 16) arr[i].y2 = arr[i + 1].y2 - 16;
-    arr.forEach(l => { l.y2 = Math.max(14, Math.min(H - 28, l.y2)); });
-  };
-  nudge(labs.filter(l => l.right));
-  nudge(labs.filter(l => !l.right));
-  labs.forEach(l => {
-    const x3 = l.right ? cx + rad + 58 : cx - rad - 58;
-    arcs += `<polyline fill="none" stroke="#666" stroke-width="1" points="${l.x1.toFixed(1)},${l.y1.toFixed(1)} ${l.x2.toFixed(1)},${l.y2.toFixed(1)} ${x3.toFixed(1)},${l.y2.toFixed(1)}"/>`;
-    arcs += `<text class="lab" font-size="12" font-weight="800" y="${(l.y2 + 4).toFixed(1)}" text-anchor="${l.right ? 'start' : 'end'}" x="${(l.right ? x3 + 4 : x3 - 4).toFixed(1)}">${esc(l.text)}</text>`;
+    if (parts.length > 1) arcs += `<circle cx="${cx}" cy="${cy}" r="${rad}" fill="none" stroke="${colors[i % colors.length]}" stroke-width="${sw}" stroke-dasharray="${len.toFixed(2)} ${(C - len).toFixed(2)}" stroke-dashoffset="${(-off).toFixed(2)}" transform="rotate(-90 ${cx} ${cy})"><title>${esc(CSHORT[u.b.id] || u.b.name)} ${fmt(u.sales)}원 ${Math.round(frac * 100)}%</title></circle>`;
+    off += len;
   });
   arcs += `<circle class="hole" cx="${cx}" cy="${cy}" r="${rad - sw / 2 - 1}" fill="var(--surface)"/>`;
-  const totLab = fmt(tot) + '원';
-  arcs += `<text class="lab" x="${cx}" y="${cy - 6}" text-anchor="middle" font-size="11">합계</text><text class="lab" x="${cx}" y="${cy + 12}" text-anchor="middle" font-size="14" font-weight="800">${esc(totLab)}</text>`;
-  if (rest.length) arcs += `<text class="miss" font-size="12" x="${cx}" y="${H - 10}" text-anchor="middle">${esc(rest.map(u => (CSHORT[u.b.id] || u.b.name) + (u.sales === 0 ? ' 0원' : ' 자료 없음')).join(' · '))}</text>`;
-  return closeSvg('사업부 매출 비중', W, H, arcs, 'donut');
+  arcs += `<text class="lab" x="${cx}" y="${cy - 2}" text-anchor="middle" font-size="14">합계</text><text class="lab" x="${cx}" y="${cy + 18}" text-anchor="middle" font-size="16" font-weight="800">${esc(fmt(tot))}원</text>`;
+  const leg = parts.map((u, i) => `<li><i style="background:${colors[i % colors.length]}"></i><span>${esc(CSHORT[u.b.id] || u.b.name)} ${fmt(u.sales)}원 · ${Math.round(u.sales / tot * 100)}%</span></li>`).join('')
+    + rest.map(u => `<li class="gap"><i></i><span>${esc(CSHORT[u.b.id] || u.b.name)} · ${u.sales === 0 ? '0원' : '자료 없음'}</span></li>`).join('');
+  return `<figure class="cfig donut"><figcaption>사업부 매출 비중</figcaption><div class="donut-row"><svg viewBox="0 0 200 200" width="100%" role="img" aria-label="사업부 매출 비중">${arcs}</svg><ul class="cleg">${leg}</ul></div></figure>`;
 }
 function closeDailyChart(R) {
   const map = R.off && R.off.dayMap;
