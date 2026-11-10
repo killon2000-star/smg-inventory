@@ -50,7 +50,7 @@ const PERM_DEF = [
 ];
 
 const DEFAULT_ORDER = STORES.map(s => s.id);
-const APP_VERSION = '2026-11-10 19:20';   // 앱 화면을 마지막으로 고친 시각 (한국 시간)
+const APP_VERSION = '2026-11-10 19:30';   // 앱 화면을 마지막으로 고친 시각 (한국 시간)
 /* ───────── 작은 도구 ───────── */
 const $ = (s, el = document) => el.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -2845,20 +2845,41 @@ function closeDonut(R) {
   if (!parts.length) return chartEmpty('사업부 매출 비중');
   const tot = parts.reduce((t, u) => t + u.sales, 0);
   const colors = ['#19776A', '#0D4A42', '#2F6FDB', '#C4A35A'];
-  const cx = 100, cy = 100, rad = 72, sw = 26, C = 2 * Math.PI * rad;
-  let off = 0, arcs = '';
+  const VB = 320, cx = 160, cy = 148, rad = 96, sw = 92, fs = 15, lh = 17, C = 2 * Math.PI * rad;
+  const at = (deg, r) => ({ x: cx + Math.sin(deg * Math.PI / 180) * r, y: cy - Math.cos(deg * Math.PI / 180) * r });
+  const block = (x, y, lines, on) => lines.map((ln, i) => `<text class="${on ? 'onslice' : 'lab'}" text-anchor="middle" font-weight="800" font-size="${fs}" fill="${on ? '#fff' : '#111'}" x="${x.toFixed(1)}" y="${(y + i * lh).toFixed(1)}">${esc(ln)}</text>`).join('');
+  let off = 0, ang = 0, arcs = '';
+  const labels = [];
   if (parts.length === 1) arcs = `<circle cx="${cx}" cy="${cy}" r="${rad}" fill="none" stroke="${colors[0]}" stroke-width="${sw}"/>`;
   parts.forEach((u, i) => {
     const frac = u.sales / tot;
     const len = parts.length === 1 ? C : (i === parts.length - 1 ? C - off : frac * C);
-    if (parts.length > 1) arcs += `<circle cx="${cx}" cy="${cy}" r="${rad}" fill="none" stroke="${colors[i % colors.length]}" stroke-width="${sw}" stroke-dasharray="${len.toFixed(2)} ${(C - len).toFixed(2)}" stroke-dashoffset="${(-off).toFixed(2)}" transform="rotate(-90 ${cx} ${cy})"><title>${esc(CSHORT[u.b.id] || u.b.name)} ${fmt(u.sales)}원 ${Math.round(frac * 100)}%</title></circle>`;
-    off += len;
+    const name = CSHORT[u.b.id] || u.b.name;
+    const pct = Math.round(frac * 100);
+    const lines = [name, fmt(u.sales) + '원', pct + '%'];
+    if (parts.length > 1) arcs += `<circle cx="${cx}" cy="${cy}" r="${rad}" fill="none" stroke="${colors[i % colors.length]}" stroke-width="${sw}" stroke-dasharray="${len.toFixed(2)} ${(C - len).toFixed(2)}" stroke-dashoffset="${(-off).toFixed(2)}" transform="rotate(-90 ${cx} ${cy})"><title>${esc(lines.join(' '))}</title></circle>`;
+    const sweep = frac * 360, mid = ang + sweep / 2;
+    ang += sweep; off += len;
+    const wide = frac * 2 * Math.PI * rad > Math.max(...lines.map(s => estW(s, fs))) * 1.2 && sw >= lh * 3 + 4;
+    labels.push({ mid, lines, wide });
   });
-  arcs += `<circle class="hole" cx="${cx}" cy="${cy}" r="${rad - sw / 2 - 1}" fill="var(--surface)"/>`;
-  arcs += `<text class="lab" x="${cx}" y="${cy - 2}" text-anchor="middle" font-size="14">합계</text><text class="lab" x="${cx}" y="${cy + 18}" text-anchor="middle" font-size="16" font-weight="800">${esc(fmt(tot))}원</text>`;
+  arcs += `<circle class="hole" cx="${cx}" cy="${cy}" r="${(rad - sw / 2 - 1).toFixed(1)}" fill="var(--surface)"/>`;
+  arcs += `<text class="lab" x="${cx}" y="${cy - 1}" text-anchor="middle" font-size="14">합계</text><text class="lab" x="${cx}" y="${cy + 16}" text-anchor="middle" font-size="15" font-weight="800">${esc(fmt(tot))}원</text>`;
+  labels.forEach(L => {
+    if (L.wide) {
+      const p = at(L.mid, rad);
+      arcs += block(p.x, p.y - lh, L.lines, true);
+    } else {
+      const a = at(L.mid, rad + sw / 2);
+      const b = at(L.mid, rad + sw / 2 + 10);
+      arcs += `<line x1="${a.x.toFixed(1)}" y1="${a.y.toFixed(1)}" x2="${b.x.toFixed(1)}" y2="${b.y.toFixed(1)}" stroke="#333" stroke-width="1.4"/>`;
+      const y = Math.min(VB - lh * 2 - 4, Math.max(lh, b.y + (Math.cos(L.mid * Math.PI / 180) > 0.2 ? -lh * 2 - 4 : 12)));
+      arcs += block(Math.max(fs * 4, Math.min(VB - fs * 4, b.x)), y, L.lines, false);
+    }
+  });
   const leg = parts.map((u, i) => `<li><i style="background:${colors[i % colors.length]}"></i><span>${esc(CSHORT[u.b.id] || u.b.name)} ${fmt(u.sales)}원 · ${Math.round(u.sales / tot * 100)}%</span></li>`).join('')
     + rest.map(u => `<li class="gap"><i></i><span>${esc(CSHORT[u.b.id] || u.b.name)} · ${u.sales === 0 ? '0원' : '자료 없음'}</span></li>`).join('');
-  return `<figure class="cfig donut"><figcaption>사업부 매출 비중</figcaption><div class="donut-row"><svg viewBox="0 0 200 200" width="100%" role="img" aria-label="사업부 매출 비중">${arcs}</svg><ul class="cleg">${leg}</ul></div></figure>`;
+  return `<figure class="cfig donut"><figcaption>사업부 매출 비중</figcaption><div class="donut-row"><svg viewBox="0 0 ${VB} ${VB}" width="100%" role="img" aria-label="사업부 매출 비중">${arcs}</svg><ul class="cleg">${leg}</ul></div></figure>`;
 }
 function closeDailyChart(R) {
   const map = R.off && R.off.dayMap;
