@@ -63,11 +63,11 @@ th.bizname{font-size:1.12em}.chip .bizname{font-size:1.12em}
 .bizrow .bizname{font-size:1.2em;display:flex;align-items:center;gap:7px}
 h4.bizname{font-size:1.15em;display:flex;align-items:center;gap:7px}
 .bizsoon{font-size:13px;margin:-8px 0 16px;display:flex;flex-wrap:wrap;gap:6px;align-items:center}
-.blogform{display:grid;grid-template-columns:160px 180px 1fr auto;gap:8px;align-items:end;margin-bottom:10px}
+.blogform{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,160px),1fr));gap:8px;align-items:end;margin-bottom:10px;min-width:0;max-width:100%}
 .blogform .field{min-width:0}.blogform .inp{width:100%;box-sizing:border-box}
 .show-s{display:none}.dec .dgrid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-top:12px}.dec .dbox{border:1px solid var(--line);border-left:4px solid var(--green,var(--info));border-radius:6px;padding:10px 12px;background:var(--surface);min-width:0}.dec .dbox.warn{border-left-color:var(--warn);background:var(--warn-bg)}.dec h3{margin:0 0 6px;font-size:15px}.dec .dl{margin:0;padding-left:18px;font-size:14px;line-height:1.55}.dec .dl li{margin:3px 0;overflow-wrap:anywhere}.dec .bizname,.bizname{font-weight:800}.dcfg{margin-top:12px}.dcfg summary{cursor:pointer;font-weight:700}.dform{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:8px;align-items:end;margin-top:8px}.dform .field{display:flex;flex-direction:column;gap:3px;font-size:13px}.dform .inp{width:100%;min-width:0}
 @media(max-width:1100px){.dec .dgrid{grid-template-columns:1fr}}@media(max-width:640px){.dform{grid-template-columns:1fr 1fr}}
-@media(max-width:640px){.blogform{grid-template-columns:1fr 1fr}}.tile.biz.tot{background:var(--green-tint)}.tile.biz.empty{border-top-style:dashed}
+@media(max-width:480px){.dform,.blogform{grid-template-columns:1fr}}.tile.biz.tot{background:var(--green-tint)}.tile.biz.empty{border-top-style:dashed}
 :root[data-theme="dark"] .tabbar button.on{color:var(--red-ink)}@media (prefers-color-scheme: dark){:root:not([data-theme="light"]) .tabbar button.on{color:var(--red-ink)}}
 </style>
 <title>온인터내셔널</title>
@@ -475,9 +475,9 @@ tr.flag td{background:var(--warn-bg)}
 .seg button+button{border-left:1px solid var(--line)}
 .seg button.on{background:var(--ink);color:var(--surface)}
 .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
-.field{display:flex;flex-direction:column;gap:4px;min-width:0}
-.field label{font-size:12px;color:var(--muted);font-weight:600}
-.inp,select.inp,textarea.inp{border:1px solid var(--line);background:var(--surface);border-radius:7px;padding:8px 10px;min-height:38px;width:100%}
+.field{display:flex;flex-direction:column;gap:6px;min-width:0;max-width:100%}
+.field > label,.field > span,.field label{font-size:13px;line-height:1.3;color:var(--muted);font-weight:700}
+.inp,select.inp,textarea.inp{border:1px solid var(--line);background:var(--surface);border-radius:8px;padding:0 12px;min-height:44px;width:100%;max-width:100%;min-width:0;box-sizing:border-box}
 .inp:focus{border-color:var(--ink-2);outline:none}
 /* 년·월·일 칸: 자리가 모자라면 겹치지 않고 아랫줄로 내려감 (11/3) */
 .dsel{display:flex;flex-wrap:wrap;gap:4px;min-width:0;max-width:100%}
@@ -494,7 +494,7 @@ tr.flag td{background:var(--warn-bg)}
 @media (min-width:761px){.formgrid .field:has(> .dsel){grid-column:span 2}}
 #app{font-variant-numeric:tabular-nums}
 .dt{white-space:nowrap;font-variant-numeric:tabular-nums}
-.formgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px}
+.formgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,240px),1fr));gap:12px;width:100%;min-width:0}
 .checks{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:8px}
 .ck{display:flex;align-items:flex-start;gap:8px;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--surface)}
 .ck input{width:18px;height:18px;margin-top:2px;accent-color:var(--red);flex:none}
@@ -771,10 +771,44 @@ body::before{background:var(--top-bg)}
 :root[data-theme="light"] .fsz button+button,:root[data-theme="light"] .tone button+button{border-left-color:#d4d4da}
 :root[data-theme="light"] .fsz button.on,:root[data-theme="light"] .tone button.on{color:#fff}
 :root[data-theme="light"] .top .btn{background:#fff;color:var(--ink);border-color:var(--line)}
-/* 입력칸·고르기 칸 같은 높이 (사파리 select가 더 커지는 것 방지) */
-input.inp:not([type=checkbox]):not([type=radio]):not([type=file]),select.inp{height:38px}
-@media (pointer:coarse){input.inp:not([type=checkbox]):not([type=radio]):not([type=file]),select.inp{height:44px}}
-#app .tw table tbody input.inp,#app .tw table tbody select.inp{height:auto}
+/* 한 줄 입력·고르기·날짜는 같은 높이, 왼쪽 정렬, 칸 안에 가둠. 여러 줄만 더 큼. */
+input.inp:not([type=checkbox]):not([type=radio]):not([type=file]),
+select.inp{
+  display:block;box-sizing:border-box;width:100%;max-width:100%;min-width:0;
+  height:44px;min-height:44px;margin:0;padding:0 12px;
+  line-height:1.3;text-align:left;font-size:max(16px,1em);
+}
+textarea.inp{
+  display:block;box-sizing:border-box;width:100%;max-width:100%;min-width:0;
+  height:auto;min-height:72px;margin:0;padding:10px 12px;
+  line-height:1.4;text-align:left;font-size:max(16px,1em);resize:vertical;
+}
+input.inp[type=date],input.inp[type=datetime-local],input.inp[type=month],input.inp[type=time],input.inp[type=week]{
+  -webkit-appearance:none;appearance:none;
+  display:block;width:100%;max-width:100%;min-width:0;
+  text-align:left;
+}
+input.inp[type=date]::-webkit-date-and-time-value,
+input.inp[type=datetime-local]::-webkit-date-and-time-value,
+input.inp[type=month]::-webkit-date-and-time-value,
+input.inp[type=time]::-webkit-date-and-time-value,
+input.inp[type=week]::-webkit-date-and-time-value{
+  text-align:left;min-height:1.2em;margin:0;
+}
+input.inp[type=date]::-webkit-datetime-edit,
+input.inp[type=datetime-local]::-webkit-datetime-edit,
+input.inp[type=month]::-webkit-datetime-edit,
+input.inp[type=time]::-webkit-datetime-edit{
+  display:inline-flex;padding:0;min-width:0;
+}
+#app .tw table tbody input.inp,#app .tw table tbody select.inp,#app .tw table tbody textarea.inp{
+  height:auto;min-height:40px;font-size:inherit;padding:6px 8px;
+}
+#app .tw table tbody textarea.inp{min-height:40px;resize:vertical}
+.search .inp{padding-left:34px}
+.inp.qty{width:90px;max-width:100%;text-align:right}
+.dsel{max-width:100%}
+.dsel select.inp{width:auto;max-width:100%}
 /* 파일 끌어다 놓기 */
 .dropok{outline:2px dashed var(--red)!important;outline-offset:3px;background:color-mix(in srgb,var(--red) 6%,var(--surface))!important}
 .drop.on{background:color-mix(in srgb,var(--red) 6%,var(--surface))}
@@ -830,8 +864,8 @@ td,th{font-variant-numeric:tabular-nums}
 <script defer src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
 <script defer src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 <script defer src="config.js"></script>
-<script defer src="firebase.js?v=94"></script>
-<script defer src="app.js?v=94"></script>
+<script defer src="firebase.js?v=95"></script>
+<script defer src="app.js?v=95"></script>
 <script>if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});</script>
 
 </body></html>
