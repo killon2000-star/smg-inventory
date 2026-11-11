@@ -313,9 +313,11 @@ table.tb tr.click.sel td:first-child{box-shadow:inset 3px 0 0 var(--red)}
 .flt .fsep{color:var(--muted);font-weight:700}
 .flt .dsel select.inp{height:40px;min-width:74px;font-weight:600}
 .flt .dsel select.inp:first-of-type{min-width:96px}
-.flt .srange .fd{min-width:0;flex:1 1 200px}
-.flt .srange .dsel select.inp{min-width:0;flex:1 1 4.2em}
-.flt .srange .dsel select.inp:first-of-type{min-width:0;flex:1.15 1 5.2em}
+.flt .srange{width:100%;min-width:0;max-width:100%}
+.flt .srange .fd{min-width:min(100%,22rem);flex:1 1 22rem}
+.flt .srange .dsel{flex:1;min-width:0}
+.flt .srange .dsel select.inp{min-width:4.8em;flex:1 1 4.8em}
+.flt .srange .dsel select.inp:first-of-type{min-width:7em;flex:1.35 1 7em}
 .flt .fquick{display:grid;grid-template-columns:repeat(auto-fit,minmax(108px,1fr));gap:8px;flex:1;min-width:0}
 .flt .fquick button{min-height:48px;height:auto;padding:6px 4px;border:1px solid var(--line);border-radius:9px;background:var(--surface-2);font-weight:700;font-size:13px;color:var(--ink);white-space:normal;line-height:1.2;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px}
 .flt .fquick button .spl{font-weight:800}
@@ -323,17 +325,35 @@ table.tb tr.click.sel td:first-child{box-shadow:inset 3px 0 0 var(--red)}
 .flt .fquick button:hover{border-color:var(--red)}
 .flt .fquick button.on{background:var(--red);border-color:var(--red);color:#fff}
 .flt .fquick button.on .spd{opacity:1}
-.speriod{margin:0;font-size:13.5px;line-height:1.45}
-.speriod b{font-weight:800}
+.speriod{margin:0;font-size:13.5px;line-height:1.45;max-width:100%;overflow-wrap:anywhere}
+.speriod b{font-weight:800;white-space:normal}
 @media (max-width: 900px){
   .flt .fl{width:100%}
   .flt .fg{gap:8px}
   .flt .fseg{width:100%;grid-template-columns:repeat(5,minmax(0,1fr))}
   .flt .fquick button{font-size:13px}
-  .flt .frange{width:100%}
+  .flt .frange{width:100%;max-width:100%}
   .flt .fsep{display:none}
   .flt .fd{width:100%}
   .flt .fd .dsel{flex:1}
+  .flt .srange{flex-direction:column;align-items:stretch;gap:12px}
+  .flt .srange .fd{display:grid;grid-template-columns:minmax(0,1fr);gap:6px;align-items:stretch;width:100%;min-width:0;flex:1 1 auto}
+  .flt .srange .fd > span{font-size:15px;line-height:1.2}
+  .flt .srange .dsel{display:grid;grid-template-columns:1fr 1fr;grid-template-areas:"y y" "m d";gap:8px;width:100%}
+  .flt .srange .dsel select[data-dsel$=":y"]{grid-area:y}
+  .flt .srange .dsel select[data-dsel$=":m"]{grid-area:m}
+  .flt .srange .dsel select[data-dsel$=":d"]{grid-area:d}
+  .flt .srange .dsel select.inp,
+  .flt .srange .dsel select.inp:first-of-type{
+    width:100%;min-width:0;max-width:100%;flex:none;height:48px;
+    font-size:max(16px,1em);font-weight:700;line-height:1.2;
+    padding:0 28px 0 12px;
+    background-color:var(--surface);
+    background-image:linear-gradient(45deg,transparent 50%,currentColor 50%),linear-gradient(135deg,currentColor 50%,transparent 50%);
+    background-position:calc(100% - 16px) 55%,calc(100% - 10px) 55%;
+    background-size:6px 6px,6px 6px;background-repeat:no-repeat;
+    -webkit-appearance:none;appearance:none;
+  }
 }
 /* 왼쪽 메뉴의 글자 크기 목록은 위로 펼쳐서 아래 시계에 가려지지 않게 */
 .side .tzbox{position:relative}
@@ -810,8 +830,8 @@ td,th{font-variant-numeric:tabular-nums}
 <script defer src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
 <script defer src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 <script defer src="config.js"></script>
-<script defer src="firebase.js?v=93"></script>
-<script defer src="app.js?v=93"></script>
+<script defer src="firebase.js?v=94"></script>
+<script defer src="app.js?v=94"></script>
 <script>if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});</script>
 
 </body></html>
