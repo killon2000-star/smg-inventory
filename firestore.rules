@@ -103,5 +103,8 @@ service cloud.firestore {
     match /settle/{m} { allow read, write: if isOwner(); }
     // 팝업 시공비: 대표와 승인권자(본부장)만
     match /popups/{id} { allow read, write: if isOwner() || perm('approve'); }
+    // 월간 일정: 대표만. 공개 사이트에 일정 파일을 올리지 않고 여기만 둔다.
+    // 게시 전: Firebase 콘솔 또는 규칙 워크플로로 이 파일을 올려야 앱에서 저장이 된다.
+    match /schedules/{id} { allow read, write: if isOwner(); }
   }
 }

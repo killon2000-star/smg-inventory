@@ -83,6 +83,7 @@ window.SMG_FIREBASE = function (S, X) {
     else S.users = [S.user];
     if (S.user.owner) unsub.push(db.collection('settle').onSnapshot(q => { S.settle = q.docs.filter(d => d.id !== '_rules').flatMap(d => d.data().rows || []); const r = q.docs.find(d => d.id === '_rules'); S.settleRules = r ? r.data() : null; R(); }, () => { }));
     if (S.user.owner || (S.user.perms && S.user.perms.approve)) unsub.push(db.collection('popups').onSnapshot(q => { S.popups = q.docs.map(d => ({ id: d.id, ...d.data() })); R(); }, () => { }));
+    if (S.user.owner) unsub.push(db.collection('schedules').onSnapshot(q => { S.schedules = q.docs.map(d => ({ id: d.id, ...d.data() })); R(); }, () => { }));
   }
   function mergeTransfers(q) {
     const m = new Map(S.transfers.map(t => [t.id, t])); q.docs.forEach(d => m.set(d.id, { id: d.id, ...d.data() }));
@@ -127,6 +128,22 @@ window.SMG_FIREBASE = function (S, X) {
     async saveSettleRules(r) { await db.collection('settle').doc('_rules').set(r); },
     async savePopup(p) { await db.collection('popups').doc(p.id).set(p); },
     async deletePopup(id) { await db.collection('popups').doc(id).delete(); },
+    // 같은 출처(공식 X 또는 내부 예정)만 지우고 다시 넣는다. 다른 출처는 그대로 둔다.
+    async replaceSchedules(source, list) {
+      if (!S.user || !S.user.owner) throw new Error('대표 계정만 일정을 저장할 수 있습니다');
+      const col = db.collection('schedules');
+      const prev = await col.where('source', '==', source).get();
+      const keep = new Set(list.map(x => x.id));
+      const ops = [];
+      prev.docs.forEach(d => { if (!keep.has(d.id)) ops.push({ del: d.ref }); });
+      list.forEach(row => ops.push({ set: col.doc(row.id), row }));
+      for (let i = 0; i < ops.length; i += 400) {
+        const b = db.batch();
+        for (const op of ops.slice(i, i + 400)) { if (op.del) b.delete(op.del); else b.set(op.set, op.row); }
+        await b.commit();
+      }
+      return true;
+    },
     async savePlace(p) { await db.collection('places').doc(p.id).set(p); },
     async saveMe(upd) { await db.collection('users').doc(S.user.uid).update({ ...upd, updatedAt: ts(), updatedBy: upd.name }); return true; },
     async saveStoreOrder(order) { await db.collection('users').doc(S.user.uid).update({ storeOrder: order }); },
@@ -180,7 +197,7 @@ window.SMG_FIREBASE = function (S, X) {
   return {
     backend, signIn, signOut,
     async start() {
-      S.users = []; S.transfers = []; S.moves = []; S.products = []; S.stock = {}; S.sales = {}; S.settle = []; S.popups = [];
+      S.users = []; S.transfers = []; S.moves = []; S.products = []; S.stock = {}; S.sales = {}; S.settle = []; S.popups = []; S.schedules = [];
       await auth.getRedirectResult().catch(() => { });
       watchAuth();
     },
