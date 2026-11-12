@@ -63,11 +63,11 @@ th.bizname{font-size:1.12em}.chip .bizname{font-size:1.12em}
 .bizrow .bizname{font-size:1.2em;display:flex;align-items:center;gap:7px}
 h4.bizname{font-size:1.15em;display:flex;align-items:center;gap:7px}
 .bizsoon{font-size:13px;margin:-8px 0 16px;display:flex;flex-wrap:wrap;gap:6px;align-items:center}
-.blogform{display:grid;grid-template-columns:160px 180px 1fr auto;gap:8px;align-items:end;margin-bottom:10px}
+.blogform{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,160px),1fr));gap:8px;align-items:end;margin-bottom:10px;min-width:0;max-width:100%}
 .blogform .field{min-width:0}.blogform .inp{width:100%;box-sizing:border-box}
 .show-s{display:none}.dec .dgrid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-top:12px}.dec .dbox{border:1px solid var(--line);border-left:4px solid var(--green,var(--info));border-radius:6px;padding:10px 12px;background:var(--surface);min-width:0}.dec .dbox.warn{border-left-color:var(--warn);background:var(--warn-bg)}.dec h3{margin:0 0 6px;font-size:15px}.dec .dl{margin:0;padding-left:18px;font-size:14px;line-height:1.55}.dec .dl li{margin:3px 0;overflow-wrap:anywhere}.dec .bizname,.bizname{font-weight:800}.dcfg{margin-top:12px}.dcfg summary{cursor:pointer;font-weight:700}.dform{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:8px;align-items:end;margin-top:8px}.dform .field{display:flex;flex-direction:column;gap:3px;font-size:13px}.dform .inp{width:100%;min-width:0}
 @media(max-width:1100px){.dec .dgrid{grid-template-columns:1fr}}@media(max-width:640px){.dform{grid-template-columns:1fr 1fr}}
-@media(max-width:640px){.blogform{grid-template-columns:1fr 1fr}}.tile.biz.tot{background:var(--green-tint)}.tile.biz.empty{border-top-style:dashed}
+@media(max-width:480px){.dform,.blogform{grid-template-columns:1fr}}.tile.biz.tot{background:var(--green-tint)}.tile.biz.empty{border-top-style:dashed}
 :root[data-theme="dark"] .tabbar button.on{color:var(--red-ink)}@media (prefers-color-scheme: dark){:root:not([data-theme="light"]) .tabbar button.on{color:var(--red-ink)}}
 </style>
 <title>온인터내셔널</title>
@@ -475,9 +475,9 @@ tr.flag td{background:var(--warn-bg)}
 .seg button+button{border-left:1px solid var(--line)}
 .seg button.on{background:var(--ink);color:var(--surface)}
 .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
-.field{display:flex;flex-direction:column;gap:4px;min-width:0}
-.field label{font-size:12px;color:var(--muted);font-weight:600}
-.inp,select.inp,textarea.inp{border:1px solid var(--line);background:var(--surface);border-radius:7px;padding:8px 10px;min-height:38px;width:100%}
+.field{display:flex;flex-direction:column;gap:6px;min-width:0;max-width:100%}
+.field > label,.field > span,.field label{font-size:13px;line-height:1.3;color:var(--muted);font-weight:700}
+.inp,select.inp,textarea.inp{border:1px solid var(--line);background:var(--surface);border-radius:8px;padding:0 12px;min-height:44px;width:100%;max-width:100%;min-width:0;box-sizing:border-box}
 .inp:focus{border-color:var(--ink-2);outline:none}
 /* 년·월·일 칸: 자리가 모자라면 겹치지 않고 아랫줄로 내려감 (11/3) */
 .dsel{display:flex;flex-wrap:wrap;gap:4px;min-width:0;max-width:100%}
@@ -494,7 +494,7 @@ tr.flag td{background:var(--warn-bg)}
 @media (min-width:761px){.formgrid .field:has(> .dsel){grid-column:span 2}}
 #app{font-variant-numeric:tabular-nums}
 .dt{white-space:nowrap;font-variant-numeric:tabular-nums}
-.formgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px}
+.formgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,240px),1fr));gap:12px;width:100%;min-width:0}
 .checks{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:8px}
 .ck{display:flex;align-items:flex-start;gap:8px;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--surface)}
 .ck input{width:18px;height:18px;margin-top:2px;accent-color:var(--red);flex:none}
@@ -771,10 +771,44 @@ body::before{background:var(--top-bg)}
 :root[data-theme="light"] .fsz button+button,:root[data-theme="light"] .tone button+button{border-left-color:#d4d4da}
 :root[data-theme="light"] .fsz button.on,:root[data-theme="light"] .tone button.on{color:#fff}
 :root[data-theme="light"] .top .btn{background:#fff;color:var(--ink);border-color:var(--line)}
-/* 입력칸·고르기 칸 같은 높이 (사파리 select가 더 커지는 것 방지) */
-input.inp:not([type=checkbox]):not([type=radio]):not([type=file]),select.inp{height:38px}
-@media (pointer:coarse){input.inp:not([type=checkbox]):not([type=radio]):not([type=file]),select.inp{height:44px}}
-#app .tw table tbody input.inp,#app .tw table tbody select.inp{height:auto}
+/* 한 줄 입력·고르기·날짜는 같은 높이, 왼쪽 정렬, 칸 안에 가둠. 여러 줄만 더 큼. */
+input.inp:not([type=checkbox]):not([type=radio]):not([type=file]),
+select.inp{
+  display:block;box-sizing:border-box;width:100%;max-width:100%;min-width:0;
+  height:44px;min-height:44px;margin:0;padding:0 12px;
+  line-height:1.3;text-align:left;font-size:max(16px,1em);
+}
+textarea.inp{
+  display:block;box-sizing:border-box;width:100%;max-width:100%;min-width:0;
+  height:auto;min-height:72px;margin:0;padding:10px 12px;
+  line-height:1.4;text-align:left;font-size:max(16px,1em);resize:vertical;
+}
+input.inp[type=date],input.inp[type=datetime-local],input.inp[type=month],input.inp[type=time],input.inp[type=week]{
+  -webkit-appearance:none;appearance:none;
+  display:block;width:100%;max-width:100%;min-width:0;
+  text-align:left;
+}
+input.inp[type=date]::-webkit-date-and-time-value,
+input.inp[type=datetime-local]::-webkit-date-and-time-value,
+input.inp[type=month]::-webkit-date-and-time-value,
+input.inp[type=time]::-webkit-date-and-time-value,
+input.inp[type=week]::-webkit-date-and-time-value{
+  text-align:left;min-height:1.2em;margin:0;
+}
+input.inp[type=date]::-webkit-datetime-edit,
+input.inp[type=datetime-local]::-webkit-datetime-edit,
+input.inp[type=month]::-webkit-datetime-edit,
+input.inp[type=time]::-webkit-datetime-edit{
+  display:inline-flex;padding:0;min-width:0;
+}
+#app .tw table tbody input.inp,#app .tw table tbody select.inp,#app .tw table tbody textarea.inp{
+  height:auto;min-height:40px;font-size:inherit;padding:6px 8px;
+}
+#app .tw table tbody textarea.inp{min-height:40px;resize:vertical}
+.search .inp{padding-left:34px}
+.inp.qty{width:90px;max-width:100%;text-align:right}
+.dsel{max-width:100%}
+.dsel select.inp{width:auto;max-width:100%}
 /* 파일 끌어다 놓기 */
 .dropok{outline:2px dashed var(--red)!important;outline-offset:3px;background:color-mix(in srgb,var(--red) 6%,var(--surface))!important}
 .drop.on{background:color-mix(in srgb,var(--red) 6%,var(--surface))}
@@ -824,14 +858,87 @@ td,th{font-variant-numeric:tabular-nums}
 .fseg.sm button.on{background:var(--red);color:#fff}
 .flt .fseg:has(> :nth-child(6)){grid-template-columns:repeat(3,1fr)}
 @media(max-width:520px){.eqi{min-width:calc(50% - 20px)}.eq .op{width:14px;justify-content:center}.eqi b{font-size:21px}}
+/* 월간 일정 */
+.mcal{display:flex;flex-direction:column;gap:12px;min-width:0;width:100%;text-align:left}
+.mcal-top h2{margin:0;font-size:22px;text-align:left}
+.mcal-top .src,.mcal .src{margin:0;font-size:14px;line-height:1.45;text-align:left}
+body.sched-on .btn,body.sched-on .pha > .chip{min-height:44px;font-size:15px}
+body.sched-on .pha > .chip{border-radius:8px;justify-content:center}
+#schedDrop{text-align:left}
+#schedDrop h2,#schedDrop p{text-align:left}
+#schedDrop p{font-size:14px;line-height:1.45;overflow-wrap:anywhere}
+#schedDrop .btn{min-height:44px}
+.mcal-leg{display:flex;flex-wrap:wrap;gap:8px 14px;list-style:none;margin:0;padding:0;font-size:14px;font-weight:700;align-items:center}
+.mcal-leg li{display:flex;align-items:center;gap:6px;min-height:28px}
+.mcal-leg i{width:14px;height:14px;border-radius:3px;background:#19776A;display:inline-block;flex:none}
+.mcal-leg i.official{background:#19776A}
+.mcal-leg i.plan{background:transparent;border:2px dashed #19776A}
+.mcal-leg .ty{border:1px solid var(--line);border-radius:6px;padding:2px 8px;font-size:13px}
+.mcal-gridwrap{display:flex;flex-direction:column;gap:8px;min-width:0}
+.mcal-dow,.mcal-days,.mcal-lanes{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:4px}
+.mcal-dow span{text-align:center;font-weight:800;font-size:14px;line-height:1.2}
+.mcal-dow .sun,.mcal-day.sun b,.mcal-agdate.sun b{color:#C45B4A}
+.mcal-dow .sat,.mcal-day.sat b,.mcal-agdate.sat b{color:#2F6FDB}
+.mcal-week{display:flex;flex-direction:column;gap:4px;min-width:0}
+.mcal-lanes{align-items:stretch}
+.mcal-bar{border:0;color:#fff;border-radius:6px;font-size:13px;font-weight:800;line-height:1.25;padding:4px 8px;text-align:left;overflow:hidden;min-width:0;height:44px;box-sizing:border-box;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;white-space:normal}
+.mcal-bar.plan{background-image:repeating-linear-gradient(-45deg,transparent,transparent 4px,rgba(255,255,255,.35) 4px,rgba(255,255,255,.35) 6px);box-shadow:inset 0 0 0 2px rgba(255,255,255,.85)}
+.mcal-day{border:1px solid var(--line);background:var(--surface);border-radius:6px;height:48px;min-height:48px;box-sizing:border-box;text-align:left;padding:4px 6px;font-weight:800;display:flex;flex-direction:column;align-items:flex-start;justify-content:space-between}
+.mcal-day b{font-size:14px;line-height:16px}
+.mcal-more{font-size:12px;line-height:16px;height:16px;font-weight:800;color:var(--ink-2)}
+.mcal-more:empty{visibility:hidden}
+.mcal-day.empty{visibility:hidden}
+.mcal-day.on{box-shadow:inset 0 0 0 2px var(--green,#19776A)}
+.mcal-agenda{display:none}
+.mcal-agday{display:grid;grid-template-columns:56px minmax(0,1fr);gap:8px;align-items:start}
+.mcal-agdate{width:56px;height:56px;box-sizing:border-box;border:1px solid var(--line);border-radius:8px;background:var(--surface);display:flex;flex-direction:column;align-items:center;justify-content:center;padding:0;font-weight:800}
+.mcal-agdate b{font-size:18px;line-height:1}
+.mcal-agdate span{font-size:12px;line-height:16px;font-weight:700;color:var(--ink-2)}
+.mcal-agday.on .mcal-agdate{box-shadow:inset 0 0 0 2px var(--green,#19776A)}
+.mcal-agitems{display:flex;flex-direction:column;gap:6px;min-width:0}
+.mcal-agitem{display:flex;gap:8px;align-items:stretch;width:100%;min-height:44px;box-sizing:border-box;text-align:left;border:1px solid var(--line);border-radius:8px;background:var(--surface);padding:8px 10px}
+.mcal-agitem i{width:8px;border-radius:4px;flex:none}
+.mcal-agitem.plan i{box-shadow:inset 0 0 0 2px rgba(255,255,255,.9);background-image:repeating-linear-gradient(-45deg,transparent,transparent 3px,rgba(255,255,255,.4) 3px,rgba(255,255,255,.4) 5px)}
+.mcal-agbody{min-width:0;display:flex;flex-direction:column;align-items:flex-start;gap:2px}
+.mcal-agbody b{font-size:15px;line-height:1.35;font-weight:800;white-space:normal;overflow-wrap:anywhere}
+.mcal-agbody small{font-size:13px;line-height:1.35;color:var(--muted);white-space:normal}
+.mcal-detail{border:1px solid var(--line);border-radius:10px;padding:14px 16px;background:var(--surface);text-align:left}
+.mcal-detail h3{margin:12px 0 8px;font-size:16px;text-align:left}
+.mcal-detail h3:first-child{margin-top:0}
+.mcal-detail p,.mcal-ev{margin:0 0 10px;text-align:left}
+.mcal-ev{padding-bottom:10px;border-bottom:1px solid var(--line)}
+.mcal-evmeta{display:flex;flex-wrap:wrap;gap:6px 10px;align-items:center;font-size:14px;font-weight:700}
+.mcal-evmeta .ty{border:1px solid var(--line);border-radius:6px;padding:1px 6px;font-size:13px}
+.mcal-evtitle{font-size:15px;font-weight:800;line-height:1.4;margin-top:2px}
+.mcal-printlist{display:none}
+@media (max-width:699px){
+  .mcal-gridwrap{display:none}
+  .mcal-agenda{display:flex;flex-direction:column;gap:8px}
+  #schedDrop .btn{width:100%}
+  body.sched-on .pha > .btn,body.sched-on .pha > .chip,#schedDrop .btn{white-space:normal;line-height:1.2;text-align:center}
+}
+@media (max-width:900px){
+  body.sched-on main{padding-bottom:calc(var(--tabh,64px) + var(--kch,48px) + 24px)}
+}
+@media print{
+  body.sched-on .top,body.sched-on .side,body.sched-on .tabbar,body.sched-on .demobar,body.sched-on .storebar,body.sched-on .ph,body.sched-on .toast,body.sched-on #schedDrop,body.sched-on .sched-prev,body.sched-on .mcal-agenda{display:none!important}
+  body.sched-on .shell,body.sched-on main,body.sched-on .page{display:block!important;padding:0!important;margin:0!important;max-width:none!important}
+  body.sched-on .mcal-gridwrap{display:flex!important}
+  body.sched-on .mcal-week{break-inside:avoid;page-break-inside:avoid}
+  body.sched-on .mcal-detail,body.sched-on .mcal-ev,body.sched-on .mcal-printlist p{break-inside:avoid;page-break-inside:avoid}
+  body.sched-on .mcal-bar{font-size:12px;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  body.sched-on .mcal-printlist{display:block!important;margin-top:12px}
+  body.sched-on .mcal-printlist h3{margin:0 0 8px;font-size:16px}
+  body.sched-on .mcal-printlist p{margin:0 0 4px;font-size:12px;line-height:1.4}
+}
 </style>
 </head><body><div id="app"><div class="login"><div class="brand"><img src="oninter_logo.png" alt="" width="72" height="72"><b>온인터내셔널</b><span>불러오는 중…</span></div></div></div>
 <script defer src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script defer src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
 <script defer src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 <script defer src="config.js"></script>
-<script defer src="firebase.js?v=94"></script>
-<script defer src="app.js?v=94"></script>
+<script defer src="firebase.js?v=96"></script>
+<script defer src="app.js?v=96"></script>
 <script>if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});</script>
 
 </body></html>

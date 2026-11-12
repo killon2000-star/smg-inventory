@@ -50,7 +50,7 @@ const PERM_DEF = [
 ];
 
 const DEFAULT_ORDER = STORES.map(s => s.id);
-const APP_VERSION = '2026-11-12 01:20';   // 앱 화면을 마지막으로 고친 시각 (한국 시간)
+const APP_VERSION = '2026-11-13 07:00';   // 앱 화면을 마지막으로 고친 시각 (한국 시간)
 /* ───────── 작은 도구 ───────── */
 const $ = (s, el = document) => el.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -110,7 +110,7 @@ const S = {
   warehouse: {},           // 창고 보관 수량 pid → qty
   moves: [], transfers: [],
   sales: {},               // sales[store][YYYY-MM].days[DD]
-  settle: [], popups: [], users: [], asof: '',
+  settle: [], popups: [], schedules: [], users: [], asof: '',
   places: [],
   inbounds: [],            // 입고 예정: {id, store, date, title, ip, from, items:[{key,pid,name,code,plan,price,actual}], extra:[], status, ...}              // 외부 장소 (행사장·팝업 등): {id, name, kind, start, end, addr, person, memo, q:{pid:qty}}
   zipPw: { suwon: '0000' },
@@ -131,13 +131,14 @@ const DemoBackend = {
     if (d.incoming && d.incoming.length) S.inbounds.push({ id: 'IB-261112-AOT', store: 'suwon', date: d.incoming[0].date, title: '진격의 거인 팝업 입고 예정 (SMG 상품리스트)', ip: '진격의 거인', from: 'SMG 홀딩스', status: 'planned', by: '', at: '2026-10-29',
       items: d.incoming.map(x => { const p = d.products.find(q => q.id === x.pid) || {}; return { key: 'p:' + x.pid, pid: x.pid, name: p.name || x.pid, code: p.barcode || p.sku || x.pid, plan: x.qty, price: p.price || null, actual: null }; }), extra: [] });
     S.sales = { suwon: d.sales.suwon, boxcafe: {}, museum: {}, omake: {}, limission: {}, gukdae: {} };
-    S.settle = d.settle; S.settleRules = d.settleRules || null; S.popups = [];
+    S.settle = d.settle; S.settleRules = d.settleRules || null; S.popups = []; S.schedules = S.schedules || [];
     S.users = demoUsers();
   },
   async saveMoves(list) { /* 미리보기: 화면 안에서만 반영 */ return true; },
   async saveSalesDay() { return true; },
   async saveMachMonth() { return true; },
   async saveUser() { return true; },
+  async replaceSchedules() { return true; },
 };
 function demoUsers() {
   const all = STORES.map(s => s.id);
@@ -225,6 +226,7 @@ const NAV = [   // 관련 메뉴끼리 묶음(g): 요약 → 매출 분석 → �
   { id: 'collab', t: '콜라보 분석', g: 2, show: () => can('sales') },
   { id: 'settle', t: '정산', g: 2, show: () => canSettle() },
   { id: 'popup', t: '팝업 비용', g: 2, show: () => canSettle() || can('approve') },
+  { id: 'sched', t: '월간 일정', g: 2, show: () => isOwner() },
   { id: 'products', t: '상품·재고', i: 'box', grp: '재고', g: 3, show: () => true },
   { id: 'entry', t: '입출고 등록', i: 'plus', g: 3, show: () => can('move') },
   { id: 'inbound', t: '입고 확인', g: 3, show: () => can('move') },
@@ -269,6 +271,7 @@ function render() {
   const nav = NAV.filter(n => n.show());
   if (S.view !== 'more' && S.view !== 'mclose' && !nav.find(n => n.id === S.view)) S.view = 'home';
   document.body.classList.toggle('mclose-on', S.view === 'mclose');
+  document.body.classList.toggle('sched-on', S.view === 'sched');
   trackNav();
   const pendingN = S.users.filter(u => u.status === 'pending').length;
   const sv = S.view === 'biz' && S.ui.bizF && S.ui.bizF !== 'all' && S.ui.bizF !== 'offline' ? (BIZ.find(b => b.id === S.ui.bizF) || {}).name || '사업부' : S.stores.length === 1 ? (S.stores[0] === 'suwon' ? '오프라인 매장 · 수원 SMG STORE' : storeName(S.stores[0])) : `${S.stores.length}개 매장 함께 보기`;
@@ -307,7 +310,7 @@ function render() {
   if (tw && tt && tw.scrollWidth > tw.clientWidth && !tw.dataset.sc) { tw.scrollLeft = Math.max(0, tt.offsetLeft - 108 - tw.clientWidth * 0.2); tw.dataset.sc = 1; }
 }
 // 아래 메뉴: 권한 있는 메뉴를 모두 보여 줌 (6개 넘으면 두 줄)
-const TAB = { home: ['홈', 'home'], ipnow: ['IP현황', 'star'], products: ['상품', 'box'], entry: ['입출고', 'plus'], count: ['실사', 'check'], inbound: ['입고확인', 'truck'], transfer: ['매장이동', 'swap'], records: ['기록', 'list'], files: ['파일', 'list'], sales: ['매출', 'chart'], biz: ['사업부', 'chart'], collab: ['콜라보', 'star'], settle: ['정산', 'won'], popup: ['팝업비용', 'won'], admin: ['관리', 'user'], more: ['설정', 'gear'] };
+const TAB = { home: ['홈', 'home'], ipnow: ['IP현황', 'star'], products: ['상품', 'box'], entry: ['입출고', 'plus'], count: ['실사', 'check'], inbound: ['입고확인', 'truck'], transfer: ['매장이동', 'swap'], records: ['기록', 'list'], files: ['파일', 'list'], sales: ['매출', 'chart'], biz: ['사업부', 'chart'], collab: ['콜라보', 'star'], settle: ['정산', 'won'], popup: ['팝업비용', 'won'], sched: ['월간일정', 'star'], admin: ['관리', 'user'], more: ['설정', 'gear'] };
 const TAB_MAIN = ['home', 'products', 'entry', 'transfer', 'sales', 'count'];
 // 아래 메뉴 글씨가 칸 밖으로 나가지 않게: 넘치면 그 칸만 글씨를 줄임 (최소 8px)
 function fitTabLabels() {
@@ -428,6 +431,285 @@ function storeMenu() {
     }).join('')}
     <div class="foot"><button class="btn sm" id="smOrder">순서 바꾸기</button><span style="flex:1"></span><button class="btn sm" id="smAll">권한 있는 매장 모두</button><button class="btn sm pri" id="smClose">닫기</button></div></div>`;
 }
+/* ───────── 월간 일정 (공식 팝업·카페·전시. 개인 일정은 넣지 않음) ───────── */
+const SCHED_TYPES = { popup: '팝업', cafe: '카페', exhibit: '전시' };
+const SCHED_VENUE_COLOR = { '수원': '#19776A', '홍대 리밋션': '#2F6FDB', '홍대 뮤지엄': '#7B4B9A', '홍대 카페': '#C48A2A', '신촌': '#C45B4A', '오마케': '#3C8F7A', '홍대 2층 신규': '#5C6BC0', '기타 외부': '#6B7280' };
+function schedVenueKey(v) {
+  const s = String(v || '');
+  if (/수원/.test(s)) return '수원';
+  if (/리밋션|LIMITION/i.test(s)) return '홍대 리밋션';
+  if (/뮤지엄|오뮤지엄|MUSEUM/i.test(s)) return '홍대 뮤지엄';
+  if (/오마케/.test(s)) return '오마케';
+  if (/신촌/.test(s)) return '신촌';
+  if (/BOX|홍대카페|홍대 카페/.test(s)) return '홍대 카페';
+  const t = s.replace(/\([^)]*\)/g, '').trim();
+  return t || '기타';
+}
+function schedTypeOf(venue, title, section) {
+  const t = `${venue} ${title} ${section}`;
+  if (/전시|뮤지엄|오뮤지엄/.test(t)) return 'exhibit';
+  if (/카페|BOX|오마케/.test(t)) return 'cafe';
+  return 'popup';
+}
+function schedColor(key) {
+  if (SCHED_VENUE_COLOR[key]) return SCHED_VENUE_COLOR[key];
+  const pal = ['#19776A', '#2F6FDB', '#7B4B9A', '#C48A2A', '#C45B4A', '#3C8F7A', '#8A5A2B', '#3E6B8A'];
+  let h = 0; for (const ch of key) h = (h + ch.charCodeAt(0)) % pal.length;
+  return pal[h];
+}
+function schedId(e) {
+  const s = [e.source, e.venueKey, e.title, e.start, e.end].join('|');
+  let h = 5381; for (let i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) >>> 0;
+  return 's' + h.toString(36);
+}
+function schedParseYmd(tok, baseYear) {
+  const s = String(tok || '');
+  let m = s.match(/(\d{4})-(\d{2})-(\d{2})/);
+  if (m) return { d: `${m[1]}-${m[2]}-${m[3]}` };
+  m = s.match(/(\d{4})-(\d{2})(?!\d)/);
+  if (m) return { d: `${m[1]}-${m[2]}-01`, partial: 'month' };
+  m = s.match(/(?:^|[^\d])(\d{2})-(\d{2})(?!\d)/);
+  if (m && baseYear) {
+    let y = baseYear, mo = +m[1];
+    return { d: `${y}-${m[1]}-${m[2]}`, rel: true, mo };
+  }
+  return null;
+}
+function parseSchedText(text) {
+  const lines = String(text || '').replace(/^\uFEFF/, '').split(/\r?\n/);
+  let section = '', source = 'x';
+  const rows = [], skipped = [];
+  lines.forEach((raw, idx) => {
+    const line = raw.trim();
+    if (!line || line.startsWith('<!--')) return;
+    if (line.startsWith('#')) {
+      const level = (line.match(/^#+/) || ['#'])[0].length;
+      section = line.replace(/^#+\s*/, '');
+      if (level <= 2) {
+        if (/^2[\.\s]|내부 엑셀|내부 예정/.test(section)) source = 'plan';
+        else if (/^1[\.\s]|공식\s*X|공식/.test(section)) source = 'x';
+      }
+      return;
+    }
+    if (!line.startsWith('-')) return;
+    const body = line.replace(/^-\s*/, '');
+    const bits = body.split('|').map(s => s.trim());
+    if (bits.length < 3) { skipped.push({ n: idx + 1, line, why: '날짜 | 장소 | 행사 이름 으로 나누지 않았습니다' }); return; }
+    const datePart = bits[0];
+    const venue = bits[1] || '';
+    const title = bits[2] || '';
+    let rest = bits.slice(3).filter(Boolean);
+    let link = '';
+    if (rest.length && /^https?:\/\//i.test(rest[rest.length - 1])) link = rest.pop();
+    const note = rest.filter(s => s !== '내부 엑셀').join(' · ');
+    if (!title) { skipped.push({ n: idx + 1, line, why: '행사 이름이 없습니다' }); return; }
+    let src = source;
+    if (/\[내부\]|내부 엑셀|내부 예정/.test(body)) src = 'plan';
+    if (/\[공식\]/.test(body)) src = 'x';
+    const timeM = datePart.match(/(\d{1,2}:\d{2})/);
+    const undated = /미정/.test(datePart.split('~')[0] || '') && !/\d{4}-\d{2}/.test(datePart);
+    if (undated) {
+      rows.push({
+        on: true, hold: false, source: src, venue, venueKey: schedVenueKey(venue), type: schedTypeOf(venue, title, section),
+        title, start: '', end: '', time: timeM ? timeM[1] : '', note, link, section, warn: '날짜가 미정이라 달력 막대 대신 날짜 미정 목록에 둡니다', open: true, undated: true, line,
+      });
+      return;
+    }
+    const halves = datePart.split('~');
+    const a = schedParseYmd(halves[0]);
+    if (!a || !a.d) { skipped.push({ n: idx + 1, line, why: '시작 날짜를 읽지 못했습니다' }); return; }
+    let start = a.d, end = a.d, warn = '', open = false;
+    if (a.partial) warn = '시작 일이 없어 그달 1일로 봤습니다';
+    if (halves[1] != null) {
+      if (/미정|미기재|\?|없음/.test(halves[1]) && !/\d{4}-\d{2}-\d{2}/.test(halves[1])) {
+        open = true;
+        end = a.partial ? monthEnd(start.slice(0, 7)) : start;
+        warn = (warn ? warn + ' · ' : '') + (a.partial ? '종료 일이 없어 그달 전체로 표시합니다' : '종료일이 없어 시작일만 표시합니다');
+      } else {
+        const b = schedParseYmd(halves[1], +start.slice(0, 4));
+        if (!b) { warn = (warn ? warn + ' · ' : '') + '종료 날짜를 읽지 못해 하루로 봤습니다'; }
+        else {
+          end = b.d;
+          if (b.rel && end.slice(5, 7) < start.slice(5, 7)) end = (+start.slice(0, 4) + 1) + end.slice(4);
+          if (b.partial) { end = monthEnd(end.slice(0, 7)); warn = (warn ? warn + ' · ' : '') + '종료 일이 없어 그달 말로 봤습니다'; }
+        }
+      }
+    } else if (a.partial) end = monthEnd(start.slice(0, 7));
+    if (end < start) { const t = start; start = end; end = t; }
+    const hold = /대안|기타 메모/.test(section);
+    rows.push({
+      on: !hold, hold, source: src, venue, venueKey: schedVenueKey(venue), type: schedTypeOf(venue, title, section),
+      title, start, end, time: timeM ? timeM[1] : '', note, link, section, warn, open, undated: false, line,
+    });
+  });
+  return { rows, skipped };
+}
+function parseSchedJson(text) {
+  const data = JSON.parse(text);
+  const list = Array.isArray(data) ? data : (data.entries || data.items || []);
+  if (!Array.isArray(list)) throw new Error('entries 배열이 있는 JSON이 아닙니다');
+  const rows = [], skipped = [];
+  list.forEach((r, i) => {
+    const start = String(r.start || r.date || '').slice(0, 10);
+    const end = String(r.end || start).slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(start)) { skipped.push({ n: i + 1, line: JSON.stringify(r).slice(0, 80), why: 'start(YYYY-MM-DD)가 없습니다' }); return; }
+    const venue = String(r.venue || r.place || '');
+    const title = String(r.title || r.name || '');
+    if (!venue || !title) { skipped.push({ n: i + 1, line: title || venue, why: '장소 또는 행사 이름이 없습니다' }); return; }
+    const source = r.source === 'plan' || r.source === '내부' || r.source === '내부 예정' ? 'plan' : 'x';
+    const type = r.type === 'cafe' || r.type === 'exhibit' || r.type === 'popup' ? r.type : schedTypeOf(venue, title, '');
+    rows.push({ on: true, hold: false, source, venue, venueKey: schedVenueKey(venue), type, title, start, end: /^\d{4}-\d{2}-\d{2}$/.test(end) ? end : start, time: r.time || '', note: r.note || '', section: '', warn: '', open: false, line: '' });
+  });
+  return { rows, skipped };
+}
+function schedDocs(rows) {
+  return rows.filter(r => r.on).map(r => {
+    const e = { source: r.source, venue: r.venue, venueKey: r.venueKey, type: r.type, title: r.title, start: r.start, end: r.end, time: r.time || '', note: r.note || '', link: r.link || '', open: !!r.open, undated: !!r.undated };
+    e.id = schedId(e);
+    return e;
+  });
+}
+function schedInMonth(list, ym) {
+  const a = ym + '-01', b = monthEnd(ym);
+  return (list || []).filter(e => e.start && e.end && e.end >= a && e.start <= b);
+}
+function schedWeeks(ym) {
+  const [y, m] = ym.split('-').map(Number);
+  const pad = new Date(Date.UTC(y, m - 1, 1)).getUTCDay();
+  const dim = +monthEnd(ym).slice(8);
+  const cells = [];
+  for (let i = 0; i < pad; i++) cells.push(null);
+  for (let d = 1; d <= dim; d++) cells.push(`${ym}-${String(d).padStart(2, '0')}`);
+  while (cells.length % 7) cells.push(null);
+  const weeks = [];
+  for (let i = 0; i < cells.length; i += 7) weeks.push(cells.slice(i, i + 7));
+  return weeks;
+}
+function schedLanes(week, events) {
+  const items = [];
+  events.forEach(ev => {
+    let a = -1, b = -1;
+    week.forEach((d, i) => { if (d && d >= ev.start && d <= ev.end) { if (a < 0) a = i; b = i; } });
+    if (a >= 0) items.push({ ev, a, b });
+  });
+  items.sort((x, y) => x.a - y.a || (y.b - y.a) - (x.b - x.a));
+  const laneEnd = [];
+  items.forEach(it => {
+    let lane = laneEnd.findIndex(end => end < it.a);
+    if (lane < 0) { lane = laneEnd.length; laneEnd.push(it.b); } else laneEnd[lane] = it.b;
+    it.lane = lane;
+  });
+  return { items, n: laneEnd.length };
+}
+function schedYm() { const cap = today().slice(0, 7); return S.ui.schedYm || cap; }
+function schedView() {
+  if (!isOwner()) return `${head('월간 일정', '대표만')}<div class="card"><div class="empty">대표 계정만 공식 일정을 보고 올립니다.</div></div>`;
+  const ym = schedYm();
+  const [y, m] = ym.split('-').map(Number);
+  const list = S.schedules || [];
+  const undated = list.filter(e => e.undated || !e.start);
+  const month = schedInMonth(list, ym).slice().sort((a, b) => a.start.localeCompare(b.start) || a.venueKey.localeCompare(b.venueKey, 'ko'));
+  const venues = [...new Map(month.map(e => [e.venueKey, e])).values()];
+  const weeks = schedWeeks(ym);
+  const day = S.ui.schedDay && S.ui.schedDay.slice(0, 7) === ym ? S.ui.schedDay : '';
+  const dayItems = day ? month.filter(e => e.start <= day && e.end >= day) : [];
+  const dow = ['일', '월', '화', '수', '목', '금', '토'];
+  const MAX_LANES = 4;
+  const bars = weeks.map(week => {
+    const L = schedLanes(week, month);
+    const shown = L.items.filter(it => it.lane < MAX_LANES);
+    const laneH = Math.max(Math.min(L.n, MAX_LANES), 1);
+    const extra = week.map((d, i) => d ? L.items.filter(it => it.lane >= MAX_LANES && it.a <= i && it.b >= i).length : 0);
+    const barHtml = shown.map(it => {
+      const e = it.ev;
+      const cont = week[it.a] !== e.start;
+      const kind = SCHED_TYPES[e.type] || '';
+      const label = `${cont ? '← ' : ''}${kind ? kind + ' ' : ''}${esc(e.title)}`;
+      return `<button type="button" class="mcal-bar ${e.source === 'plan' ? 'plan' : 'official'}" data-sday="${week[it.a]}" style="grid-column:${it.a + 1} / ${it.b + 2};grid-row:${it.lane + 1};background:${schedColor(e.venueKey)}" title="${esc(e.venueKey)} · ${esc(kind)} · ${esc(e.title)} · ${esc(e.start)}~${esc(e.end)}">${label}</button>`;
+    }).join('');
+    const days = week.map((d, i) => {
+      const on = d && d === day ? ' on' : '';
+      const n = d ? +d.slice(8) : '';
+      const wk = d ? new Date(d + 'T00:00:00Z').getUTCDay() : 0;
+      const more = d ? `<span class="mcal-more">${extra[i] ? '+' + extra[i] : ''}</span>` : '';
+      const al = d ? ` aria-label="${n}일${extra[i] ? ', 막대 밖 ' + extra[i] + '건' : ''}"` : '';
+      return `<button type="button" class="mcal-day${on}${d ? '' : ' empty'}${wk === 0 ? ' sun' : ''}${wk === 6 ? ' sat' : ''}" ${d ? `data-sday="${d}"` : 'disabled'}${al}><b>${n}</b>${more}</button>`;
+    }).join('');
+    return `<div class="mcal-week"><div class="mcal-lanes" style="grid-template-rows:repeat(${laneH},44px)">${barHtml || '<span class="mcal-none"></span>'}</div><div class="mcal-days">${days}</div></div>`;
+  }).join('');
+  const dim = +monthEnd(ym).slice(8);
+  const quiet = [];
+  const agenda = [];
+  for (let d = 1; d <= dim; d++) {
+    const iso = `${ym}-${String(d).padStart(2, '0')}`;
+    const items = month.filter(e => e.start <= iso && e.end >= iso);
+    if (!items.length) { quiet.push(d); continue; }
+    const wkI = new Date(iso + 'T00:00:00Z').getUTCDay();
+    agenda.push(`<section class="mcal-agday${iso === day ? ' on' : ''}"><button type="button" class="mcal-agdate${wkI === 0 ? ' sun' : ''}${wkI === 6 ? ' sat' : ''}" data-sday="${iso}" aria-label="${d}일 ${dow[wkI]}"><b>${d}</b><span>${dow[wkI]}</span></button><div class="mcal-agitems">${items.map(e => `<button type="button" class="mcal-agitem ${e.source === 'plan' ? 'plan' : 'official'}" data-sday="${iso}"><i style="background:${schedColor(e.venueKey)}"></i><span class="mcal-agbody"><b>${esc(e.title)}</b><small>${esc(e.venueKey)} · ${esc(SCHED_TYPES[e.type] || '')} · ${e.source === 'plan' ? '내부 예정' : '공식 X'}${e.end !== e.start ? ' · ' + esc(e.start.slice(5)) + '~' + esc(e.end.slice(5)) : ''}</small></span></button>`).join('')}</div></section>`);
+  }
+  const evBlock = e => `<div class="mcal-ev"><div class="mcal-evmeta"><b style="color:${schedColor(e.venueKey)}">${esc(e.venueKey)}</b><span class="ty">${esc(SCHED_TYPES[e.type] || '')}</span><span>${e.source === 'plan' ? '내부 예정' : '공식 X'}</span></div><div class="mcal-evtitle">${esc(e.title)}</div><div class="muted">${e.undated ? '날짜 미정' : esc(e.start) + (e.end && e.end !== e.start ? ' ~ ' + esc(e.end) : '')}${e.time ? ' · ' + esc(e.time) : ''}${e.open ? ' · 종료 미정' : ''}</div>${e.note ? `<div class="muted">${esc(e.note)}</div>` : ''}${e.link ? `<a href="${esc(e.link)}" target="_blank" rel="noopener">공식 X 글</a>` : ''}</div>`;
+  const printList = month.map(e => `<p><b>${esc(e.start.slice(5))}${e.end !== e.start ? '~' + esc(e.end.slice(5)) : ''}</b> ${esc(e.venueKey)} · ${esc(SCHED_TYPES[e.type] || '')} · ${esc(e.title)} · ${e.source === 'plan' ? '내부 예정' : '공식 X'}</p>`).join('');
+  const prev = S.ui.schedPrev;
+  const preview = prev ? `<div class="card sched-prev">
+    <h2>올리기 전 확인 <span class="r">${esc(prev.name || '')}</span></h2>
+    <p class="src">체크한 줄만 저장합니다. 1부(공식 X)와 2부(내부 예정)는 출처가 달라, 다시 올리면 그 출처만 바뀝니다. 줄 끝의 X 주소는 상세에 링크로 남습니다.</p>
+    <div class="tw"><table><thead><tr><th></th><th>출처</th><th>기간</th><th>장소</th><th>행사</th><th>종류</th></tr></thead><tbody>
+    ${prev.rows.map((r, i) => `<tr class="${r.hold ? 'flag' : ''}"><td><input type="checkbox" data-schk="${i}" ${r.on ? 'checked' : ''} aria-label="저장"></td><td>${r.source === 'plan' ? '내부 예정' : '공식 X'}</td><td class="nowrap">${r.undated ? '날짜 미정' : esc(r.start) + (r.end !== r.start ? ' ~ ' + esc(r.end) : '')}${r.open && !r.undated ? ' · 종료 미정' : ''}</td><td><input class="inp" data-sved="${i}" value="${esc(r.venue)}"></td><td><input class="inp" data-stit="${i}" value="${esc(r.title)}"></td><td>${esc(SCHED_TYPES[r.type] || r.type)}${r.link ? ` <a href="${esc(r.link)}" target="_blank" rel="noopener">X</a>` : ''}${r.warn ? `<div class="muted">${esc(r.warn)}</div>` : ''}</td></tr>`).join('')}
+    </tbody></table></div>
+    ${prev.skipped.length ? `<p class="src">읽지 못한 줄 ${prev.skipped.length}개. 예: ${esc(prev.skipped[0].why)} (${esc(String(prev.skipped[0].line || '').slice(0, 80))})</p>` : ''}
+    <div class="row"><button class="btn pri" id="schedSave">이 목록 저장</button><button class="btn" id="schedCancel">취소</button></div>
+  </div>` : '';
+  const thisOn = ym === today().slice(0, 7) ? ' on' : '';
+  return `${head('월간 일정', '공식 팝업·카페·전시 · 대표만 · 실선은 공식 X, 점선은 내부 예정', '<button class="btn" id="schedPrevM">이전 달</button><button class="chip' + thisOn + '" id="schedThis">이번달</button><button class="btn" id="schedNextM">다음 달</button><button class="btn" id="schedPrint">인쇄</button>')}
+  <div class="card drop" id="schedDrop"><h2>일정 파일</h2>
+    <p class="src">한 줄에 하나. <b>- 2026-11-12 (목) ~ 2026-12-03 (목) | 장소 | 행사 이름 | 출처 주소</b>. 큰 제목 <b>## 1. … 공식 X</b>는 실선, <b>## 2. … 내부 예정</b>은 점선입니다. JSON도 됩니다.</p>
+    <button class="btn pri" id="schedFile">일정 파일 올리기</button>
+  </div>
+  ${preview}
+  <article class="mcal">
+    <header class="mcal-top"><h2>${y}년 ${m}월</h2><p class="src">${month.length ? `이 달 ${month.length}건 · 장소 ${venues.length}곳` : '이 달에 겹치는 일정이 없습니다. 위에서 파일을 올리세요.'}</p></header>
+    <ul class="mcal-leg">${venues.map(e => `<li><i style="background:${schedColor(e.venueKey)}"></i><span>${esc(e.venueKey)}</span></li>`).join('')}<li><i class="official"></i><span>공식 X</span></li><li><i class="plan"></i><span>내부 예정</span></li><li><span class="ty">팝업</span><span class="ty">카페</span><span class="ty">전시</span></li></ul>
+    <div class="mcal-gridwrap">
+      <p class="src">한 주에는 막대를 4줄까지만 보여 줍니다. 날짜 아래 +숫자는 그 날 더 있는 일정입니다. 날짜를 누르면 아래에 전부 나옵니다.</p>
+      <div class="mcal-dow">${dow.map((d, i) => `<span class="${i === 0 ? 'sun' : i === 6 ? 'sat' : ''}">${d}</span>`).join('')}</div>
+      ${bars}
+    </div>
+    <div class="mcal-agenda">${agenda.join('')}${quiet.length ? `<p class="src">일정 없는 날: ${quiet.join(', ')}</p>` : ''}</div>
+    <section class="mcal-detail"><h3>${day ? md(day) + ' 일정' : '날짜를 누르면 그 날이 여기에 나옵니다'}</h3>
+      ${day ? (dayItems.length ? dayItems.map(evBlock).join('') : '<p class="muted">이 날 일정이 없습니다.</p>') : ''}
+      ${undated.length ? `<h3>날짜 미정</h3>${undated.map(evBlock).join('')}` : ''}
+    </section>
+    <section class="mcal-printlist"><h3>이 달 전체</h3>${printList || '<p>이 달에 겹치는 일정이 없습니다.</p>'}</section>
+  </article>`;
+}
+async function schedReadFile(f) {
+  const text = await f.text();
+  let parsed;
+  try { parsed = /\.json$/i.test(f.name) || text.trim().startsWith('{') || text.trim().startsWith('[') ? parseSchedJson(text) : parseSchedText(text); }
+  catch (e) { toast('파일을 읽지 못했습니다: ' + (e.message || e)); return; }
+  parsed.rows.forEach(r => { if (r.hold) r.on = false; });
+  S.ui.schedPrev = { name: f.name, rows: parsed.rows, skipped: parsed.skipped };
+  render();
+  toast(`줄 ${parsed.rows.length}개를 읽었습니다. 저장 전에 확인하세요.`);
+}
+async function schedSavePreview() {
+  const prev = S.ui.schedPrev; if (!prev) return;
+  const docs = schedDocs(prev.rows);
+  const sources = [...new Set(docs.map(d => d.source))];
+  if (!sources.length) { toast('저장할 줄이 없습니다'); return; }
+  try {
+    for (const src of sources) {
+      const list = docs.filter(d => d.source === src);
+      if (DB.replaceSchedules) await DB.replaceSchedules(src, list);
+      S.schedules = (S.schedules || []).filter(x => x.source !== src).concat(list);
+    }
+    S.ui.schedPrev = null;
+    const ym = docs.map(d => d.start).filter(s => /^\d{4}-\d{2}/.test(s || '')).map(s => s.slice(0, 7)).sort()[0];
+    if (ym) S.ui.schedYm = ym;
+    render();
+    toast(`${docs.length}건을 저장했습니다. 같은 출처의 이전 일정은 이 파일로 바뀌었습니다.`);
+  } catch (e) { toast('저장하지 못했습니다: ' + (e.message || e)); }
+}
 function pageView() {
   switch (S.view) {
     case 'home': return homeView();
@@ -444,6 +726,7 @@ function pageView() {
     case 'collab': return collabView();
     case 'settle': return settleView();
     case 'popup': return popupView();
+    case 'sched': return schedView();
     case 'mclose': return mcloseView();
     case 'admin': return adminView();
     case 'more': return moreView();
@@ -2514,7 +2797,7 @@ async function readBook(f) { await needX();
   return XLSX.read(await f.arrayBuffer(), { type: 'array' });
 }
 // 파일 끌어다 놓기: 파일 고르기 버튼이 있는 칸 어디에 놓아도 그 버튼을 누른 것과 같게
-const FILE_BTNS = ['fileBtn', 'posFileBtn', 'rulesBtn', 'ibPlanFile', 'ibPlanImg', 'ibActFile', 'cntFile', 'machFileBtn', 'naverFileBtn'];
+const FILE_BTNS = ['fileBtn', 'posFileBtn', 'rulesBtn', 'ibPlanFile', 'ibPlanImg', 'ibActFile', 'cntFile', 'machFileBtn', 'naverFileBtn', 'schedFile'];
 let pendingDrop = null;
 const okType = (f, accept) => !accept || accept.split(',').some(a => { a = a.trim().toLowerCase(); if (!a) return false; if (a.endsWith('/*')) return (f.type || '').toLowerCase().startsWith(a.slice(0, -1)); if (a.startsWith('.')) return f.name.toLowerCase().endsWith(a); return (f.type || '').toLowerCase() === a; });
 function markDropZones() {
@@ -3640,6 +3923,13 @@ function bind() {
     if (d.sg) { S.stores = [d.sg]; S.sumStores = null; S.ui.storeMenu = false; S.ui.range = null; render(); goTop(); return; }
     if (d.nav) { if (d.nav === 'more' && S.view === 'more') return; S.view = d.nav; S.ui.drawer = null; render(); goTop(); return; }
     if (t.id === 'closePrint') { window.print(); return; }
+    if (t.id === 'schedFile') { pickFile('.md,.markdown,.txt,.json,text/markdown,application/json', f => schedReadFile(f)); return; }
+    if (t.id === 'schedSave') { await schedSavePreview(); return; }
+    if (t.id === 'schedCancel') { S.ui.schedPrev = null; render(); return; }
+    if (t.id === 'schedThis') { S.ui.schedYm = today().slice(0, 7); S.ui.schedDay = ''; render(); return; }
+    if (t.id === 'schedPrevM' || t.id === 'schedNextM') { S.ui.schedYm = ymAdd(schedYm(), t.id === 'schedNextM' ? 1 : -1); S.ui.schedDay = ''; render(); return; }
+    if (t.id === 'schedPrint') { window.print(); return; }
+    if (d.sday) { S.ui.schedDay = d.sday; render(); return; }
     if (t.id === 'pcLoad') { S.ui.popupForm = popupQuote(); render(); toast('견적서 숫자를 칸에 채웠습니다'); return; }
     if (t.id === 'pcSave') { await savePopupForm(); return; }
     if (d.pcdel) { await deletePopup(d.pcdel); return; }
@@ -3930,7 +4220,11 @@ document.addEventListener('input', ev => {
   if (t.dataset.ibn != null) { const r = f.parsed[+t.dataset.ibn]; if (r) r.name = t.value; }
 });
 document.addEventListener('change', ev => {
-  const t = ev.target, f = S.ui.ibForm; if (!f || !f.parsed || t.dataset.ibn == null) return;
+  const t = ev.target, p = S.ui.schedPrev;
+  if (p && t.dataset.schk != null) { p.rows[+t.dataset.schk].on = t.checked; return; }
+  if (p && t.dataset.sved != null) { const r = p.rows[+t.dataset.sved]; r.venue = t.value; r.venueKey = schedVenueKey(t.value); r.type = schedTypeOf(r.venue, r.title, r.section || ''); return; }
+  if (p && t.dataset.stit != null) { const r = p.rows[+t.dataset.stit]; r.title = t.value; r.type = schedTypeOf(r.venue, r.title, r.section || ''); return; }
+  const f = S.ui.ibForm; if (!f || !f.parsed || t.dataset.ibn == null) return;
   const r = f.parsed[+t.dataset.ibn]; if (!r) return; let cand = r.bc ? findProduct(r.bc) : []; if (!cand.length && r.sku) cand = findProduct(r.sku); if (!cand.length && r.name) cand = S.byName[norm(r.name)] || []; r.pid = cand.length === 1 ? cand[0].id : ''; render();
 });
 // 컴퓨터: 캡처 후 Ctrl+V / 사진 끌어 놓기 → 입고 예정 등록 화면이면 바로 읽기
@@ -4002,7 +4296,7 @@ function salesPeriodRollover() {
 }
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') salesPeriodRollover(); });
 setInterval(salesPeriodRollover, 30000);
-window.SMGApp = { S, render, indexProducts, setUser, salesPresetRange, resolveSalesPeriod, salesPeriodRollover };
+window.SMGApp = { S, render, indexProducts, setUser, salesPresetRange, resolveSalesPeriod, salesPeriodRollover, parseSchedText, parseSchedJson, schedDocs };
 start();
 })();
 
