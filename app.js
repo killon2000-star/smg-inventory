@@ -50,7 +50,7 @@ const PERM_DEF = [
 ];
 
 const DEFAULT_ORDER = STORES.map(s => s.id);
-const APP_VERSION = '2026-11-13 15:20';   // 앱 화면을 마지막으로 고친 시각 (한국 시간)
+const APP_VERSION = '2026-11-13 16:00';   // 앱 화면을 마지막으로 고친 시각 (한국 시간)
 /* ───────── 작은 도구 ───────── */
 const $ = (s, el = document) => el.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -172,13 +172,17 @@ function stampMoves(list, file) { for (const m of list) { if (!m.co) m.co = user
 
 /* ───────── 색인 ───────── */
 function indexProducts() {
-  S.P = {}; S.byCode = {}; S.byName = {};
+  S.P = {}; S.byCode = {}; S.byName = {}; S.byLoose = {};
   for (const p of S.products) {
     S.P[p.id] = p;
     if (p.barcode) (S.byCode[p.barcode] ||= []).push(p);
     if (p.sku) (S.byCode[p.sku.toLowerCase()] ||= []).push(p);
     (S.byName[norm(p.name)] ||= []).push(p);
+    for (const src of [p.name, p.sku]) { const k = looseKey(src); if (k) (S.byLoose[k] ||= []).push(p); }
   }
+}
+function looseKey(s) {
+  return String(s || '').toLowerCase().replace(/aot[\s_\-]*26[\s_\-]*/g, '').replace(/[\s_\-\[\]()（）!.,~·&]/g, '');
 }
 function findProduct(code) {
   code = String(code || '').trim().replace(/^'/, '');
@@ -2238,7 +2242,10 @@ const cntTick = () => new Promise(r => setTimeout(r, 0));
 function countNum(v) { const t = String(v ?? '').replace(/[,원\s]|개$|ea$|pcs$/gi, ''); if (t === '') return null; const n = Number(t); return isNaN(n) ? null : n; }
 function countMatchRow(r) {
   const name = r.name || '', bc = r.bc || '', sku = r.sku || '';
-  let cand = bc ? findProduct(bc) : []; if (!cand.length && sku) cand = findProduct(sku); if (!cand.length && name) cand = S.byName[norm(name)] || [];
+  let cand = bc ? findProduct(bc) : [];
+  if (!cand.length && sku) cand = findProduct(sku);
+  if (!cand.length && name) cand = S.byName[norm(name)] || [];
+  if (!cand.length && name) { const hit = (S.byLoose || {})[looseKey(name)] || []; const seen = new Set(); cand = hit.filter(p => !seen.has(p.id) && seen.add(p.id)); }
   return { ...r, pid: cand.length === 1 ? cand[0].id : '', multi: cand.length > 1 };
 }
 const COUNT_WORDS = ['실입고수량', '실제수량확인', '실제수량', '수량확인', '확인수량', '실제재고', '현장수량', '실재고', '실수량', '실입고', '실수령', '센수량', '실사'];
@@ -2360,6 +2367,7 @@ function countParseRows(rows, pick) {
     cols.push({ i: c, role, label: label || ('칸 ' + (c + 1)) });
   }
   const cell = (r, i) => i >= 0 ? String(r[i] ?? '').trim() : '';
+  const vendCol = labels.findIndex(h => /거래처/.test(normHead(h)) && !/수령/.test(normHead(h)));
   const items = [];
   body.forEach(r => {
     let bc = cell(r, map.bc).replace(/^'+/, '');
@@ -2374,31 +2382,72 @@ function countParseRows(rows, pick) {
     else if ((qty == null || blank) && !map.countCol && peeled.n != null) { qty = peeled.n; blank = false; }
     if (!bc && !name && (blank || qty == null)) return;
     if (!bc && !name && !/[가-힣A-Za-z]/.test(r.join(' '))) return;
-    items.push(countMatchRow({ name, bc, sku: !bc && name && /_|[A-Za-z]{2,}/.test(name) ? name : '', qty: blank ? null : qty, blank, countCol: !!map.countCol }));
+    items.push(countMatchRow({ name, bc, sku: /_|[A-Za-z]{2,}\d/.test(name) ? name : '', qty: blank ? null : qty, blank, countCol: !!map.countCol, vendor: cell(r, vendCol) }));
   });
   const prodLabel = cleanLabel(labels[map.bc >= 0 ? map.bc : map.prod] || '') || (map.bc >= 0 ? '바코드' : '상품');
   const qtyLabel = cleanLabel(labels[map.qty] || '') || '수량';
   return { items, cols, prod: map.prod, qty: map.qty, prodLabel, qtyLabel, countCol: !!map.countCol };
 }
+function guessIpCat(name) {
+  const m = String(name || '').trim().match(/^([A-Za-z]+_?\d+)[_\s-]+(.+)$/);
+  if (!m) return { ip: '', cat: '' };
+  return { ip: m[1], cat: (m[2].split(/[_\s]/)[0] || '') };
+}
 function countSetPreview(parsed, src) {
   if (!parsed || parsed.err) { S.ui.cntPrev = null; S.ui.cntMsg = { bad: true, html: '🔺 ' + esc((parsed && parsed.err) || '표를 읽지 못했습니다') }; render(); return; }
   const st = S.stores[0];
-  const matched = new Map(), missing = [];
+  const matched = new Map(), missing = [], fresh = new Map();
+  const skip = S.ui.cntSkip || {}, edit = S.ui.cntEdit || {};
   for (const r of parsed.items || []) {
     const noQty = r.blank || r.qty == null;
     if (!r.bc && noQty) { missing.push({ ...r, why: '바코드·실사 수량 없음' }); continue; }
     if (r.countCol && noQty) { missing.push({ ...r, why: '실사 수량 없음' }); continue; }
     if (noQty) { missing.push({ ...r, why: '수량이 비어 있습니다' }); continue; }
     if (r.multi) { missing.push({ ...r, why: '같은 이름 상품이 여러 개입니다. 코드를 적어 주세요' }); continue; }
-    if (!r.pid) { missing.push({ ...r, why: r.bc ? '앱에 등록되지 않은 바코드' : '등록된 상품에서 찾지 못했습니다' }); continue; }
+    if (!r.pid) {
+      if (!r.bc) { missing.push({ ...r, why: '바코드가 없어 새 상품에서 뺐습니다' }); continue; }
+      const g = guessIpCat(r.name), ed = edit[r.bc] || {};
+      const prev = fresh.get(r.bc);
+      if (prev) { prev.qty += Math.max(0, r.qty); prev.lines++; if (r.vendor && !prev.vendor.includes(r.vendor)) prev.vendor = prev.vendor ? prev.vendor + ', ' + r.vendor : r.vendor; }
+      else fresh.set(r.bc, { key: r.bc, bc: r.bc, name: r.name, sku: r.sku || (/[A-Za-z]/.test(r.name) ? r.name : ''), qty: Math.max(0, r.qty), lines: 1, vendor: r.vendor || '', ip: ed.ip != null ? ed.ip : g.ip, cat: ed.cat != null ? ed.cat : g.cat, on: !skip[r.bc] });
+      continue;
+    }
     const book = stockOf(st, r.pid);
     const prev = matched.get(r.pid);
     if (prev) { prev.qty += Math.max(0, r.qty); prev.lines++; prev.diff = prev.qty - prev.book; }
     else matched.set(r.pid, { pid: r.pid, name: S.P[r.pid].name, code: S.P[r.pid].barcode || S.P[r.pid].sku || '', qty: Math.max(0, r.qty), book, diff: Math.max(0, r.qty) - book, lines: 1 });
   }
-  S.ui.cntPrev = { src, matched: [...matched.values()], missing, cols: parsed.cols || [], prod: parsed.prod, qty: parsed.qty, prodLabel: parsed.prodLabel, qtyLabel: parsed.qtyLabel };
+  S.ui.cntPrev = { src, matched: [...matched.values()], missing, fresh: [...fresh.values()], cols: parsed.cols || [], prod: parsed.prod, qty: parsed.qty, prodLabel: parsed.prodLabel, qtyLabel: parsed.qtyLabel };
   S.ui.cntMsg = null;
   render();
+  if (!S.ui.cntNoScroll) countScroll();
+  S.ui.cntNoScroll = false;
+}
+function countSel(p) {
+  const fresh = (p.fresh || []).filter(x => x.on && x.bc);
+  return { m: p.matched.length, n: fresh.length, fresh };
+}
+function countRegLabel(p) {
+  const { m, n } = countSel(p);
+  if (n && !m) return `새 상품 ${n}종 등록 + 실사 수량 반영`;
+  if (n && m) return `기존 ${m}종 + 새 상품 ${n}종 등록`;
+  if (m) return `등록 (${m}종)`;
+  return '등록';
+}
+function countScroll() {
+  requestAnimationFrame(() => {
+    const el = document.querySelector('.cntprev') || document.getElementById('cntMsg');
+    if (!el) return;
+    const top = document.querySelector('.top');
+    const cover = top ? top.getBoundingClientRect().height : 0;
+    window.scrollTo({ top: Math.max(0, el.getBoundingClientRect().top + window.scrollY - cover - 8), behavior: 'smooth' });
+  });
+}
+function countWhy(p) {
+  const { m, n } = countSel(p);
+  const head = `기존 상품 ${m}종 · 새 상품 ${n}종`;
+  if (!m && !n) return (p.fresh || []).length ? `${head}. 체크된 새 상품이 없어 등록할 수 없습니다.` : `${head}. 맞춘 상품이 없고 바코드가 있는 새 상품도 없습니다.`;
+  return head;
 }
 function parsePasteTable(text) {
   const s = String(text || '').replace(/^\uFEFF/, '');
@@ -2415,7 +2464,7 @@ function parsePasteTable(text) {
   return rows.map(r => r.map(c => c.trim()));
 }
 function countFromPaste(text) {
-  S.ui.cntPaste = text; S.ui.cntPick = null;
+  S.ui.cntPaste = text; S.ui.cntPick = null; S.ui.cntSkip = {}; S.ui.cntEdit = {};
   cntRows = parsePasteTable(text);
   if (!cntRows.some(r => r.some(c => String(c).trim()))) { S.ui.cntMsg = { bad: true, html: '🔺 붙인 내용이 없습니다.' }; render(); return; }
   countSetPreview(countParseRows(cntRows, null), '붙여넣기');
@@ -2424,47 +2473,69 @@ function countRepick(kind, idx) {
   S.ui.cntPick = { ...(S.ui.cntPick || {}), [kind]: idx };
   if (cntRows) countSetPreview(countParseRows(cntRows, S.ui.cntPick), (S.ui.cntPrev && S.ui.cntPrev.src) || '붙여넣기');
 }
+function sheetRowsOf(ws) {
+  if (!ws) return [];
+  let rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '', raw: false });
+  if (SM.fillMerges) rows = SM.fillMerges(rows, ws['!merges'] || []);
+  return rows;
+}
 async function countUseSheet(name) {
   if (!cntBuf) return;
-  S.ui.cntMsg = { html: `‘${esc(name)}’ 탭을 읽고 있습니다…` }; render();
+  S.ui.cntMsg = { html: `‘${esc(name)}’ 탭을 읽는 중…` }; render();
   await cntTick();
-  await needX();
-  const wb = XLSX.read(cntBuf, { type: 'array', sheets: [name], dense: true });
-  const ws = wb.Sheets[name];
-  const rows = ws ? XLSX.utils.sheet_to_json(ws, { header: 1, defval: '', raw: true }) : [];
-  S.ui.cntSheet = name; cntRows = rows; S.ui.cntPick = null;
-  countSetPreview(countParseRows(rows, null), (S.ui.cntFile || '엑셀') + ' › ' + name);
+  try {
+    await needX();
+    const wb = XLSX.read(cntBuf, { type: 'array', sheets: [name] });
+    const rows = sheetRowsOf(wb.Sheets[name]);
+    S.ui.cntSheet = name; cntRows = rows; S.ui.cntPick = null;
+    const parsed = countParseRows(rows, null);
+    if (parsed.err) { S.ui.cntPrev = null; S.ui.cntMsg = { bad: true, html: '🔺 ‘' + esc(name) + '’ 탭: ' + esc(parsed.err) }; render(); countScroll(); return; }
+    countSetPreview(parsed, (S.ui.cntFile || '엑셀') + ' › ' + name);
+  } catch (e) { S.ui.cntPrev = null; S.ui.cntMsg = { bad: true, html: '🔺 ‘' + esc(name) + '’ 탭을 읽지 못했습니다. ' + esc(e.message || e) }; render(); countScroll(); }
 }
 async function countReadFile(f) {
-  S.ui.cntMsg = { html: (f.size >= 50 * 1024 * 1024 ? '큰 파일입니다. 칸 제목만 먼저 보고, 고른 탭만 읽습니다…' : '파일을 읽고 있습니다…') }; S.ui.cntCands = null; S.ui.cntPrev = null; render();
+  const mb = f.size / (1024 * 1024);
+  if (mb > 120) { S.ui.cntPrev = null; S.ui.cntCands = null; S.ui.cntMsg = { bad: true, html: `🔺 파일이 ${mb.toFixed(0)}MB라 브라우저에서 열기 어렵습니다. 필요한 탭만 남기고 다시 저장해 주세요.` }; render(); countScroll(); return; }
+  S.ui.cntMsg = { html: mb >= 40 ? `큰 파일(${mb.toFixed(0)}MB)입니다. 칸 제목만 먼저 읽는 중…` : '엑셀을 읽는 중…' }; S.ui.cntCands = null; S.ui.cntPrev = null; render();
   await cntTick();
   try {
     await needX();
     cntBuf = await f.arrayBuffer();
     await cntTick();
-    const head = XLSX.read(cntBuf, { type: 'array', sheetRows: 40, dense: true });
+    const head = XLSX.read(cntBuf, { type: 'array', sheetRows: 50 });
     const cands = [];
     for (const n of head.SheetNames) {
       await cntTick();
-      const ws = head.Sheets[n]; if (!ws) continue;
-      const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '', raw: true });
-      const d = analyzeSheet(rows, QTY_COUNT);
-      if (d && d.map.qty != null && (d.map.name != null || d.map.barcode != null || d.map.sku != null)) cands.push(n);
+      const rows = sheetRowsOf(head.Sheets[n]);
+      const parsed = countParseRows(rows, null);
+      if (parsed && !parsed.err && parsed.qty >= 0 && parsed.prod >= 0) cands.push({ n, score: (parsed.countCol ? 10 : 0) + Math.min((parsed.items || []).length, 40) });
     }
-    S.ui.cntFile = f.name; S.ui.cntCands = cands; S.ui.cntSheet = '';
-    if (!cands.length) { S.ui.cntMsg = { bad: true, html: '🔺 상품코드(또는 상품명)와 수량 칸이 함께 있는 탭을 찾지 못했습니다.' }; render(); return; }
-    if (cands.length === 1) { await countUseSheet(cands[0]); return; }
-    S.ui.cntMsg = { html: `탭 ${cands.length}개에 수량 칸이 있습니다. 쓸 탭을 눌러 주세요.` }; render();
-  } catch (e) { S.ui.cntMsg = { bad: true, html: '🔺 ' + esc(e.message || e) }; render(); }
+    S.ui.cntFile = f.name; S.ui.cntSheet = '';
+    if (!cands.length) { S.ui.cntCands = null; S.ui.cntMsg = { bad: true, html: '🔺 상품(바코드·상품명)과 수량 칸이 함께 있는 탭을 찾지 못했습니다. 제목 줄에 바코드·상품명과 실입고수량(또는 실사·수량)이 있는지 확인해 주세요.' }; render(); countScroll(); return; }
+    cands.sort((a, b) => b.score - a.score);
+    S.ui.cntCands = cands.map(c => c.n);
+    if (cands.length > 1) S.ui.cntMsg = { html: `탭 ${cands.length}개에 수량 칸이 있습니다. 다른 탭을 누르면 바뀝니다.` };
+    await countUseSheet(cands[0].n);
+  } catch (e) { S.ui.cntPrev = null; S.ui.cntMsg = { bad: true, html: '🔺 파일을 읽지 못했습니다. ' + esc(e.message || e) }; render(); countScroll(); }
 }
 async function countRegister() {
-  const p = S.ui.cntPrev; if (!p || !p.matched.length) return;
+  const p = S.ui.cntPrev; const sel = p ? countSel(p) : { m: 0, n: 0, fresh: [] };
+  if (!p || (!sel.m && !sel.n)) return;
   const st = S.stores[0];
+  let made = 0;
+  for (const n of sel.fresh) {
+    if (S.P[n.bc]) continue;
+    const prod = { id: n.bc, barcode: n.bc, sku: n.sku || '', name: n.name, ip: n.ip || '', cat: n.cat || '', price: null, kind: '상설', memo: n.vendor ? `매입 거래처 ${n.vendor}` : '' };
+    S.products.push(prod); made++;
+    if (DB.saveProduct) await DB.saveProduct(prod);
+  }
+  if (made) indexProducts();
   S.ui.counts[st] = {};
-  p.matched.forEach(m => { S.ui.counts[st][m.pid] = m.qty; });
+  p.matched.forEach(m => { if (S.P[m.pid]) S.ui.counts[st][m.pid] = m.qty; });
+  sel.fresh.forEach(n => { if (S.P[n.bc]) { S.ui.counts[st][n.bc] = n.qty; S.ui.cntVend = S.ui.cntVend || {}; if (n.vendor) S.ui.cntVend[n.bc] = n.vendor; } });
   S.ui.cntSrc = p.src;
   await saveCount();
-  S.ui.cntPrev = null; S.ui.cntCands = null; S.ui.cntSheet = '';
+  S.ui.cntPrev = null; S.ui.cntCands = null; S.ui.cntSheet = ''; S.ui.cntVend = null;
 }
 function countApply(rows, src) {
   S.ui.cntSrc = src;
@@ -2517,14 +2588,14 @@ function countView() {
   <div class="card cntbox"><h2>실사 수량 가져오기</h2>
     <p class="src">구글 시트나 엑셀에서 복사한 표를 붙이거나, 엑셀 파일을 올립니다. 코드·품번·바코드와 실사·수량·재고·현재고 칸을 알아서 찾습니다. [등록]을 눌러야 재고에 반영됩니다.</p>
     <label class="lb" for="cntPaste">붙여넣기</label>
-    <textarea class="inp cntpaste" id="cntPaste" placeholder="상품코드와 실사 수량이 있는 표를 여기에 붙여 넣으세요" style="height:${S.ui.cntPaste ? Math.min(160, Math.max(120, String(S.ui.cntPaste).split('\n').length * 24 + 16)) : 120}px">${esc(S.ui.cntPaste || '')}</textarea>
-    <div class="row cntacts"><button class="btn pri" id="cntPasteGo">붙여넣기 확인</button></div>
-    ${countPrevHtml()}
+    <textarea class="inp cntpaste" id="cntPaste" placeholder="상품코드와 실사 수량이 있는 표를 여기에 붙여 넣으세요. 붙이면 바로 미리보기가 나옵니다." style="height:${S.ui.cntPaste ? Math.min(160, Math.max(120, String(S.ui.cntPaste).split('\n').length * 24 + 16)) : 120}px">${esc(S.ui.cntPaste || '')}</textarea>
     <div class="row cntacts"><button class="btn" id="cntTpl">실사 양식 받기</button><button class="btn pri" id="cntFile">실사 엑셀 올리기</button></div>
     <div class="row cntacts"><input class="inp" id="cntLink" placeholder="또는 구글시트 링크"><button class="btn" id="cntLinkGo">링크 열기</button></div>
+    ${S.ui.cntMsg ? `<div class="note ${S.ui.cntMsg.bad ? 'bad' : ''}" id="cntMsg">${S.ui.cntMsg.html}</div>` : ''}
     ${(S.ui.cntCands || []).length > 1 ? `<div class="cnttabs" role="group" aria-label="엑셀 탭">${S.ui.cntCands.map(n => `<button type="button" class="btn ${S.ui.cntSheet === n ? 'pri' : ''}" data-cntsheet="${esc(n)}">${esc(n)}</button>`).join('')}</div>` : ''}
-    ${S.ui.cntMsg ? `<div class="note ${S.ui.cntMsg.bad ? 'bad' : ''}">${S.ui.cntMsg.html}</div>` : ''}
+    ${countPrevHtml()}
   </div>
+  ${countRegBar()}
   <div class="card" style="display:flex;flex-direction:column;gap:10px">
     <div class="row"><div class="search">${ic('search')}<input class="inp" id="cq" type="search" placeholder="상품명·바코드·품번" value="${esc(S.ui.countQ)}" autocomplete="off"></div>
     <select class="inp" id="cip" style="width:auto;min-width:160px" aria-label="IP"><option value="">IP 전체</option>${ips.map(i => `<option ${S.ui.countIp === i ? 'selected' : ''}>${esc(i)}</option>`).join('')}</select></div>
@@ -2540,19 +2611,29 @@ function countPrevHtml() {
   const row = m => `<tr><td class="nm"><b>${esc(m.name)}</b><div class="code">${esc(m.code)}</div>${m.lines > 1 ? `<div><span class="pill p-warn">${m.lines}줄 합침</span></div>` : ''}<div class="conly">장부 ${fmt(m.book)} · 차이 ${m.diff > 0 ? '+' : ''}${fmt(m.diff)}</div></td><td class="n cwide">${fmt(m.book)}</td><td class="n">${fmt(m.qty)}</td><td class="n cwide">${ds(m.diff)}</td></tr>`;
   const miss = m => `<tr><td class="nm">${esc(m.name || '(이름 없음)')}${m.bc ? `<div class="code">${esc(m.bc)}</div>` : ''}<div class="muted">${esc(m.why)}</div></td><td class="n">${m.qty == null ? '—' : fmt(m.qty)}</td></tr>`;
   const btns = (role, cur) => (p.cols || []).filter(c => c.role === role).map(c => `<button type="button" class="btn ${c.i === cur ? 'pri' : ''}" data-cnt${role}="${c.i}">${esc(c.label)}</button>`).join('');
-  return `<div class="cntprev"><h2>미리보기 <span class="r">${esc(p.src)} · ${p.matched.length}종</span></h2>
-    <p class="src">읽은 칸: 상품=<b>${esc(p.prodLabel || '')}</b>, 수량=<b>${esc(p.qtyLabel || '')}</b>. 잘못 잡혔으면 칸 버튼을 누르세요. [등록] 전까지는 저장되지 않습니다.</p>
+  const can = countSel(p).m + countSel(p).n > 0;
+  const reg = `<button class="btn pri" data-cntgo="1" ${can ? '' : 'disabled'}>${countRegLabel(p)}</button>`;
+  const ips = [...new Set((p.fresh || []).map(x => x.ip).filter(Boolean))];
+  const freshRows = (p.fresh || []).map(x => `<tr class="${x.on ? '' : 'off'}"><td class="nm"><label class="ck" data-cntpick="${esc(x.key)}"><input type="checkbox" ${x.on ? 'checked' : ''} tabindex="-1"> <b>${esc(x.name)}</b></label><div class="code">${esc(x.bc)}${x.lines > 1 ? ` · ${x.lines}줄 합침` : ''}${x.vendor ? ` · ${esc(x.vendor)}` : ''}</div><div class="cntnewf"><input class="inp" data-cntip="${esc(x.key)}" value="${esc(x.ip)}" aria-label="IP" placeholder="IP"><input class="inp" data-cntcat="${esc(x.key)}" value="${esc(x.cat)}" aria-label="카테고리" placeholder="카테고리"></div></td><td class="n">${fmt(x.qty)}</td></tr>`).join('');
+  return `<div class="cntprev"><div class="cntsum"><div><h2>미리보기 <span class="r">${esc(p.src)}</span></h2><p class="cntwhy ${can ? '' : 'bad'}">${countWhy(p)}</p><p class="src">읽은 칸: 상품=<b>${esc(p.prodLabel || '')}</b>, 수량=<b>${esc(p.qtyLabel || '')}</b>. 판매가는 비워 둡니다. IP·카테고리는 이름 앞 접두어로 추정했고, 칸에서 바꿀 수 있습니다.</p></div>${reg}</div>
     <div class="cntpick"><span class="lb">상품 칸</span><div class="cnttabs" role="group" aria-label="상품 칸">${btns('prod', p.prod)}</div><span class="lb">실사 칸</span><div class="cnttabs" role="group" aria-label="실사 칸">${btns('qty', p.qty)}</div></div>
     <div class="tw"><table class="cntgrid"><thead><tr><th>상품</th><th class="n cwide">장부</th><th class="n">실사</th><th class="n cwide">차이</th></tr></thead><tbody>
-    ${p.matched.map(row).join('') || '<tr><td class="muted" colspan="4">맞춘 상품이 없습니다.</td></tr>'}
+    ${p.matched.map(row).join('') || '<tr><td class="muted" colspan="4">기존 상품과 맞는 줄이 없습니다.</td></tr>'}
     </tbody></table></div>
-    ${p.missing.length ? `<h3>못 찾은 상품</h3><div class="tw"><table class="cntgrid"><thead><tr><th>적힌 내용</th><th class="n">수량</th></tr></thead><tbody>${p.missing.slice(0, 40).map(miss).join('')}</tbody></table></div>${p.missing.length > 40 ? `<p class="src">외 ${p.missing.length - 40}줄</p>` : ''}` : ''}
-    <div class="row cntacts" style="justify-content:flex-end"><button class="btn" id="cntPrevClear">미리보기 지우기</button><button class="btn pri" id="cntReg" ${p.matched.length ? '' : 'disabled'}>등록 (${p.matched.length}종)</button></div>
+    ${(p.fresh || []).length ? `<h3>새 상품 ${p.fresh.length}종</h3><div class="row cntacts"><input class="inp" id="cntIpAll" value="${esc(ips[0] || '')}" aria-label="IP 한꺼번에" placeholder="IP"><button class="btn" id="cntIpApply" type="button">이 IP로 맞추기</button></div><p class="src">체크를 끄면 그 상품은 등록하지 않습니다. 바코드 없는 줄은 아래 목록에만 있고 기본으로 빠집니다.</p><div class="tw"><table class="cntgrid"><thead><tr><th>상품 · IP · 카테고리</th><th class="n">실사</th></tr></thead><tbody>${freshRows}</tbody></table></div>` : ''}
+    ${p.missing.length ? `<h3>등록하지 않는 줄</h3><div class="tw"><table class="cntgrid"><thead><tr><th>적힌 내용</th><th class="n">수량</th></tr></thead><tbody>${p.missing.slice(0, 40).map(miss).join('')}</tbody></table></div>` : ''}
+    <div class="row cntacts" style="justify-content:flex-end"><button class="btn" id="cntPrevClear">미리보기 지우기</button><button class="btn pri" data-cntgo="1" ${can ? '' : 'disabled'}>${countRegLabel(p)}</button></div>
   </div>`;
+}
+function countRegBar() {
+  const p = S.ui.cntPrev; if (!p) return '';
+  const can = countSel(p).m + countSel(p).n > 0;
+  return `<div class="cntregbar"><p class="cntwhy ${can ? '' : 'bad'}">${countWhy(p)}</p><button class="btn pri" data-cntgo="1" ${can ? '' : 'disabled'}>${countRegLabel(p)}</button></div>`;
 }
 async function saveCount() {
   const st = S.stores[0]; const c = S.ui.counts[st]; const at = new Date().toISOString();
-  const list = Object.keys(c).filter(pid => c[pid] !== stockOf(st, pid)).map(pid => ({ id: 'c' + Date.now().toString(36) + pid, date: today(), store: st, type: COUNT_TYPE, pid, qty: c[pid] - stockOf(st, pid), memo: `실사 ${fmt(c[pid])}개 (장부 ${fmt(stockOf(st, pid))})`, by: S.user.name, at }));
+  const vend = S.ui.cntVend || {};
+  const list = Object.keys(c).filter(pid => c[pid] !== stockOf(st, pid)).map(pid => ({ id: 'c' + Date.now().toString(36) + pid, date: today(), store: st, type: COUNT_TYPE, pid, qty: c[pid] - stockOf(st, pid), memo: `실사 ${fmt(c[pid])}개 (장부 ${fmt(stockOf(st, pid))})${vend[pid] ? ` · 매입 거래처 ${vend[pid]}` : ''}`, by: S.user.name, at }));
   await DB.saveMoves(stampMoves(list, S.ui.cntSrc));
   for (const m of list) { S.moves.push(m); S.stock[st][m.pid] = stockOf(st, m.pid) + m.qty; }
   S.ui.counts[st] = {}; S.ui.cntSrc = null; toast(`실사 차이 ${list.length}종을 반영했습니다`);
@@ -4209,10 +4290,17 @@ function collabView() {
 function bind() {
   const paste = document.getElementById('cntPaste');
   if (paste) paste.addEventListener('paste', e => { const text = (e.clipboardData || window.clipboardData || {}).getData ? (e.clipboardData || window.clipboardData).getData('text') : ''; if (text && (text.includes('\t') || text.includes('\n'))) { e.preventDefault(); countFromPaste(text); } });
+  document.querySelectorAll('[data-cntip],[data-cntcat]').forEach(el => el.addEventListener('change', () => {
+    const key = el.dataset.cntip || el.dataset.cntcat; const x = ((S.ui.cntPrev || {}).fresh || []).find(f => f.key === key); if (!x) return;
+    if (el.dataset.cntip != null) x.ip = el.value; if (el.dataset.cntcat != null) x.cat = el.value;
+    S.ui.cntEdit = S.ui.cntEdit || {}; S.ui.cntEdit[key] = { ip: x.ip, cat: x.cat };
+  }));
   const app = $('#app');
   app.onclick = async ev => {
     const t = ev.target.closest('button,[data-pid],[data-cmpk],[data-hdip],label,input'); if (!t) return;
     const d = t.dataset;
+    const pick = ev.target.closest('[data-cntpick]');
+    if (pick && S.ui.cntPrev && !ev.target.closest('input.inp')) { const key = pick.dataset.cntpick; const x = (S.ui.cntPrev.fresh || []).find(f => f.key === key); if (x) { x.on = !x.on; S.ui.cntSkip = S.ui.cntSkip || {}; S.ui.cntSkip[key] = !x.on; S.ui.cntNoScroll = true; render(); } return; }
     if (d.install != null) { doInstall(); return; }
     if (d.openext != null) { openExternal(); return; }
     if (d.copylink != null) { copyLink(); return; }
@@ -4359,7 +4447,9 @@ function bind() {
     if (t.id === 'cntPrevClear') { S.ui.cntPrev = null; render(); return; }
     if (d.cntprod != null && d.cntprod !== '') { countRepick('prod', +d.cntprod); return; }
     if (d.cntqty != null && d.cntqty !== '') { countRepick('qty', +d.cntqty); return; }
-    if (t.id === 'cntReg') { countRegister().catch(e => { S.ui.cntMsg = { bad: true, html: '🔺 ' + esc(e.message || e) }; render(); }); return; }
+    if (d.cntip != null || d.cntcat != null) return;
+    if (t.id === 'cntIpApply') { const v = (document.getElementById('cntIpAll') || {}).value || ''; (S.ui.cntPrev.fresh || []).forEach(f => { f.ip = v; S.ui.cntEdit = S.ui.cntEdit || {}; S.ui.cntEdit[f.key] = { ...(S.ui.cntEdit[f.key] || {}), ip: v, cat: f.cat }; }); S.ui.cntNoScroll = true; render(); return; }
+    if (t.id === 'cntReg' || d.cntgo) { countRegister().catch(e => { S.ui.cntMsg = { bad: true, html: '🔺 ' + esc(e.message || e) }; render(); }); return; }
     if (d.cntsheet) { countUseSheet(d.cntsheet); return; }
     if (t.id === 'cntLinkGo') { linkRows($('#cntLink').value.trim()).then(x => { cntRows = x.rows; S.ui.cntPick = null; countSetPreview(countParseRows(x.rows, null), x.src); }).catch(e => { S.ui.cntMsg = { bad: true, html: '🔺 ' + esc(e.message) }; render(); }); return; }
     if (t.id === 'cReset') { S.ui.counts[S.stores[0]] = {}; render(); return; }

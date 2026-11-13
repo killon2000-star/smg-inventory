@@ -872,6 +872,24 @@ td,th{font-variant-numeric:tabular-nums}
 .cntpick .lb{font-size:13px;font-weight:700}
 .cntprev{display:flex;flex-direction:column;gap:8px;width:100%;min-width:0;border-top:1px solid var(--line);padding-top:10px}
 .cntprev h2,.cntprev h3{margin:0;font-size:16px;text-align:left}
+.cntsum{display:flex;gap:12px;align-items:flex-start;justify-content:space-between;width:100%}
+.cntsum .btn{min-height:48px;flex:0 0 280px;height:auto;white-space:normal;text-align:center}
+@media (max-width:700px){
+  .cntsum{flex-direction:column;align-items:stretch}
+  .cntsum .btn{flex:1 1 auto;width:100%}
+}
+.cntnewf{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:6px}
+.cntnewf .inp{min-height:44px}
+tr.off td{opacity:.45}
+.cntwhy{margin:4px 0 0;font-size:18px;font-weight:800;line-height:1.35;text-align:left}
+.cntwhy.bad{color:var(--bad)}
+.cntregbar{display:none}
+@media (max-width:900px){
+  .cntregbar{display:flex;flex-direction:column;align-items:stretch;position:fixed;z-index:57;left:0;right:0;bottom:calc(var(--tabh,64px) + var(--kch,40px));gap:6px;padding:8px 12px;background:var(--surface);border-top:1px solid var(--line);box-shadow:0 -2px 8px rgba(0,0,0,.12)}
+  .cntregbar .cntwhy{flex:1;min-width:0;font-size:15px;margin:0}
+  .cntregbar .btn{min-height:48px;width:100%;height:auto;white-space:normal}
+  body:has(.cntregbar) main{padding-bottom:calc(var(--tabh,64px) + var(--kch,40px) + 76px)}
+}
 .cntgrid{width:100%}
 .cntgrid td.nm,.cntgrid td.nm .code{overflow-wrap:anywhere;word-break:break-word;min-width:0}
 .cntgrid input.inp.qty{min-height:44px;width:100%}
@@ -1082,8 +1100,8 @@ body.sched-on .pha > .chip{border-radius:8px;justify-content:center}
 <script defer src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
 <script defer src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 <script defer src="config.js"></script>
-<script defer src="firebase.js?v=106"></script>
-<script defer src="app.js?v=106"></script>
+<script defer src="firebase.js?v=107"></script>
+<script defer src="app.js?v=107"></script>
 <script>if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});</script>
 
 </body></html>
