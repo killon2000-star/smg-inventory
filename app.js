@@ -50,7 +50,7 @@ const PERM_DEF = [
 ];
 
 const DEFAULT_ORDER = STORES.map(s => s.id);
-const APP_VERSION = '2026-11-13 10:05';   // 앱 화면을 마지막으로 고친 시각 (한국 시간)
+const APP_VERSION = '2026-11-13 10:40';   // 앱 화면을 마지막으로 고친 시각 (한국 시간)
 /* ───────── 작은 도구 ───────── */
 const $ = (s, el = document) => el.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -602,13 +602,52 @@ function schedLanes(week, events) {
   return { items, n: laneEnd.length };
 }
 function schedYm() { const cap = today().slice(0, 7); return S.ui.schedYm || cap; }
+const SCHED_SUB = /사전\s*예약|예약제|예약|특전|할인|후기|(?:^|\s)MD(?:\s|$)|오픈|이용/;
+const SCHED_STOP = new Set(['콜라보', '카페', '팝업', '스토어', '팝업스토어', '전시', '기념', '방송', '애니메이션', '주년', '시즌', '주말', '평일', '한정', '당초', '조기', '종료', '영업', 'the', 'final', 'season', 'pop', 'up', 'store', 'new', 'coming', 'soon', 'popup', 'light', 'shadow', 'cafe', 'box', 'smg', 'tv']);
+function schedTokens(title) {
+  const raw = String(title || '').replace(/\([^)]*\)/g, ' ').replace(/사전\s*예약/g, ' ');
+  const parts = raw.split(/[^\p{Script=Hangul}A-Za-z0-9]+/u).filter(Boolean);
+  const out = [];
+  parts.forEach(p => {
+    const t = p.toLowerCase();
+    if (t.length < 2 || SCHED_STOP.has(t) || /^\d+$/.test(t)) return;
+    out.push(t);
+  });
+  return out;
+}
+function schedOverlap(a, b) { return !!(a.start && a.end && b.start && b.end && a.start <= b.end && b.start <= a.end); }
+function schedCovers(e, day) { return !!(e && e.start && e.end && e.start <= day && e.end >= day); }
+function schedGroups(events) {
+  const items = (events || []).filter(e => e && !e.undated && e.start && e.end);
+  const isSub = e => SCHED_SUB.test(e.title || '');
+  const groups = items.filter(e => !isSub(e)).map(main => ({ main, kids: [] }));
+  items.filter(isSub).forEach(sub => {
+    const tok = new Set(schedTokens(sub.title));
+    let best = null, score = 0;
+    groups.forEach(g => {
+      if (g.main.venueKey !== sub.venueKey || !schedOverlap(g.main, sub)) return;
+      const shared = schedTokens(g.main.title).filter(t => tok.has(t) && t.length >= 3);
+      const s = shared.reduce((n, t) => n + t.length, 0);
+      if (shared.length && s > score) { score = s; best = g; }
+    });
+    if (best) best.kids.push(sub);
+    else groups.push({ main: sub, kids: [] });
+  });
+  groups.forEach(g => g.kids.sort((a, b) => (a.start || '').localeCompare(b.start || '') || a.title.localeCompare(b.title, 'ko')));
+  return groups;
+}
+function schedOnDay(groups, day) {
+  return groups.filter(g => schedCovers(g.main, day) || g.kids.some(k => schedCovers(k, day)));
+}
 function schedView() {
   if (!isOwner()) return `${head('월간 일정', '대표만')}<div class="card"><div class="empty">대표 계정만 공식 일정을 보고 올립니다.</div></div>`;
   const ym = schedYm();
   const [y, m] = ym.split('-').map(Number);
   const list = S.schedules || [];
   const undated = list.filter(e => e.undated || !e.start);
-  const month = schedInMonth(list, ym).slice().sort((a, b) => a.start.localeCompare(b.start) || a.venueKey.localeCompare(b.venueKey, 'ko'));
+  const month = schedInMonth(list, ym).filter(e => !e.undated).slice().sort((a, b) => a.start.localeCompare(b.start) || a.venueKey.localeCompare(b.venueKey, 'ko'));
+  const groups = schedGroups(month);
+  const mains = groups.map(g => g.main);
   const venues = [...new Map(month.map(e => [e.venueKey, e])).values()];
   const weeks = schedWeeks(ym);
   const dim = +monthEnd(ym).slice(8);
@@ -625,11 +664,11 @@ function schedView() {
     if (!day) day = `${ym}-01`;
     S.ui.schedDay = day;
   }
-  const dayItems = month.filter(e => e.start <= day && e.end >= day);
+  const dayGroups = schedOnDay(groups, day);
   const dow = ['일', '월', '화', '수', '목', '금', '토'];
   const MAX_LANES = 4;
   const bars = weeks.map(week => {
-    const L = schedLanes(week, month);
+    const L = schedLanes(week, mains);
     const shown = L.items.filter(it => it.lane < MAX_LANES);
     const laneH = Math.max(Math.min(L.n, MAX_LANES), 1);
     const extra = week.map((d, i) => d ? L.items.filter(it => it.lane >= MAX_LANES && it.a <= i && it.b >= i).length : 0);
@@ -654,48 +693,53 @@ function schedView() {
   const agenda = [];
   for (let d = 1; d <= dim; d++) {
     const iso = `${ym}-${String(d).padStart(2, '0')}`;
-    const items = month.filter(e => e.start <= iso && e.end >= iso);
+    const items = schedOnDay(groups, iso).map(g => g.main);
     if (!items.length) { quiet.push(d); continue; }
     const wkI = new Date(iso + 'T00:00:00Z').getUTCDay();
-    agenda.push(`<section class="mcal-agday${iso === day ? ' on' : ''}"><button type="button" class="mcal-agdate${wkI === 0 ? ' sun' : ''}${wkI === 6 ? ' sat' : ''}" data-sday="${iso}" aria-label="${d}일 ${dow[wkI]}"><b>${d}</b><span>${dow[wkI]}</span></button><div class="mcal-agitems">${items.map(e => `<button type="button" class="mcal-agitem ${e.source === 'plan' ? 'plan' : 'official'}" data-sday="${iso}"><i style="background:${schedColor(e.venueKey)}"></i><span class="mcal-agbody"><b>${esc(e.title)}</b><small>${esc(e.venueKey)} · ${esc(SCHED_TYPES[e.type] || '')} · ${e.source === 'plan' ? '내부 예정' : '공식 X'}${e.end !== e.start ? ' · ' + esc(e.start.slice(5)) + '~' + esc(e.end.slice(5)) : ''}</small></span></button>`).join('')}</div></section>`);
+    agenda.push(`<section class="mcal-agday${iso === day ? ' on' : ''}"><button type="button" class="mcal-agdate${wkI === 0 ? ' sun' : ''}${wkI === 6 ? ' sat' : ''}" data-sday="${iso}" aria-label="${d}일 ${dow[wkI]}"><b>${d}</b><span>${dow[wkI]}</span></button><div class="mcal-agitems">${items.map(e => `<button type="button" class="mcal-agitem ${e.source === 'plan' ? 'plan' : 'official'}" data-sday="${iso}"><i style="background:${schedColor(e.venueKey)}"></i><span class="mcal-agbody"><b>${esc(e.title)}</b><small>${esc(e.venueKey)} · ${esc(SCHED_TYPES[e.type] || '')} · ${e.source === 'plan' ? '내부 예정' : '공식 발표'}${e.end !== e.start ? ' · ' + esc(e.start.slice(5)) + '~' + esc(e.end.slice(5)) : ''}</small></span></button>`).join('')}</div></section>`);
   }
-  const evBlock = e => `<div class="mcal-ev"><div class="mcal-evmeta"><b style="color:${schedColor(e.venueKey)}">${esc(e.venueKey)}</b><span class="ty">${esc(SCHED_TYPES[e.type] || '')}</span><span>${e.source === 'plan' ? '내부 예정' : '공식 X'}</span></div><div class="mcal-evtitle">${esc(e.title)}</div><div class="muted">${e.undated ? '날짜 미정' : esc(e.start) + (e.end && e.end !== e.start ? ' ~ ' + esc(e.end) : '')}${e.time ? ' · ' + esc(e.time) : ''}${e.open ? ' · 종료 미정' : ''}</div>${e.note ? `<div class="muted">${esc(e.note)}</div>` : ''}${e.link ? `<a href="${esc(e.link)}" target="_blank" rel="noopener">공식 X 글</a>` : ''}</div>`;
-  const printList = month.map(e => `<p><b>${esc(e.start.slice(5))}${e.end !== e.start ? '~' + esc(e.end.slice(5)) : ''}</b> ${esc(e.venueKey)} · ${esc(SCHED_TYPES[e.type] || '')} · ${esc(e.title)} · ${e.source === 'plan' ? '내부 예정' : '공식 X'}</p>`).join('');
+  const srcLabel = e => e.source === 'plan' ? '내부 예정' : '공식 발표';
+  const evBlock = e => `<div class="mcal-ev"><div class="mcal-evmeta"><b style="color:${schedColor(e.venueKey)}">${esc(e.venueKey)}</b><span class="ty">${esc(SCHED_TYPES[e.type] || '')}</span><span>${srcLabel(e)}</span></div><div class="mcal-evtitle">${esc(e.title)}</div><div class="muted">${e.undated ? '날짜 미정' : esc(e.start) + (e.end && e.end !== e.start ? ' ~ ' + esc(e.end) : '')}${e.time ? ' · ' + esc(e.time) : ''}${e.open ? ' · 종료 미정' : ''}</div>${e.note ? `<div class="muted">${esc(e.note)}</div>` : ''}${e.link ? `<a href="${esc(e.link)}" target="_blank" rel="noopener">공식 발표 원문</a>` : ''}</div>`;
+  const subLine = e => `<div class="mcal-sub"><b>${esc(e.title)}</b><span class="muted">${srcLabel(e)} · ${esc(e.start)}${e.end && e.end !== e.start ? ' ~ ' + esc(e.end) : ''}${e.time ? ' · ' + esc(e.time) : ''}</span>${e.note ? `<span class="muted">${esc(e.note)}</span>` : ''}${e.link ? `<a href="${esc(e.link)}" target="_blank" rel="noopener">공식 발표 원문</a>` : ''}</div>`;
+  const groupBlock = g => `${evBlock(g.main)}${g.kids.filter(k => schedCovers(k, day)).map(subLine).join('')}`;
+  const printList = groups.map(g => `<p><b>${esc(g.main.start.slice(5))}${g.main.end !== g.main.start ? '~' + esc(g.main.end.slice(5)) : ''}</b> ${esc(g.main.venueKey)} · ${esc(SCHED_TYPES[g.main.type] || '')} · ${esc(g.main.title)} · ${srcLabel(g.main)}${g.kids.map(k => `<br><span class="mcal-sub">· ${esc(k.title)} (${esc(k.start.slice(5))}${k.end !== k.start ? '~' + esc(k.end.slice(5)) : ''})</span>`).join('')}</p>`).join('');
   const phoneDays = weeks.map(week => week.map(d => {
     if (!d) return '<span class="mcal-phday empty"></span>';
-    const items = month.filter(e => e.start <= d && e.end >= d);
+    const items = schedOnDay(groups, d);
     const n = +d.slice(8);
     const wk = new Date(d + 'T00:00:00Z').getUTCDay();
-    const shown = items.slice(0, 3);
-    const marks = shown.map(e => `<i class="${e.source === 'plan' ? 'plan' : 'official'}" style="--c:${schedColor(e.venueKey)};background:${schedColor(e.venueKey)}"></i>`).join('') + (items.length > 3 ? `<em>${items.length}</em>` : '');
-    const names = shown.map(e => `<i class="${e.source === 'plan' ? 'plan' : ''}"><b style="--c:${schedColor(e.venueKey)};background:${schedColor(e.venueKey)}"></b><span>${esc(e.title)}</span></i>`).join('') + (items.length > 3 ? `<em>+${items.length - 3}</em>` : '');
+    const dotShown = items.slice(0, 3).map(g => g.main);
+    const nameShown = items.slice(0, items.length > 2 ? 1 : items.length).map(g => g.main);
+    const marks = dotShown.map(e => `<i class="${e.source === 'plan' ? 'plan' : 'official'}" style="--c:${schedColor(e.venueKey)};background:${schedColor(e.venueKey)}"></i>`).join('') + (items.length > 3 ? `<em>${items.length}</em>` : '');
+    const names = nameShown.map(e => `<i class="${e.source === 'plan' ? 'plan' : ''}"><b style="--c:${schedColor(e.venueKey)};background:${schedColor(e.venueKey)}"></b><span>${esc(e.title)}</span></i>`).join('') + (items.length > nameShown.length ? `<em>+${items.length - nameShown.length}</em>` : '');
     return `<button type="button" class="mcal-phday${d === day ? ' on' : ''}${d === today() ? ' is-today' : ''}${wk === 0 ? ' sun' : ''}${wk === 6 ? ' sat' : ''}" data-sday="${d}" aria-pressed="${d === day}" aria-label="${n}일${items.length ? ', 일정 ' + items.length + '건' : ''}"><span class="mcal-phtop"><b>${n}</b><span class="mcal-marks">${marks}</span></span><span class="mcal-names">${names}</span></button>`;
   }).join('')).join('');
   const prev = S.ui.schedPrev;
   const preview = prev ? `<div class="card sched-prev">
     <h2>올리기 전 확인 <span class="r">${esc(prev.name || '')}</span></h2>
-    <p class="src">체크한 줄만 저장합니다. 1부(공식 X)와 2부(내부 예정)는 출처가 달라, 다시 올리면 그 출처만 바뀝니다. 줄 끝의 X 주소는 상세에 링크로 남습니다.</p>
+    <p class="src">체크한 줄만 저장합니다. 1부(공식 발표)와 2부(내부 예정)는 출처가 달라, 다시 올리면 그 출처만 바뀝니다. 줄 끝의 주소는 상세에 링크로 남습니다.</p>
     <div class="tw"><table><thead><tr><th></th><th>출처</th><th>기간</th><th>장소</th><th>행사</th><th>종류</th></tr></thead><tbody>
-    ${prev.rows.map((r, i) => `<tr class="${r.hold ? 'flag' : ''}"><td><input type="checkbox" data-schk="${i}" ${r.on ? 'checked' : ''} aria-label="저장"></td><td>${r.source === 'plan' ? '내부 예정' : '공식 X'}</td><td class="nowrap">${r.undated ? '날짜 미정' : esc(r.start) + (r.end !== r.start ? ' ~ ' + esc(r.end) : '')}${r.open && !r.undated ? ' · 종료 미정' : ''}</td><td><input class="inp" data-sved="${i}" value="${esc(r.venue)}"></td><td><input class="inp" data-stit="${i}" value="${esc(r.title)}"></td><td>${esc(SCHED_TYPES[r.type] || r.type)}${r.link ? ` <a href="${esc(r.link)}" target="_blank" rel="noopener">X</a>` : ''}${r.warn ? `<div class="muted">${esc(r.warn)}</div>` : ''}</td></tr>`).join('')}
+    ${prev.rows.map((r, i) => `<tr class="${r.hold ? 'flag' : ''}"><td><input type="checkbox" data-schk="${i}" ${r.on ? 'checked' : ''} aria-label="저장"></td><td>${r.source === 'plan' ? '내부 예정' : '공식 발표'}</td><td class="nowrap">${r.undated ? '날짜 미정' : esc(r.start) + (r.end !== r.start ? ' ~ ' + esc(r.end) : '')}${r.open && !r.undated ? ' · 종료 미정' : ''}</td><td><input class="inp" data-sved="${i}" value="${esc(r.venue)}"></td><td><input class="inp" data-stit="${i}" value="${esc(r.title)}"></td><td>${esc(SCHED_TYPES[r.type] || r.type)}${r.link ? ` <a href="${esc(r.link)}" target="_blank" rel="noopener">원문</a>` : ''}${r.warn ? `<div class="muted">${esc(r.warn)}</div>` : ''}</td></tr>`).join('')}
     </tbody></table></div>
     ${prev.skipped.length ? `<p class="src">읽지 못한 줄 ${prev.skipped.length}개. 예: ${esc(prev.skipped[0].why)} (${esc(String(prev.skipped[0].line || '').slice(0, 80))})</p>` : ''}
     <div class="row"><button class="btn pri" id="schedSave">이 목록 저장</button><button class="btn" id="schedCancel">취소</button></div>
   </div>` : '';
   const thisOn = ym === today().slice(0, 7) ? ' on' : '';
   const fileCard = `<div class="card drop" id="schedDrop"><h2>일정 파일</h2>
-    <p class="src">한 줄에 하나. <b>- 2026-11-12 (목) ~ 2026-12-03 (목) | 장소 | 행사 이름 | 출처 주소</b>. 큰 제목 <b>## 1. … 공식 X</b>는 실선, <b>## 2. … 내부 예정</b>은 점선입니다. JSON도 됩니다.</p>
+    <p class="src">한 줄에 하나. <b>- 2026-11-12 (목) ~ 2026-12-03 (목) | 장소 | 행사 이름 | 출처 주소</b>. 큰 제목 <b>## 1. … 공식 발표</b>는 실선, <b>## 2. … 내부 예정</b>은 점선입니다. JSON도 됩니다.</p>
     <button class="btn pri" id="schedFile">일정 파일 올리기</button>
   </div>`;
-  return `${head('월간 일정', '공식 팝업·카페·전시 · 대표만 · 실선은 공식 X, 점선은 내부 예정', '<button class="btn" id="schedPrevM">이전 달</button><button class="chip' + thisOn + '" id="schedThis">이번달</button><button class="btn" id="schedNextM">다음 달</button><button class="btn" id="schedPrint">인쇄</button>')}
+  return `${head('월간 일정', '공식 팝업·카페·전시 · 대표만 · 실선은 공식 발표, 점선은 내부 예정', '<button class="btn" id="schedPrevM">이전 달</button><button class="chip' + thisOn + '" id="schedThis">이번달</button><button class="btn" id="schedNextM">다음 달</button><button class="btn" id="schedPrint">인쇄</button>')}
   ${preview}
   <article class="mcal">
     <header class="mcal-top"><h2>${y}년 ${m}월</h2><p class="src">${month.length ? `이 달 ${month.length}건 · 장소 ${venues.length}곳` : '이 달에 겹치는 일정이 없습니다. 위에서 파일을 올리세요.'}</p></header>
-    <ul class="mcal-leg">${venues.map(e => `<li><i style="background:${schedColor(e.venueKey)}"></i><span>${esc(e.venueKey)}</span></li>`).join('')}<li><i class="official"></i><span>공식 X</span></li><li><i class="plan"></i><span>내부 예정</span></li><li><span class="ty">팝업</span><span class="ty">카페</span><span class="ty">전시</span></li></ul>
+    <ul class="mcal-leg">${venues.map(e => `<li><i style="background:${schedColor(e.venueKey)}"></i><span>${esc(e.venueKey)}</span></li>`).join('')}<li><i class="official"></i><span>공식 발표</span></li><li><i class="plan"></i><span>내부 예정</span></li><li><span class="ty">팝업</span><span class="ty">카페</span><span class="ty">전시</span></li></ul>
+    ${undated.length ? `<aside class="mcal-undated"><h3>날짜 미정</h3>${undated.map(e => `<p><b style="color:${schedColor(e.venueKey)}">${esc(e.venueKey)}</b> ${srcLabel(e)} · ${esc(e.title)}</p>`).join('')}</aside>` : ''}
     <div class="mcal-split">
     <div class="mcal-phone"><div class="mcal-dow">${dow.map((d, i) => `<span class="${i === 0 ? 'sun' : i === 6 ? 'sat' : ''}">${d}</span>`).join('')}</div><div class="mcal-phdays" style="--weeks:${weeks.length}">${phoneDays}</div></div>
-    <section class="mcal-detail">${fileCard}<h3>${day ? md(day) + ' 일정' : '날짜를 누르면 그 날이 여기에 나옵니다'}</h3>
-      ${day ? (dayItems.length ? dayItems.map(evBlock).join('') : '<p class="muted">이 날 일정이 없습니다.</p>') : ''}
-      ${undated.length ? `<h3>날짜 미정</h3>${undated.map(evBlock).join('')}` : ''}
+    <section class="mcal-detail"><h3>${day ? md(day) + ' 일정' : '날짜를 누르면 그 날이 여기에 나옵니다'}</h3>
+      ${day ? (dayGroups.length ? dayGroups.map(groupBlock).join('') : '<p class="muted">이 날 일정이 없습니다.</p>') : ''}
+      ${fileCard}
     </section>
     </div>
     <div class="mcal-gridwrap">

@@ -919,6 +919,11 @@ body.sched-on .pha > .chip{border-radius:8px;justify-content:center}
 .mcal-evmeta .ty{border:1px solid var(--line);border-radius:6px;padding:1px 6px;font-size:13px}
 .mcal-evtitle{font-size:15px;font-weight:800;line-height:1.4;margin-top:2px}
 .mcal-printlist{display:none}
+.mcal-undated{border:1px solid var(--line);border-radius:10px;padding:8px 12px;background:var(--surface);text-align:left}
+.mcal-undated h3{margin:0 0 6px;font-size:14px}
+.mcal-undated p{margin:0 0 4px;font-size:13px;line-height:1.4}
+.mcal-sub{margin:0 0 8px 14px;padding:4px 0 4px 10px;border-left:3px solid var(--line);display:flex;flex-direction:column;align-items:flex-start;gap:2px;font-size:14px;line-height:1.4}
+.mcal-sub b{font-size:14px}
 .mcal-phdays{display:grid;grid-template-columns:repeat(7,minmax(40px,1fr));grid-template-rows:repeat(var(--weeks,6),minmax(44px,1fr));gap:2px}
 .mcal-phday{box-sizing:border-box;min-width:40px;min-height:44px;height:auto;padding:2px 1px 1px;border:1px solid var(--line);border-radius:8px;background:var(--surface);display:flex;flex-direction:column;align-items:center;justify-content:space-between;container-type:size}
 .mcal-phday .mcal-phtop > b{font-size:15px;line-height:20px;min-width:22px;height:20px;display:flex;align-items:center;justify-content:center}
@@ -952,27 +957,22 @@ body.sched-on .pha > .chip{border-radius:8px;justify-content:center}
   .mcal-phtop{flex-direction:row;align-items:center;justify-content:space-between;flex:none;gap:4px}
   .mcal-phtop > b{align-self:center}
   .mcal-marks{justify-content:flex-end}
-  .mcal-names{display:flex;flex-direction:column;gap:2px;margin-top:4px;min-width:0;width:100%;max-width:100%;overflow:hidden;text-align:left}
-  .mcal-names i{font-style:normal;font-size:12px;line-height:1.3;font-weight:700;display:flex;align-items:center;gap:4px;min-width:0;max-width:100%;overflow:hidden}
-  .mcal-names i b{width:7px;height:7px;min-width:7px;min-height:7px;border-radius:50%;flex:none;padding:0}
-  .mcal-names i.plan b{background:transparent!important;box-shadow:inset 0 0 0 1.5px var(--c)}
-  .mcal-names i span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-  .mcal-names em{font-style:normal;font-size:12px;font-weight:800;color:var(--ink-2);text-align:left}
 }
 @media (min-width:960px){
   body.sched-on #app{height:100%;display:flex;flex-direction:column;overflow:hidden}
   body.sched-on .shell{flex:1 1 auto;min-height:0;height:auto}
   body.sched-on main{display:flex;flex-direction:column;height:100%;min-height:0;overflow:hidden;padding-bottom:12px}
   body.sched-on .page{flex:1 1 auto;min-height:0;display:flex;flex-direction:column}
-  body.sched-on .mcal{flex:1 1 0;min-height:0;display:grid;grid-template-columns:minmax(0,1fr) minmax(260px,380px);grid-template-rows:auto auto minmax(0,1fr);column-gap:16px;row-gap:8px;align-items:stretch}
+  body.sched-on .mcal{flex:1 1 0;min-height:0;display:grid;grid-template-columns:minmax(0,1fr) minmax(260px,380px);grid-template-rows:auto auto auto minmax(0,1fr);column-gap:16px;row-gap:8px;align-items:stretch}
   body.sched-on .mcal-top{grid-column:1 / -1;grid-row:1}
   body.sched-on .mcal-leg{grid-column:1 / -1;grid-row:2}
+  body.sched-on .mcal-undated{grid-column:1 / -1;grid-row:3}
   body.sched-on .mcal-split{display:contents}
-  body.sched-on .mcal-phone{grid-column:1;grid-row:3;min-height:0;height:100%;display:flex;flex-direction:column}
+  body.sched-on .mcal-phone{grid-column:1;grid-row:4;min-height:0;height:100%;display:flex;flex-direction:column}
   body.sched-on .mcal-phdays{flex:1 1 auto;min-height:0}
   body.sched-on .mcal-phday{height:100%;min-width:0;max-width:100%;overflow:hidden}
   body.sched-on .mcal-names{max-height:calc(100% - 26px);overflow:hidden}
-  body.sched-on .mcal-detail{grid-column:2;grid-row:3;height:100%;max-height:none;min-height:0;overflow:auto;align-self:stretch}
+  body.sched-on .mcal-detail{grid-column:2;grid-row:4;height:100%;max-height:none;min-height:0;overflow:auto;align-self:stretch}
   body.sched-on #schedDrop{display:flex;align-items:center;gap:12px;padding:10px 12px;margin:0}
   body.sched-on #schedDrop h2{margin:0}
   body.sched-on #schedDrop p{display:none}
@@ -980,14 +980,26 @@ body.sched-on .pha > .chip{border-radius:8px;justify-content:center}
   body.sched-on .mcal-leg{flex-wrap:wrap;overflow:visible}
   body.sched-on .kclock{display:none!important}
 }
-@container (min-height: 70px){
+.mcal-names i,.mcal-names em{flex:0 0 16px;height:16px;min-height:16px;max-height:16px;line-height:16px;overflow:hidden}
+@media (min-width:800px) and (min-height:1000px), (min-width:1100px) and (min-height:760px){
   .mcal-phtop{flex-direction:row;align-items:center;justify-content:space-between;flex:none;gap:4px}
   .mcal-marks{justify-content:flex-end}
-  .mcal-names{display:flex;flex-direction:column;gap:2px;margin-top:4px;min-width:0;width:100%;max-width:100%;overflow:hidden;text-align:left}
-  .mcal-names i{font-style:normal;font-size:12px;line-height:1.3;font-weight:700;display:flex;align-items:center;gap:4px;min-width:0;max-width:100%;overflow:hidden}
+  .mcal-names{display:flex;flex-direction:column;gap:2px;margin-top:2px;min-width:0;width:100%;max-width:100%;overflow:hidden;text-align:left;flex:1 1 auto;max-height:34px}
+  .mcal-names i{font-style:normal;font-size:12px;font-weight:700;display:flex;align-items:center;gap:4px;min-width:0;max-width:100%}
   .mcal-names i b{width:7px;height:7px;min-width:7px;min-height:7px;border-radius:50%;flex:none;padding:0}
   .mcal-names i.plan b{background:transparent!important;box-shadow:inset 0 0 0 1.5px var(--c)}
-  .mcal-names i span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .mcal-names i span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;line-height:16px}
+  .mcal-names em{font-style:normal;font-size:12px;font-weight:800;color:var(--ink-2);text-align:left}
+}
+@container (min-height: 72px){
+  .mcal-phtop{flex-direction:row;align-items:center;justify-content:space-between;flex:none;gap:4px}
+  .mcal-marks{justify-content:flex-end}
+  .mcal-names{display:flex;flex-direction:column;gap:2px;margin-top:2px;min-width:0;width:100%;max-width:100%;overflow:hidden;text-align:left;flex:1 1 auto}
+  .mcal-names i{font-style:normal;font-size:12px;font-weight:700;display:flex;align-items:center;gap:4px;min-width:0;max-width:100%}
+  .mcal-names i:nth-child(n+3){display:none}
+  .mcal-names i b{width:7px;height:7px;min-width:7px;min-height:7px;border-radius:50%;flex:none;padding:0}
+  .mcal-names i.plan b{background:transparent!important;box-shadow:inset 0 0 0 1.5px var(--c)}
+  .mcal-names i span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;line-height:16px}
   .mcal-names em{font-style:normal;font-size:12px;font-weight:800;color:var(--ink-2);text-align:left}
 }
 @media (max-width:1100px){
@@ -1046,8 +1058,8 @@ body.sched-on .pha > .chip{border-radius:8px;justify-content:center}
 <script defer src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
 <script defer src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 <script defer src="config.js"></script>
-<script defer src="firebase.js?v=100"></script>
-<script defer src="app.js?v=100"></script>
+<script defer src="firebase.js?v=102"></script>
+<script defer src="app.js?v=102"></script>
 <script>if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});</script>
 
 </body></html>
