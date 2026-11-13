@@ -581,6 +581,7 @@ body:has(.cntregbar) .toast{bottom:calc(var(--tabh,64px) + 96px)}
   .me2{display:none}.me1{font-size:12px}.me1 b{font-size:12.5px}.me-btn{padding:4px 6px;max-width:120px}.me1{overflow:hidden;text-overflow:ellipsis;max-width:100%}
   .store-btn img{height:24px}
 }
+.bin-sub{display:none}.bin-sub.on{display:block;margin-top:2px;font-size:11px;font-weight:650;color:var(--muted);white-space:nowrap}
 @media (max-width: 560px){
   .ph h1{font-size:19px}
   .tiles{grid-template-columns:1fr 1fr;gap:8px}
@@ -589,6 +590,7 @@ body:has(.cntregbar) .toast{bottom:calc(var(--tabh,64px) + 96px)}
   .tile .v small{font-size:11px}
   .tile .v.long{font-size:clamp(15px,4.4vw,20px)}
   .hide-s{display:none}.show-s{display:revert!important}
+  .bin-wide{display:none}.bin-sub{display:block;margin-top:2px;font-size:11px;font-weight:650;color:var(--muted);white-space:nowrap}
   .formgrid{grid-template-columns:1fr}
   .formgrid .field{grid-column:auto!important}
   td.nm{min-width:140px}
@@ -1113,8 +1115,8 @@ body.sched-on .pha > .chip{border-radius:8px;justify-content:center}
 <script defer src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
 <script defer src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 <script defer src="config.js"></script>
-<script defer src="firebase.js?v=112"></script>
-<script defer src="app.js?v=112"></script>
+<script defer src="firebase.js?v=113"></script>
+<script defer src="app.js?v=113"></script>
 <script>if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});</script>
 
 </body></html>
