@@ -50,7 +50,7 @@ const PERM_DEF = [
 ];
 
 const DEFAULT_ORDER = STORES.map(s => s.id);
-const APP_VERSION = '2026-11-13 09:30';   // 앱 화면을 마지막으로 고친 시각 (한국 시간)
+const APP_VERSION = '2026-11-13 09:40';   // 앱 화면을 마지막으로 고친 시각 (한국 시간)
 /* ───────── 작은 도구 ───────── */
 const $ = (s, el = document) => el.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -638,7 +638,7 @@ function schedView() {
       const cont = week[it.a] !== e.start;
       const kind = SCHED_TYPES[e.type] || '';
       const label = `${cont ? '← ' : ''}${kind ? kind + ' ' : ''}${esc(e.title)}`;
-      return `<button type="button" class="mcal-bar ${e.source === 'plan' ? 'plan' : 'official'}" data-sday="${week[it.a]}" style="grid-column:${it.a + 1} / ${it.b + 2};grid-row:${it.lane + 1};background:${schedColor(e.venueKey)}" title="${esc(e.venueKey)} · ${esc(kind)} · ${esc(e.title)} · ${esc(e.start)}~${esc(e.end)}">${label}</button>`;
+      return `<button type="button" class="mcal-bar ${e.source === 'plan' ? 'plan' : 'official'}" data-sday="${week[it.a]}" style="grid-column:${it.a + 1} / ${it.b + 2};grid-row:${it.lane + 1};background:${schedColor(e.venueKey)}" title="${esc(e.venueKey)} · ${esc(kind)} · ${esc(e.title)} · ${esc(e.start)}~${esc(e.end)}"><span>${label}</span></button>`;
     }).join('');
     const days = week.map((d, i) => {
       const on = d && d === day ? ' on' : '';
