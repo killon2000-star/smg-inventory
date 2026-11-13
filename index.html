@@ -903,9 +903,9 @@ tr.off td{opacity:.45}
 .gnums .bad{color:var(--bad)}
 .gnums .inp{width:88px;min-height:44px}
 .ibsteps{display:flex;flex-wrap:wrap;gap:6px 8px;align-items:center;font-weight:800;margin:0 0 10px}
-.ibsteps span{padding:6px 10px;border-radius:999px;background:var(--surface-2);color:var(--ink-2)}
-.ibsteps span.on{background:var(--red);color:#fff}
-.ibsteps span.done{color:var(--ink)}
+.ibsteps button{min-height:44px;padding:8px 12px;border-radius:999px;border:1px solid var(--line);background:var(--surface-2);color:var(--ink-2);font-weight:800}
+.ibsteps button.on{background:var(--red);border-color:var(--red);color:#fff}
+.ibsteps button.done{color:var(--ink);background:var(--surface)}
 .ibsteps i{font-style:normal;color:var(--muted)}
 @media (max-width:700px){
   .cntgrid .cwide{display:none}
@@ -1113,8 +1113,8 @@ body.sched-on .pha > .chip{border-radius:8px;justify-content:center}
 <script defer src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
 <script defer src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 <script defer src="config.js"></script>
-<script defer src="firebase.js?v=110"></script>
-<script defer src="app.js?v=110"></script>
+<script defer src="firebase.js?v=111"></script>
+<script defer src="app.js?v=111"></script>
 <script>if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});</script>
 
 </body></html>
