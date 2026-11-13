@@ -50,7 +50,7 @@ const PERM_DEF = [
 ];
 
 const DEFAULT_ORDER = STORES.map(s => s.id);
-const APP_VERSION = '2026-11-13 10:20';   // 앱 화면을 마지막으로 고친 시각 (한국 시간)
+const APP_VERSION = '2026-11-13 10:40';   // 앱 화면을 마지막으로 고친 시각 (한국 시간)
 /* ───────── 작은 도구 ───────── */
 const $ = (s, el = document) => el.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -603,34 +603,32 @@ function schedLanes(week, events) {
 }
 function schedYm() { const cap = today().slice(0, 7); return S.ui.schedYm || cap; }
 const SCHED_SUB = /사전\s*예약|예약제|예약|특전|할인|후기|(?:^|\s)MD(?:\s|$)|오픈|이용/;
-function schedCore(title) {
-  return String(title || '')
-    .replace(/\([^)]*\)/g, ' ')
-    .replace(/사전\s*예약\s*(오픈|이용|안내)?/g, ' ')
-    .replace(/예약제|예약\s*오픈|예약/g, ' ')
-    .replace(/특별\s*할인|할인|후기\s*오픈|후기|특전|MD|오픈|이용|안내/g, ' ')
-    .replace(/[^\p{Script=Hangul}\p{L}\p{N}]+/gu, '')
-    .toLowerCase();
+const SCHED_STOP = new Set(['콜라보', '카페', '팝업', '스토어', '팝업스토어', '전시', '기념', '방송', '애니메이션', '주년', '시즌', '주말', '평일', '한정', '당초', '조기', '종료', '영업', 'the', 'final', 'season', 'pop', 'up', 'store', 'new', 'coming', 'soon', 'popup', 'light', 'shadow', 'cafe', 'box', 'smg', 'tv']);
+function schedTokens(title) {
+  const raw = String(title || '').replace(/\([^)]*\)/g, ' ').replace(/사전\s*예약/g, ' ');
+  const parts = raw.split(/[^\p{Script=Hangul}A-Za-z0-9]+/u).filter(Boolean);
+  const out = [];
+  parts.forEach(p => {
+    const t = p.toLowerCase();
+    if (t.length < 2 || SCHED_STOP.has(t) || /^\d+$/.test(t)) return;
+    out.push(t);
+  });
+  return out;
 }
+function schedOverlap(a, b) { return !!(a.start && a.end && b.start && b.end && a.start <= b.end && b.start <= a.end); }
 function schedCovers(e, day) { return !!(e && e.start && e.end && e.start <= day && e.end >= day); }
 function schedGroups(events) {
   const items = (events || []).filter(e => e && !e.undated && e.start && e.end);
-  const groups = items.filter(e => !SCHED_SUB.test(e.title || '')).map(main => ({ main, kids: [] }));
-  items.filter(e => SCHED_SUB.test(e.title || '')).forEach(sub => {
-    const core = schedCore(sub.title);
+  const isSub = e => SCHED_SUB.test(e.title || '');
+  const groups = items.filter(e => !isSub(e)).map(main => ({ main, kids: [] }));
+  items.filter(isSub).forEach(sub => {
+    const tok = new Set(schedTokens(sub.title));
     let best = null, score = 0;
     groups.forEach(g => {
-      if (g.main.venueKey !== sub.venueKey) return;
-      const pc = schedCore(g.main.title);
-      if (pc.length < 4 || core.length < 4) return;
-      let s = 0;
-      if (core.includes(pc) || pc.includes(core)) s = Math.min(pc.length, core.length) + 100;
-      else {
-        let i = 0;
-        while (i < pc.length && i < core.length && pc[i] === core[i]) i++;
-        if (i >= 6) s = i;
-      }
-      if (s > score) { score = s; best = g; }
+      if (g.main.venueKey !== sub.venueKey || !schedOverlap(g.main, sub)) return;
+      const shared = schedTokens(g.main.title).filter(t => tok.has(t) && t.length >= 3);
+      const s = shared.reduce((n, t) => n + t.length, 0);
+      if (shared.length && s > score) { score = s; best = g; }
     });
     if (best) best.kids.push(sub);
     else groups.push({ main: sub, kids: [] });
@@ -710,9 +708,10 @@ function schedView() {
     const items = schedOnDay(groups, d);
     const n = +d.slice(8);
     const wk = new Date(d + 'T00:00:00Z').getUTCDay();
-    const shown = items.slice(0, 3).map(g => g.main);
-    const marks = shown.map(e => `<i class="${e.source === 'plan' ? 'plan' : 'official'}" style="--c:${schedColor(e.venueKey)};background:${schedColor(e.venueKey)}"></i>`).join('') + (items.length > 3 ? `<em>${items.length}</em>` : '');
-    const names = shown.map(e => `<i class="${e.source === 'plan' ? 'plan' : ''}"><b style="--c:${schedColor(e.venueKey)};background:${schedColor(e.venueKey)}"></b><span>${esc(e.title)}</span></i>`).join('') + (items.length > 3 ? `<em>+${items.length - 3}</em>` : '');
+    const dotShown = items.slice(0, 3).map(g => g.main);
+    const nameShown = items.slice(0, items.length > 2 ? 1 : items.length).map(g => g.main);
+    const marks = dotShown.map(e => `<i class="${e.source === 'plan' ? 'plan' : 'official'}" style="--c:${schedColor(e.venueKey)};background:${schedColor(e.venueKey)}"></i>`).join('') + (items.length > 3 ? `<em>${items.length}</em>` : '');
+    const names = nameShown.map(e => `<i class="${e.source === 'plan' ? 'plan' : ''}"><b style="--c:${schedColor(e.venueKey)};background:${schedColor(e.venueKey)}"></b><span>${esc(e.title)}</span></i>`).join('') + (items.length > nameShown.length ? `<em>+${items.length - nameShown.length}</em>` : '');
     return `<button type="button" class="mcal-phday${d === day ? ' on' : ''}${d === today() ? ' is-today' : ''}${wk === 0 ? ' sun' : ''}${wk === 6 ? ' sat' : ''}" data-sday="${d}" aria-pressed="${d === day}" aria-label="${n}일${items.length ? ', 일정 ' + items.length + '건' : ''}"><span class="mcal-phtop"><b>${n}</b><span class="mcal-marks">${marks}</span></span><span class="mcal-names">${names}</span></button>`;
   }).join('')).join('');
   const prev = S.ui.schedPrev;
