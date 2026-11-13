@@ -873,6 +873,7 @@ td,th{font-variant-numeric:tabular-nums}
 .cntprev{display:flex;flex-direction:column;gap:8px;width:100%;min-width:0;border-top:1px solid var(--line);padding-top:10px}
 .cntprev h2,.cntprev h3{margin:0;font-size:16px;text-align:left}
 .cntgrid{width:100%}
+.cntgrid td.nm,.cntgrid td.nm .code{overflow-wrap:anywhere;word-break:break-word;min-width:0}
 .cntgrid input.inp.qty{min-height:44px;width:100%}
 .cntgrid .conly{display:none;font-size:13px;line-height:1.35;margin-top:4px}
 @media (max-width:700px){
@@ -1081,8 +1082,8 @@ body.sched-on .pha > .chip{border-radius:8px;justify-content:center}
 <script defer src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
 <script defer src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 <script defer src="config.js"></script>
-<script defer src="firebase.js?v=105"></script>
-<script defer src="app.js?v=105"></script>
+<script defer src="firebase.js?v=106"></script>
+<script defer src="app.js?v=106"></script>
 <script>if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});</script>
 
 </body></html>

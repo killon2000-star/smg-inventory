@@ -50,7 +50,7 @@ const PERM_DEF = [
 ];
 
 const DEFAULT_ORDER = STORES.map(s => s.id);
-const APP_VERSION = '2026-11-13 15:10';   // 앱 화면을 마지막으로 고친 시각 (한국 시간)
+const APP_VERSION = '2026-11-13 15:20';   // 앱 화면을 마지막으로 고친 시각 (한국 시간)
 /* ───────── 작은 도구 ───────── */
 const $ = (s, el = document) => el.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -2250,6 +2250,8 @@ function isTimeCell(s) { return /^\d{1,2}:\d{2}(\s*[~\-～]\s*\d{1,2}:\d{2})?$/.
 function isMemoCell(s) { return /^DP\s*수량/i.test(s) || /수량\s*[:：]\s*\d/.test(s); }
 function isBarcodeCell(s) { return /^880\d{9,12}$/.test(s) || /^\d{12,14}$/.test(s); }
 function isPlainNum(s) { return /^-?\d{1,3}(,\d{3})+(\.\d+)?$/.test(s) || /^-?\d+(\.\d+)?$/.test(s); }
+function isPrivateHead(label) { return /수령|담당|전화|연락|휴대폰|핸드폰|주소|address|phone|tel|mobile/.test(normHead(label)); }
+function isPhoneCell(s) { return /(?:^|\D)01[016789][-\s]?\d{3,4}[-\s]?\d{4}(?:\D|$)/.test(String(s || '')); }
 function peelQty(s) { const m = String(s ?? '').trim().match(/^(.*[가-힣A-Za-z_])\s+(\d{1,3}(?:,\d{3})+|\d{1,6})$/); return m ? { text: m[1].trim(), n: countNum(m[2]) } : { text: String(s ?? '').trim(), n: null }; }
 function rowBlank(r) { return !(r || []).some(c => String(c ?? '').trim()); }
 function headerish(row) {
@@ -2335,13 +2337,27 @@ function countParseRows(rows, pick) {
   }
   if (pick && pick.qty != null) map = { ...map, qty: pick.qty, countCol: true };
   if (map.prod < 0 && map.bc < 0 && map.name < 0) return { err: '상품 칸(바코드·상품명)을 찾지 못했습니다. 아래 칸 버튼으로 골라 주세요.' };
-  const width = Math.max(labels.length, ...body.slice(0, 30).map(r => r.length));
+  const width = Math.max(labels.length, ...body.slice(0, 40).map(r => r.length));
+  const bigo = labels.findIndex(h => normHead(h) === '비고' || normHead(h).startsWith('비고'));
+  const vals = c => body.map(r => String(r[c] ?? '').trim()).filter(Boolean);
+  const priv = (label, vs) => isPrivateHead(label) || (vs.length && (vs.filter(isPhoneCell).length / vs.length >= .3 || vs.filter(v => /주소\s*[:：]/.test(v)).length / vs.length >= .3));
   const cols = [];
   for (let c = 0; c < width; c++) {
+    if (bigo >= 0 && c > bigo) continue;
     const label = cleanLabel(labels[c] || '');
-    const sample = body.map(r => cleanLabel(r[c])).find(Boolean) || '';
-    if (!label && !sample) continue;
-    cols.push({ i: c, label: label || ('칸 ' + (c + 1) + ' · ' + sample.slice(0, 14)) });
+    const vs = vals(c);
+    if (priv(label, vs)) continue;
+    const n = normHead(label);
+    const numeric = vs.length && vs.filter(isPlainNum).length / vs.length >= .6;
+    let role = '';
+    if (n && /바코드|barcode|ean|jan|upc|gtin/.test(n) && !/상품명|품명/.test(n)) role = 'prod';
+    else if (n && /상품명|품명|제품명|품목명|품번|상품코드|품목코드/.test(n)) role = 'prod';
+    else if (n && !/^(no|번호|순번)$/.test(n) && (countWord(label) || /수량|재고|현재고|개수|qty/.test(n)) && (numeric || !!countWord(label))) role = 'qty';
+    else if (!n && !header && numeric && vs.every(v => !isPhoneCell(v) && !isDateCell(v) && !isTimeCell(v))) role = 'qty';
+    else if (!n && !header && vs.filter(isBarcodeCell).length >= 1) role = 'prod';
+    else if (!n && !header && vs.filter(v => /[가-힣A-Za-z]{2,}/.test(v) && !isMemoCell(v) && !isTimeCell(v) && !isDateCell(v)).length >= 1 && !numeric) role = 'prod';
+    if (!role) continue;
+    cols.push({ i: c, role, label: label || ('칸 ' + (c + 1)) });
   }
   const cell = (r, i) => i >= 0 ? String(r[i] ?? '').trim() : '';
   const items = [];
@@ -2360,8 +2376,8 @@ function countParseRows(rows, pick) {
     if (!bc && !name && !/[가-힣A-Za-z]/.test(r.join(' '))) return;
     items.push(countMatchRow({ name, bc, sku: !bc && name && /_|[A-Za-z]{2,}/.test(name) ? name : '', qty: blank ? null : qty, blank, countCol: !!map.countCol }));
   });
-  const prodLabel = (cols.find(c => c.i === (map.bc >= 0 ? map.bc : map.prod)) || {}).label || '상품';
-  const qtyLabel = (cols.find(c => c.i === map.qty) || {}).label || '수량';
+  const prodLabel = cleanLabel(labels[map.bc >= 0 ? map.bc : map.prod] || '') || (map.bc >= 0 ? '바코드' : '상품');
+  const qtyLabel = cleanLabel(labels[map.qty] || '') || '수량';
   return { items, cols, prod: map.prod, qty: map.qty, prodLabel, qtyLabel, countCol: !!map.countCol };
 }
 function countSetPreview(parsed, src) {
@@ -2523,7 +2539,7 @@ function countPrevHtml() {
   const ds = d => d === 0 ? '<span class="muted">0</span>' : `<b style="color:${d < 0 ? 'var(--bad)' : 'var(--ok)'}">${d > 0 ? '+' : ''}${fmt(d)}</b>`;
   const row = m => `<tr><td class="nm"><b>${esc(m.name)}</b><div class="code">${esc(m.code)}</div>${m.lines > 1 ? `<div><span class="pill p-warn">${m.lines}줄 합침</span></div>` : ''}<div class="conly">장부 ${fmt(m.book)} · 차이 ${m.diff > 0 ? '+' : ''}${fmt(m.diff)}</div></td><td class="n cwide">${fmt(m.book)}</td><td class="n">${fmt(m.qty)}</td><td class="n cwide">${ds(m.diff)}</td></tr>`;
   const miss = m => `<tr><td class="nm">${esc(m.name || '(이름 없음)')}${m.bc ? `<div class="code">${esc(m.bc)}</div>` : ''}<div class="muted">${esc(m.why)}</div></td><td class="n">${m.qty == null ? '—' : fmt(m.qty)}</td></tr>`;
-  const btns = (kind, cur) => (p.cols || []).map(c => `<button type="button" class="btn ${c.i === cur ? 'pri' : ''}" data-cnt${kind}="${c.i}">${esc(c.label)}</button>`).join('');
+  const btns = (role, cur) => (p.cols || []).filter(c => c.role === role).map(c => `<button type="button" class="btn ${c.i === cur ? 'pri' : ''}" data-cnt${role}="${c.i}">${esc(c.label)}</button>`).join('');
   return `<div class="cntprev"><h2>미리보기 <span class="r">${esc(p.src)} · ${p.matched.length}종</span></h2>
     <p class="src">읽은 칸: 상품=<b>${esc(p.prodLabel || '')}</b>, 수량=<b>${esc(p.qtyLabel || '')}</b>. 잘못 잡혔으면 칸 버튼을 누르세요. [등록] 전까지는 저장되지 않습니다.</p>
     <div class="cntpick"><span class="lb">상품 칸</span><div class="cnttabs" role="group" aria-label="상품 칸">${btns('prod', p.prod)}</div><span class="lb">실사 칸</span><div class="cnttabs" role="group" aria-label="실사 칸">${btns('qty', p.qty)}</div></div>
