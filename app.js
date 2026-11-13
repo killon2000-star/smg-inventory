@@ -50,7 +50,7 @@ const PERM_DEF = [
 ];
 
 const DEFAULT_ORDER = STORES.map(s => s.id);
-const APP_VERSION = '2026-11-13 07:00';   // 앱 화면을 마지막으로 고친 시각 (한국 시간)
+const APP_VERSION = '2026-11-13 09:30';   // 앱 화면을 마지막으로 고친 시각 (한국 시간)
 /* ───────── 작은 도구 ───────── */
 const $ = (s, el = document) => el.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -611,8 +611,21 @@ function schedView() {
   const month = schedInMonth(list, ym).slice().sort((a, b) => a.start.localeCompare(b.start) || a.venueKey.localeCompare(b.venueKey, 'ko'));
   const venues = [...new Map(month.map(e => [e.venueKey, e])).values()];
   const weeks = schedWeeks(ym);
-  const day = S.ui.schedDay && S.ui.schedDay.slice(0, 7) === ym ? S.ui.schedDay : '';
-  const dayItems = day ? month.filter(e => e.start <= day && e.end >= day) : [];
+  const dim = +monthEnd(ym).slice(8);
+  let day = S.ui.schedDay && S.ui.schedDay.slice(0, 7) === ym ? S.ui.schedDay : '';
+  if (!day) {
+    const t = today();
+    if (t.slice(0, 7) === ym) day = t;
+    else {
+      for (let n = 1; n <= dim; n++) {
+        const iso = `${ym}-${String(n).padStart(2, '0')}`;
+        if (month.some(e => e.start <= iso && e.end >= iso)) { day = iso; break; }
+      }
+    }
+    if (!day) day = `${ym}-01`;
+    S.ui.schedDay = day;
+  }
+  const dayItems = month.filter(e => e.start <= day && e.end >= day);
   const dow = ['일', '월', '화', '수', '목', '금', '토'];
   const MAX_LANES = 4;
   const bars = weeks.map(week => {
@@ -637,7 +650,6 @@ function schedView() {
     }).join('');
     return `<div class="mcal-week"><div class="mcal-lanes" style="grid-template-rows:repeat(${laneH},44px)">${barHtml || '<span class="mcal-none"></span>'}</div><div class="mcal-days">${days}</div></div>`;
   }).join('');
-  const dim = +monthEnd(ym).slice(8);
   const quiet = [];
   const agenda = [];
   for (let d = 1; d <= dim; d++) {
@@ -649,6 +661,15 @@ function schedView() {
   }
   const evBlock = e => `<div class="mcal-ev"><div class="mcal-evmeta"><b style="color:${schedColor(e.venueKey)}">${esc(e.venueKey)}</b><span class="ty">${esc(SCHED_TYPES[e.type] || '')}</span><span>${e.source === 'plan' ? '내부 예정' : '공식 X'}</span></div><div class="mcal-evtitle">${esc(e.title)}</div><div class="muted">${e.undated ? '날짜 미정' : esc(e.start) + (e.end && e.end !== e.start ? ' ~ ' + esc(e.end) : '')}${e.time ? ' · ' + esc(e.time) : ''}${e.open ? ' · 종료 미정' : ''}</div>${e.note ? `<div class="muted">${esc(e.note)}</div>` : ''}${e.link ? `<a href="${esc(e.link)}" target="_blank" rel="noopener">공식 X 글</a>` : ''}</div>`;
   const printList = month.map(e => `<p><b>${esc(e.start.slice(5))}${e.end !== e.start ? '~' + esc(e.end.slice(5)) : ''}</b> ${esc(e.venueKey)} · ${esc(SCHED_TYPES[e.type] || '')} · ${esc(e.title)} · ${e.source === 'plan' ? '내부 예정' : '공식 X'}</p>`).join('');
+  const phoneDays = weeks.map(week => week.map(d => {
+    if (!d) return '<span class="mcal-phday empty"></span>';
+    const items = month.filter(e => e.start <= d && e.end >= d);
+    const n = +d.slice(8);
+    const wk = new Date(d + 'T00:00:00Z').getUTCDay();
+    const shown = items.slice(0, 3);
+    const marks = shown.map(e => `<i class="${e.source === 'plan' ? 'plan' : 'official'}" style="--c:${schedColor(e.venueKey)};background:${schedColor(e.venueKey)}"></i>`).join('') + (items.length > 3 ? `<em>${items.length}</em>` : '');
+    return `<button type="button" class="mcal-phday${d === day ? ' on' : ''}${d === today() ? ' is-today' : ''}${wk === 0 ? ' sun' : ''}${wk === 6 ? ' sat' : ''}" data-sday="${d}" aria-pressed="${d === day}" aria-label="${n}일${items.length ? ', 일정 ' + items.length + '건' : ''}"><b>${n}</b><span class="mcal-marks">${marks}</span></button>`;
+  }).join('')).join('');
   const prev = S.ui.schedPrev;
   const preview = prev ? `<div class="card sched-prev">
     <h2>올리기 전 확인 <span class="r">${esc(prev.name || '')}</span></h2>
@@ -669,6 +690,7 @@ function schedView() {
   <article class="mcal">
     <header class="mcal-top"><h2>${y}년 ${m}월</h2><p class="src">${month.length ? `이 달 ${month.length}건 · 장소 ${venues.length}곳` : '이 달에 겹치는 일정이 없습니다. 위에서 파일을 올리세요.'}</p></header>
     <ul class="mcal-leg">${venues.map(e => `<li><i style="background:${schedColor(e.venueKey)}"></i><span>${esc(e.venueKey)}</span></li>`).join('')}<li><i class="official"></i><span>공식 X</span></li><li><i class="plan"></i><span>내부 예정</span></li><li><span class="ty">팝업</span><span class="ty">카페</span><span class="ty">전시</span></li></ul>
+    <div class="mcal-phone"><div class="mcal-dow">${dow.map((d, i) => `<span class="${i === 0 ? 'sun' : i === 6 ? 'sat' : ''}">${d}</span>`).join('')}</div><div class="mcal-phdays">${phoneDays}</div></div>
     <div class="mcal-gridwrap">
       <p class="src">한 주에는 막대를 4줄까지만 보여 줍니다. 날짜 아래 +숫자는 그 날 더 있는 일정입니다. 날짜를 누르면 아래에 전부 나옵니다.</p>
       <div class="mcal-dow">${dow.map((d, i) => `<span class="${i === 0 ? 'sun' : i === 6 ? 'sat' : ''}">${d}</span>`).join('')}</div>
