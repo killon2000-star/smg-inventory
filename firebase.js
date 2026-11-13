@@ -61,7 +61,7 @@ window.SMG_FIREBASE = function (S, X) {
     db.collection('importMaps').get().then(q => { q.docs.forEach(d => { const x = d.data(); if (x.sig) S.maps[x.sig] = x; }); }).catch(() => { });
     unsub.push(db.collection('products').onSnapshot(q => { S.products = q.docs.map(d => d.data()); X.indexProducts(); R(); }));
     for (const st of mine) {
-      unsub.push(db.collection('stores').doc(st).onSnapshot(d => { S.stock[st] = (d.exists && d.data().q) || {}; R(); }, () => { }));
+      unsub.push(db.collection('stores').doc(st).onSnapshot(d => { const x = d.exists ? d.data() : {}; S.stock[st] = x.q || {}; if (st === 'suwon') S.cab = x.cab || {}; R(); }, () => { }));
       if (!S.user.limited) {
         unsub.push(db.collection('stores').doc(st).collection('moves').orderBy('at', 'desc').limit(1500).onSnapshot(q => {
           S.moves = S.moves.filter(m => m.store !== st).concat(q.docs.map(d => d.data())).sort((a, b) => (a.at > b.at ? 1 : -1)); R();
@@ -97,7 +97,10 @@ window.SMG_FIREBASE = function (S, X) {
         const b = db.batch();
         for (const m of list.slice(i, i + 150)) {
           b.set(db.collection('stores').doc(m.store).collection('moves').doc(m.id), { ...m, uid: S.user.uid });
-          b.set(db.collection('stores').doc(m.store), { q: { [m.pid]: inc(m.qty) } }, { merge: true });
+          const patch = {};
+          if (m.qty) patch.q = { [m.pid]: inc(m.qty) };
+          if (m.cab) patch.cab = { [m.pid]: inc(m.cab) };
+          if (m.qty || m.cab) b.set(db.collection('stores').doc(m.store), patch, { merge: true });
           if (m.type === '창고 보관' || m.type === '창고에서 가져옴') b.set(db.collection('warehouse').doc('main'), { q: { [m.pid]: inc(-m.qty) } }, { merge: true });
           if (m.place) b.set(db.collection('places').doc(m.place), { q: { [m.pid]: inc(-m.qty) } }, { merge: true });
           if (m.type === '매장 이동' && !m.place) {
