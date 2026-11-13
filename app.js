@@ -50,7 +50,7 @@ const PERM_DEF = [
 ];
 
 const DEFAULT_ORDER = STORES.map(s => s.id);
-const APP_VERSION = '2026-11-13 18:40';   // 앱 화면을 마지막으로 고친 시각 (한국 시간)
+const APP_VERSION = '2026-11-13 19:10';   // 앱 화면을 마지막으로 고친 시각 (한국 시간)
 /* ───────── 작은 도구 ───────── */
 const $ = (s, el = document) => el.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -2056,7 +2056,7 @@ function ibDetailView(ib) {
   ${step < 3 ? `<div class="card cntbox">${(ib.warns || []).length ? `<p class="src">${esc(ib.warns.join(' '))}</p>` : ''}${kept}${upload}
     ${S.ui.ibMsg ? `<p class="src">${esc(S.ui.ibMsg.t)}</p>` : ''}
     ${step === 2 ? `<div class="glist">${ib.items.map(x => ibCard(x.name, x.code || '', `<span>예정 ${fmt(x.plan)}</span>`, false)).join('')}</div>` : ''}</div>` : ''}
-  ${step === 3 ? `<div class="card cntbox">${line ? `<p class="cntwhy">${esc(line)}</p>` : ''}${(ib.warns || []).length ? `<p class="src">${esc(ib.warns.join(' '))}</p>` : ''}<p class="cntwhy">${sum}</p>
+  ${step === 3 ? `<div class="card cntbox">${line ? `<p class="cntwhy">${esc(line)}</p>` : ''}${done && ib.result ? `<p class="cntwhy">${esc(ib.result)}</p>` : ''}${(ib.warns || []).length ? `<p class="src">${esc(ib.warns.join(' '))}</p>` : ''}<p class="cntwhy">${sum}</p>
     <button class="btn" type="button" id="ibOnly">${only ? '전체 보기' : '차이만'}</button>
     <div class="glist">${cards || '<p class="src">보이는 상품이 없습니다.</p>'}</div></div>
     ${done ? '' : `<div class="cntregbar"><p class="cntwhy">${sum}</p><button class="btn pri" data-act="ibConfirm">실제 수량으로 입고 확정</button></div>`}` : ''}`;
@@ -2088,12 +2088,11 @@ function ibApplyCountRows(rows, src, extra) {
   for (const r of parsed.items || []) {
     if (r.plan == null && r.qty == null) continue;
     const key = r.bc || norm(r.name); if (!key) continue;
-    const g = guessIpCat(r.name);
     const actual = r.countCol && r.qty != null ? r.qty : null;
     const plan = r.plan != null ? r.plan : (actual != null ? actual : (r.qty || 0));
     const prev = map.get(key);
     if (prev) { prev.qty += plan || 0; if (actual != null) prev.actual = (prev.actual || 0) + actual; prev.lines++; }
-    else map.set(key, { line: map.size + 1, name: r.name, bc: r.bc, sku: r.sku, qty: plan || 0, actual, pid: r.pid, ip: g.ip, cat: g.cat, vendor: r.vendor || '', price: null, lines: r.lines || 1 });
+    else { const ip = fileIp(r.ip, r.name); const known = productByBarcode(r.bc); map.set(key, { line: map.size + 1, name: r.name, bc: r.bc, sku: r.sku, qty: plan || 0, actual, pid: known ? known.id : '', ip: ip.ip, cat: ip.cat, vendor: r.vendor || '', price: null, lines: r.lines || 1 }); }
   }
   f.parsed = [...map.values()]; f.err = f.parsed.length ? '' : '수량 줄을 찾지 못했습니다.'; f.src = src; f.img = '';
   f.readLine = (extra && extra.readLine) || readLineText('', parsed.planLabel, parsed.qtyLabel);
@@ -2127,11 +2126,14 @@ function ibActLoaded(ib, x) {
 async function ibCreate() {
   const f = S.ui.ibForm; if (!f || !f.parsed) return;
   for (const r of f.parsed) {
-    if (r.pid || !r.bc || !((r.qty > 0) || (r.actual > 0))) continue;
-    if (S.P[r.bc]) { r.pid = r.bc; continue; }
-    const g = guessIpCat(r.name);
-    const p = { id: r.bc, barcode: r.bc, sku: r.sku || '', name: r.name, ip: r.ip || g.ip || f.ip || '', cat: r.cat || g.cat || '', price: null, kind: '상설', memo: r.vendor ? `매입 거래처 ${r.vendor}` : '' };
+    if (!r.bc || !((r.qty > 0) || (r.actual > 0))) continue;
+    const known = productByBarcode(r.bc);
+    if (known) { r.pid = known.id; continue; }
+    if (r.pid && S.P[r.pid] && (S.P[r.pid].barcode === r.bc || S.P[r.pid].id === r.bc)) continue;
+    const ip = fileIp(r.ip || f.ip, r.name);
+    const p = { id: r.bc, barcode: r.bc, sku: r.sku || '', name: r.name, ip: ip.ip, cat: r.cat || ip.cat || '', price: null, kind: '상설', memo: [r.vendor ? `매입 거래처 ${r.vendor}` : '', ip.raw && ip.raw !== ip.ip ? ip.raw : ''].filter(Boolean).join(' · ') };
     S.products.push(p); r.pid = r.bc;
+    indexProducts();
     if (DB.saveProduct) await DB.saveProduct(p);
   }
   indexProducts();
@@ -2177,20 +2179,31 @@ async function ibCancel() {
 }
 async function ibConfirm(ib) {
   const lines = [...ib.items.map(x => ({ ...x, q: x.actual || 0 })), ...(ib.extra || []).map(x => ({ ...x, q: x.actual || 0, plan: 0 }))];
-  for (const l of lines) if (!l.pid && l.q > 0) {   // 처음 보는 상품은 목록에 등록
-    const id = l.bc || l.sku || ('N' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5));
-    if (!S.P[id]) { const g = guessIpCat(l.name); const p = { id, sku: /^\d{8,14}$/.test(id) ? '' : (l.sku || ''), barcode: /^\d{8,14}$/.test(id) ? id : (l.bc || ''), name: l.name, ip: l.ip || g.ip || ib.ip || '', cat: l.cat || g.cat || '', price: l.price == null ? null : l.price, kind: '상설', memo: l.vendor ? `매입 거래처 ${l.vendor}` : '' }; S.products.push(p); if (DB.saveProduct) await DB.saveProduct(p); }
-    l.pid = id;
+  let made = 0;
+  for (const l of lines) {
+    if (!(l.q > 0)) continue;
+    const bc = String(l.bc || l.code || '').replace(/\D/g, '');
+    let p = bc ? productByBarcode(bc) : (l.pid && S.P[l.pid] ? S.P[l.pid] : null);
+    if (p && bc && p.barcode && p.barcode !== bc && p.id !== bc) p = null;
+    if (!p && bc) {
+      const ip = fileIp(l.ip || ib.ip, l.name);
+      p = { id: bc, barcode: bc, sku: l.sku || '', name: l.name, ip: ip.ip, cat: l.cat || ip.cat || '', price: l.price == null ? null : l.price, kind: '상설', memo: [l.vendor ? `매입 거래처 ${l.vendor}` : '', ip.raw && ip.raw !== ip.ip ? ip.raw : ''].filter(Boolean).join(' · ') };
+      S.products.push(p); made++;
+      indexProducts();
+      if (DB.saveProduct) await DB.saveProduct(p);
+    }
+    if (p) l.pid = p.id;
   }
   indexProducts();
   const at = new Date().toISOString();
-  const moves = lines.filter(l => l.q > 0).map((l, i) => ({ id: 'ib' + Date.now().toString(36) + i, date: today(), store: ib.store, type: '입고', pid: l.pid, qty: l.q, memo: `${ib.title} · 예정 ${fmt(l.plan)}${l.q !== l.plan ? ` · 차이 ${l.q - l.plan > 0 ? '+' : ''}${fmt(l.q - l.plan)}` : ''}`, by: S.user.name, at }));
+  const moves = lines.filter(l => l.pid && l.q > 0).map((l, i) => ({ id: 'ib' + Date.now().toString(36) + i, date: today(), store: ib.store, type: '입고', pid: l.pid, qty: l.q, memo: `${ib.title} · 예정 ${fmt(l.plan)}${l.q !== l.plan ? ` · 차이 ${l.q - l.plan > 0 ? '+' : ''}${fmt(l.q - l.plan)}` : ''}`, by: S.user.name, at }));
   await DB.saveMoves(stampMoves(moves, ib.actSrc || ib.src || ib.title));
   for (const m of moves) { S.moves.push(m); (S.stock[m.store] ||= {})[m.pid] = stockOf(m.store, m.pid) + m.qty; }
-  ib.items.forEach(x => { if (x.actual == null && (x.bc || x.code)) x.actual = 0; if (!x.pid) { const l = lines.find(y => y.key === x.key); if (l) x.pid = l.pid; } });
+  ib.items.forEach(x => { if (x.actual == null && (x.bc || x.code)) x.actual = 0; if (!x.pid) { const l = lines.find(y => (y.bc || y.code) && (y.bc || y.code) === (x.bc || x.code)); if (l) x.pid = l.pid; } });
   ib.status = 'received'; ib.receivedAt = today(); ib.receivedBy = S.user.name; ib.receivedCo = userCo(S.user);
+  ib.result = `${moves.length}종 반영 · 새 상품 ${made}종`;
   if (DB.saveInbound) await DB.saveInbound(ib);
-  toast(`입고 확정: ${moves.length}종 ${fmt(moves.reduce((a, b) => a + b.qty, 0))}개를 재고에 더했습니다`);
+  toast(`입고 확정: ${ib.result}`);
 }
 
 /* ───────── 입출고 등록 ───────── */
@@ -2636,6 +2649,7 @@ function countParseRows(rows, pick) {
   const cell = (r, i) => i >= 0 ? String(r[i] ?? '').trim() : '';
   const vendCol = labels.findIndex(h => /거래처/.test(normHead(h)) && !/수령/.test(normHead(h)));
   const planCol = map.planCol >= 0 ? map.planCol : -1;
+  const ipCol = labels.findIndex(h => normHead(h) === 'ip');
   const optCol = labels.findIndex(h => /옵션/.test(normHead(h)) && !/상품명|품명/.test(normHead(h)));
   const items = [];
   body.forEach(r => {
@@ -2660,7 +2674,7 @@ function countParseRows(rows, pick) {
     const planRaw = cell(r, planCol);
     const plan = planRaw === '' || isLabelCell(planRaw) ? null : countNum(planRaw);
     const lotCol = labels.findIndex(h => normHead(h) === '입고일');
-    items.push(countMatchRow({ name, bc, sku: /_|[A-Za-z]{2,}\d/.test(name) ? name : '', qty: blank ? null : qty, plan, blank, countCol: !!map.countCol, vendor: cell(r, vendCol), lot: cell(r, lotCol), opt: opt && !isLabelCell(opt) ? opt : '' }));
+    items.push(countMatchRow({ name, bc, sku: /_|[A-Za-z]{2,}\d/.test(name) ? name : '', qty: blank ? null : qty, plan, blank, countCol: !!map.countCol, vendor: cell(r, vendCol), lot: cell(r, lotCol), ip: cell(r, ipCol), opt: opt && !isLabelCell(opt) ? opt : '' }));
   });
   const folded = foldStockItems(items);
   const prodLabel = cleanLabel(labels[map.bc >= 0 ? map.bc : map.prod] || '') || (map.bc >= 0 ? '바코드' : '상품');
@@ -2672,6 +2686,17 @@ function guessIpCat(name) {
   const m = String(name || '').trim().match(/^([A-Za-z]+_?\d+)[_\s-]+(.+)$/);
   if (!m) return { ip: '', cat: '' };
   return { ip: m[1], cat: (m[2].split(/[_\s]/)[0] || '') };
+}
+function fileIp(raw, name) {
+  const s = String(raw || '').trim();
+  if (/진격의 거인/.test(s) || /^AOT_26/i.test(name || '')) return { ip: '진격의 거인', cat: guessIpCat(name).cat, raw: s };
+  const g = guessIpCat(name);
+  return { ip: s || g.ip || '', cat: g.cat, raw: s };
+}
+function productByBarcode(bc) {
+  const code = String(bc || '').trim();
+  if (!code) return null;
+  return findProduct(code).find(p => p.barcode === code || p.id === code) || null;
 }
 function countSetPreview(parsed, src) {
   if (!parsed || parsed.err) { S.ui.cntPrev = null; S.ui.cntMsg = { bad: true, html: '🔺 ' + esc((parsed && parsed.err) || '표를 읽지 못했습니다') }; render(); return; }
