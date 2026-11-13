@@ -50,7 +50,7 @@ const PERM_DEF = [
 ];
 
 const DEFAULT_ORDER = STORES.map(s => s.id);
-const APP_VERSION = '2026-11-13 17:50';   // 앱 화면을 마지막으로 고친 시각 (한국 시간)
+const APP_VERSION = '2026-11-13 18:40';   // 앱 화면을 마지막으로 고친 시각 (한국 시간)
 /* ───────── 작은 도구 ───────── */
 const $ = (s, el = document) => el.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -1973,9 +1973,27 @@ function ibStats(ib) {
   const money = k => it.reduce((a, b) => a + (b.price || 0) * ((k === 'plan' ? b.plan : b.actual) || 0), 0) + (k === 'act' ? (ib.extra || []).reduce((a, b) => a + (b.price || 0) * (b.actual || 0), 0) : 0);
   return { plan, act, done: done.length, left: it.length - done.length, diff, planMoney: money('plan'), actMoney: money('act') };
 }
+const IB_PARSE = 2;
+function ibStale(ib) {
+  if (!ib || ib.status === 'received' || ib.parseRev === IB_PARSE) return false;
+  if (!ib.readLine) return true;
+  return /IMG_\d+/i.test(ib.title || '') || /IMG_\d+/i.test(ib.src || '') || /\.(png|jpe?g|heic|webp)/i.test(ib.src || ib.title || '');
+}
+function ibDropStale(ib) {
+  if (!ibStale(ib)) return;
+  ib.items = []; ib.extra = []; ib.readLine = ''; ib.actSrc = '';
+  ib.warns = ['예전에 읽은 수량은 지웠습니다. 재고는 바꾸지 않았습니다. 파일을 다시 올려 주세요.'];
+  ib.parseRev = IB_PARSE;
+  S.ui.ibStep = 1;
+  if (DB.saveInbound) DB.saveInbound(ib);
+}
 function ibSteps(n) {
   const t = ['1 예정 올리기', '2 실입고 올리기', '3 비교·확정'];
-  return `<div class="ibsteps">${t.map((x, i) => `<span class="${i + 1 === n ? 'on' : i + 1 < n ? 'done' : ''}">${x}</span>${i < 2 ? '<i>→</i>' : ''}`).join('')}</div>`;
+  return `<div class="ibsteps">${t.map((x, i) => `<button type="button" class="${i + 1 === n ? 'on' : i + 1 < n ? 'done' : ''}" data-ibstep="${i + 1}">${x}</button>${i < 2 ? '<i>→</i>' : ''}`).join('')}</div>`;
+}
+function ibTools(step, done) {
+  if (done) return '';
+  return `<div class="row cntacts"><button class="btn" type="button" id="ibCancel">취소</button>${step === 3 ? '<button class="btn" type="button" id="ibReup">다시 올리기</button>' : ''}</div>`;
 }
 function ibPhase(ib) {
   if (!ib) return 1;
@@ -1990,7 +2008,7 @@ function inboundView() {
   const list = S.inbounds.filter(x => S.stores.includes(x.store)).sort((a, b) => (b.date || '').localeCompare(a.date || ''));
   if (S.ui.ib === 'new') return ibNewView();
   const ib = S.inbounds.find(x => x.id === S.ui.ib);
-  if (ib) return ibDetailView(ib);
+  if (ib) { ibDropStale(ib); return ibDetailView(ib); }
   return `${head('입고 확인', '입고 예정 파일을 올리고, 나중에 실입고 수량을 올려 비교합니다', '<button class="btn pri" id="ibNew">입고 예정 올리기</button>')}
   <div class="glist">${list.map(x => { const ph = ibPhase(x); return `<button type="button" class="grow" data-ib="${esc(x.id)}"><b>${esc(x.title)}</b><div class="code">${esc(storeName(x.store))} · ${x.items.length}종 · ${ph === 3 && x.status === 'received' ? '입고 완료' : ph === 3 ? '비교·확정' : '실입고 대기'}</div></button>`; }).join('') || '<p class="src">아직 입고 예정이 없습니다.</p>'}</div>`;
 }
@@ -2001,6 +2019,7 @@ function ibNewView() {
   const blank = (f.parsed || []).length - P.length;
   return `${head('입고 확인', '1단계 · 입고 예정', P.length ? '<button class="btn pri" data-act="ibCreate">입고 예정 등록</button>' : '<button class="btn" id="ibBack">목록</button>')}
   ${ibSteps(1)}
+  ${ibTools(1, false)}
   <div class="card cntbox">
     <div class="sgrid">${myStores().map(s => `<button type="button" class="sbtn ${f.store === s ? 'on' : ''}" data-ibstore="${s}">${esc(shortName(s))}</button>`).join('')}</div>
     ${P.length ? `<div class="row cntacts"><button class="btn" id="ibSheetFile">엑셀 다시 올리기</button></div>` : `<label class="lb" for="ibPaste">입고 예정 붙여넣기</label>
@@ -2013,31 +2032,36 @@ function ibNewView() {
   ${P.length ? `<div class="cntregbar"><p class="cntwhy">상품 ${P.length}종</p><button class="btn pri" data-act="ibCreate">입고 예정 등록</button></div>` : ''}`;
 }
 function ibDetailView(ib) {
-  const phase = ibPhase(ib);
+  const auto = ibPhase(ib);
+  const step = S.ui.ibStep || auto;
   const done = ib.status === 'received';
   const only = !!S.ui.ibOnly;
   const rows = ib.items.map(x => ({ ...x, d: x.actual == null ? null : x.actual - (x.plan || 0) }));
   const extra = ib.extra || [];
   const same = rows.filter(r => r.d === 0).length;
   const diff = rows.filter(r => r.d != null && r.d !== 0).length;
-  const miss = rows.filter(r => r.actual == null || (r.plan > 0 && r.actual === 0)).length;
+  const miss = rows.filter(r => !xHasActual(r) || (r.plan > 0 && r.actual === 0)).length;
   const sum = `${rows.length + extra.length}종 중 일치 ${same} · 차이 ${diff} · 예정에 없던 상품 ${extra.length} · 미입고 ${miss}`;
   const show = r => !only || r.d !== 0;
+  const line = ib.readLine || (ib.src ? `읽은 파일: ${ib.src}` : '');
   const cards = rows.filter(show).map(r => ibCard(r.name, r.code || '', `<span>예정 ${fmt(r.plan)}</span><span>실입고 ${r.actual == null ? '—' : fmt(r.actual)}</span><span class="${r.d ? 'bad' : ''}">차이 ${r.d == null ? '—' : (r.d > 0 ? '+' : '') + fmt(r.d)}</span>`, r.d)).join('')
     + extra.filter(() => !only || true).map(r => ibCard(r.name, (r.code || '') + ' · 예정에 없던 상품', `<span>예정 0</span><span>실입고 ${fmt(r.actual)}</span><span class="bad">차이 +${fmt(r.actual)}</span>`, true)).join('');
-  return `${head('입고 확인', esc(ib.title), phase === 3 && !done ? '<button class="btn pri" data-act="ibConfirm">실제 수량으로 입고 확정</button>' : '<button class="btn" id="ibBack">목록</button>')}
-  ${ibSteps(phase)}
-  ${phase === 2 ? `<div class="card cntbox"><p class="cntwhy">예정 ${ib.items.length}종. 실입고 수량을 올리세요.</p>
-    <label class="lb" for="ibActPaste">실입고 붙여넣기</label>
-    <textarea class="inp cntpaste" id="ibActPaste" placeholder="실입고 수량 표를 붙이세요"></textarea>
-    <button class="btn pri" id="ibActFile">실입고 엑셀 올리기</button>
+  const kept = step === 1 && rows.some(r => r.actual != null) ? '<p class="src">이미 올린 실입고 수량은 남겨 둡니다.</p>' : (step === 2 && rows.length ? '<p class="src">예정 수량은 남겨 두고, 실입고 파일만 바꿉니다.</p>' : '');
+  const upload = step === 1
+    ? `<label class="lb" for="ibPaste">입고 예정 붙여넣기</label><textarea class="inp cntpaste" id="ibPaste" placeholder="구글 시트에서 복사해 붙이세요"></textarea><button class="btn pri" id="ibSheetFile">예정 엑셀 올리기</button>`
+    : `<label class="lb" for="ibActPaste">실입고 붙여넣기</label><textarea class="inp cntpaste" id="ibActPaste" placeholder="실입고 수량 표를 붙이세요"></textarea><button class="btn pri" id="ibActFile">실입고 엑셀 올리기</button>`;
+  return `${head('입고 확인', esc(ib.title), step === 3 && !done ? '<button class="btn pri" data-act="ibConfirm">실제 수량으로 입고 확정</button>' : '<button class="btn" id="ibBack">목록</button>')}
+  ${ibSteps(step)}
+  ${ibTools(step, done)}
+  ${step < 3 ? `<div class="card cntbox">${(ib.warns || []).length ? `<p class="src">${esc(ib.warns.join(' '))}</p>` : ''}${kept}${upload}
     ${S.ui.ibMsg ? `<p class="src">${esc(S.ui.ibMsg.t)}</p>` : ''}
-    <div class="glist">${ib.items.map(x => ibCard(x.name, x.code || '', `<span>예정 ${fmt(x.plan)}</span>`, false)).join('')}</div></div>` : ''}
-  ${phase === 3 ? `<div class="card cntbox">${ib.readLine ? `<p class="cntwhy">${esc(ib.readLine)}</p>` : ''}${(ib.warns || []).length ? `<p class="src">${esc(ib.warns.join(' '))}</p>` : ''}<p class="cntwhy">${sum}</p>
+    ${step === 2 ? `<div class="glist">${ib.items.map(x => ibCard(x.name, x.code || '', `<span>예정 ${fmt(x.plan)}</span>`, false)).join('')}</div>` : ''}</div>` : ''}
+  ${step === 3 ? `<div class="card cntbox">${line ? `<p class="cntwhy">${esc(line)}</p>` : ''}${(ib.warns || []).length ? `<p class="src">${esc(ib.warns.join(' '))}</p>` : ''}<p class="cntwhy">${sum}</p>
     <button class="btn" type="button" id="ibOnly">${only ? '전체 보기' : '차이만'}</button>
     <div class="glist">${cards || '<p class="src">보이는 상품이 없습니다.</p>'}</div></div>
     ${done ? '' : `<div class="cntregbar"><p class="cntwhy">${sum}</p><button class="btn pri" data-act="ibConfirm">실제 수량으로 입고 확정</button></div>`}` : ''}`;
 }
+function xHasActual(r) { return r.actual != null; }
 function ibApplyActual(ib, rows, src) {
   ib.actSrc = src; ib.actBy = S.user ? S.user.name : ''; ib.actCo = userCo(S.user); ib.actAt = new Date().toISOString(); ib.actUid = S.user ? S.user.uid : '';
   const byKey = {}; ib.items.forEach((x, i) => { byKey[x.key] = i; });
@@ -2093,6 +2117,8 @@ function ibActLoaded(ib, x) {
   const parsed = countParseRows(x.rows, { mode: 'actual' });
   if (x && x.readLine) ib.readLine = x.readLine;
   if (x && x.warns) ib.warns = x.warns;
+  ib.parseRev = IB_PARSE;
+  S.ui.ibStep = 3;
   if (parsed.err) { S.ui.ibMsg = { t: parsed.err, bad: true }; render(); return; }
   const rows = (parsed.items || []).filter(r => r.qty != null).map(r => ({ ...r, qty: r.qty }));
   if (!rows.length) { S.ui.ibMsg = { t: '실입고 수량을 찾지 못했습니다.', bad: true }; render(); return; }
@@ -2111,9 +2137,43 @@ async function ibCreate() {
   indexProducts();
   const items = {};
   for (const r of f.parsed) { if (!(r.qty > 0) && !(r.actual > 0)) continue; const k = itemKey(r); const x = items[k] ||= { key: k, pid: r.pid, name: r.pid ? S.P[r.pid].name : r.name, code: r.bc || r.sku || (r.pid ? (S.P[r.pid].barcode || S.P[r.pid].sku) : ''), bc: r.bc, sku: r.sku, plan: 0, price: r.price == null ? null : r.price, ip: r.ip || f.ip || '', cat: r.cat || '', vendor: r.vendor || '', actual: null }; x.plan += r.qty || 0; if (r.actual != null) x.actual = (x.actual || 0) + r.actual; }
-  const ib = { id: 'IB-' + f.date.replace(/-/g, '').slice(2) + '-' + Math.random().toString(36).slice(2, 6).toUpperCase(), store: f.store, date: f.date, title: f.title.trim() || f.src, ip: f.ip.trim(), from: f.from.trim(), status: 'planned', items: Object.values(items), extra: [], by: S.user.name, co: userCo(S.user), src: f.src, readLine: f.readLine || '', warns: f.warns || [], at: new Date().toISOString() };
+  const ib = { id: 'IB-' + f.date.replace(/-/g, '').slice(2) + '-' + Math.random().toString(36).slice(2, 6).toUpperCase(), store: f.store, date: f.date, title: f.title.trim() || f.src, ip: f.ip.trim(), from: f.from.trim(), status: 'planned', items: Object.values(items), extra: [], by: S.user.name, co: userCo(S.user), src: f.src, readLine: f.readLine || '', warns: f.warns || [], parseRev: IB_PARSE, at: new Date().toISOString() };
   if (DB.saveInbound) await DB.saveInbound(ib);
-  S.inbounds.push(ib); S.ui.ibForm = null; S.ui.ib = ib.id; toast(`입고 예정 ${ib.items.length}종을 등록했습니다`);
+  S.inbounds.push(ib); S.ui.ibForm = null; S.ui.ib = ib.id; S.ui.ibStep = ib.items.some(x => x.actual != null) ? 3 : 2; toast(`입고 예정 ${ib.items.length}종을 등록했습니다`);
+}
+async function ibApplyPlanTo(ib, rows, src, extra) {
+  const parsed = countParseRows(rows, { mode: 'plan' });
+  if (parsed.err) { S.ui.ibMsg = { t: parsed.err, bad: true }; render(); return; }
+  const had = new Map();
+  (ib.items || []).forEach(x => { const k = x.bc || x.code; if (k && x.actual != null) had.set(k, x.actual); });
+  const items = {};
+  for (const r of parsed.items || []) {
+    if (r.plan == null && r.qty == null) continue;
+    const fromFile = r.countCol && r.qty != null ? r.qty : null;
+    const plan = r.plan != null ? r.plan : (r.qty || 0);
+    const k = r.bc || norm(r.name); if (!k) continue;
+    const x = items[k] ||= { key: itemKey(r), pid: r.pid, name: r.pid && S.P[r.pid] ? S.P[r.pid].name : r.name, code: r.bc || '', bc: r.bc, sku: r.sku || '', plan: 0, actual: null, price: null, lines: r.lines || 1 };
+    x.plan += plan || 0;
+    if (fromFile != null) x.actual = (x.actual || 0) + fromFile;
+    else if (had.has(r.bc)) x.actual = had.get(r.bc);
+  }
+  ib.items = Object.values(items); ib.extra = []; ib.src = src;
+  ib.readLine = (extra && extra.readLine) || readLineText('', parsed.planLabel, parsed.qtyLabel);
+  ib.warns = [...new Set([...(extra && extra.warns || []), ...(parsed.warns || [])])];
+  ib.parseRev = IB_PARSE;
+  if (/IMG_\d+/i.test(ib.title || '')) ib.title = src || ib.title;
+  if (DB.saveInbound) await DB.saveInbound(ib);
+  S.ui.ibStep = ib.items.some(x => x.actual != null) ? 3 : 2;
+  S.ui.ibMsg = null;
+  render();
+}
+async function ibCancel() {
+  const ib = S.inbounds.find(x => x.id === S.ui.ib);
+  S.ui.ibForm = null; S.ui.ibStep = 1; S.ui.ibMsg = null;
+  if (!ib || ib.status === 'received') { S.ui.ib = ib ? ib.id : 'new'; render(); return; }
+  ib.items = []; ib.extra = []; ib.readLine = ''; ib.warns = []; ib.actSrc = ''; ib.parseRev = IB_PARSE;
+  if (DB.saveInbound) await DB.saveInbound(ib);
+  toast('비교를 지웠습니다. 재고는 그대로입니다.');
 }
 async function ibConfirm(ib) {
   const lines = [...ib.items.map(x => ({ ...x, q: x.actual || 0 })), ...(ib.extra || []).map(x => ({ ...x, q: x.actual || 0, plan: 0 }))];
@@ -4577,7 +4637,7 @@ function bind() {
   const mvPaste = document.getElementById('mvPaste');
   if (mvPaste) mvPaste.addEventListener('paste', e => { const text = (e.clipboardData || window.clipboardData || {}).getData ? (e.clipboardData || window.clipboardData).getData('text') : ''; if (text && (text.includes('\t') || text.includes('\n'))) { e.preventDefault(); moveFromRows(parsePasteTable(text), '붙여넣기'); } });
   const ibPaste = document.getElementById('ibPaste');
-  if (ibPaste) ibPaste.addEventListener('paste', e => { const text = (e.clipboardData || window.clipboardData || {}).getData ? (e.clipboardData || window.clipboardData).getData('text') : ''; if (text && (text.includes('\t') || text.includes('\n'))) { e.preventDefault(); ibPaste.value = text; ibApplyCountRows(parsePasteTable(text), '붙여넣기'); } });
+  if (ibPaste) ibPaste.addEventListener('paste', e => { const text = (e.clipboardData || window.clipboardData || {}).getData ? (e.clipboardData || window.clipboardData).getData('text') : ''; if (text && (text.includes('\t') || text.includes('\n'))) { e.preventDefault(); const ib = S.inbounds.find(x => x.id === S.ui.ib); const rows = parsePasteTable(text); if (ib && ib.status !== 'received') ibApplyPlanTo(ib, rows, '붙여넣기'); else ibApplyCountRows(rows, '붙여넣기'); } });
   const paste = document.getElementById('cntPaste');
   if (paste) paste.addEventListener('paste', e => { const text = (e.clipboardData || window.clipboardData || {}).getData ? (e.clipboardData || window.clipboardData).getData('text') : ''; if (text && (text.includes('\t') || text.includes('\n'))) { e.preventDefault(); countFromPaste(text); } });
   document.querySelectorAll('[data-cntip],[data-cntcat]').forEach(el => el.addEventListener('change', () => {
@@ -4697,10 +4757,13 @@ function bind() {
     }
     if (d.ib) { S.ui.ib = d.ib; S.ui.ibMsg = null; S.ui.ibF = 'all'; render(); goTop(); return; }
     if (t.id === 'ibNew') { S.ui.ib = 'new'; S.ui.ibForm = null; render(); return; }
-    if (t.id === 'ibBack') { S.ui.ib = null; render(); return; }
+    if (t.id === 'ibBack') { S.ui.ib = null; S.ui.ibStep = null; render(); return; }
+    if (d.ibstep) { const n = +d.ibstep; const ib = S.inbounds.find(x => x.id === S.ui.ib); if (n === 3 && (!ib || ibPhase(ib) < 3)) { toast('실입고를 올리면 비교가 나옵니다.'); return; } S.ui.ibStep = n; render(); return; }
+    if (t.id === 'ibReup') { S.ui.ibStep = 2; render(); return; }
+    if (t.id === 'ibCancel') { confirmDrawer('입고 비교를 취소', '<p style="margin:0">지금 올린 비교를 지우고 처음부터 합니다. 재고는 바뀌지 않습니다.</p>', '취소하고 처음', () => ibCancel()); return; }
     if (d.ibf) { S.ui.ibF = d.ibf; render(); return; }
     if (t.id === 'ibPlanFile') { pickFile('.xlsx,.xls,.csv', f => fileRows(f).then(x => ibPlanLoaded(x)).catch(e => { S.ui.ibForm.err = e.message; render(); })); return; }
-    if (t.id === 'ibSheetFile' || t.id === 'ibPlanFile') { pickFile('.xlsx,.xls,.csv', f => stockReadFile(f, 'plan').then(x => ibApplyCountRows(x.rows, x.src, x)).catch(e => { S.ui.ibForm.err = e.message || String(e); render(); })); return; }
+    if (t.id === 'ibSheetFile' || t.id === 'ibPlanFile') { pickFile('.xlsx,.xls,.csv', f => stockReadFile(f, 'plan').then(x => { const ib = S.inbounds.find(z => z.id === S.ui.ib); if (ib && ib.status !== 'received') return ibApplyPlanTo(ib, x.rows, x.src, x); ibApplyCountRows(x.rows, x.src, x); }).catch(e => { if (S.ui.ibForm) S.ui.ibForm.err = e.message || String(e); else S.ui.ibMsg = { t: e.message || String(e), bad: true }; render(); })); return; }
     if (t.id === 'ibPlanImg') { pickFile('image/*,.heic,.heif', fs => ibImages(fs), true); return; }
     if (t.id === 'ibPlanLinkGo') { linkRows($('#ibPlanLink').value.trim()).then(x => ibPlanLoaded(x)).catch(e => { S.ui.ibForm.err = e.message; render(); }); return; }
     if (t.id === 'ibCreate' || d.act === 'ibCreate') { await ibCreate(); return; }
