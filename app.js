@@ -2994,7 +2994,7 @@ function countView() {
 function countPrevHtml() {
   const p = S.ui.cntPrev; if (!p) return '';
   const only = !!S.ui.cntOnly;
-  const rows = p.matched.filter(m => !only || m.diff !== 0);
+  const rows = p.matched.filter(m => !only || m.diff !== 0 || (m.bins && (m.wh !== m.bookWh || m.cabQty !== m.bookCab)));
   const can = p.matched.length > 0;
   const card = m => `<div class="grow${m.diff || (m.bins && (m.wh !== m.bookWh || m.cabQty !== m.bookCab)) ? ' bad' : ''}"><b>${esc(m.name)}</b><div class="code">${esc(m.code)}${m.lines > 1 ? ' · ' + m.lines + '줄 합침' : ''}</div><div class="gnums">${m.bins ? `<span>전산 창고 ${fmt(m.bookWh)} · 하부장 ${fmt(m.bookCab)}</span><span>실사 창고 ${fmt(m.wh)} · 하부장 ${fmt(m.cabQty)}</span>` : `<span>전산 ${fmt(m.book)}</span><span>실사 ${fmt(m.qty)}</span>`}<span class="${m.diff ? 'bad' : ''}">총 ${m.diff > 0 ? '+' : ''}${fmt(m.diff)}</span></div></div>`;
   const unk = only ? '' : (p.fresh || []).map(x => `<div class="grow"><b>${esc(x.name || '이름 없음')}</b><div class="code">${esc(x.bc)} · 전산에 없음</div><div class="gnums"><span>실사 ${x.qty == null ? '—' : fmt(x.qty)}</span></div></div>`).join('');
