@@ -2133,6 +2133,7 @@ async function ibCreate() {
     const ip = fileIp(r.ip || f.ip, r.name);
     const p = { id: r.bc, barcode: r.bc, sku: r.sku || '', name: r.name, ip: ip.ip, cat: r.cat || ip.cat || '', price: null, kind: '상설', memo: [r.vendor ? `매입 거래처 ${r.vendor}` : '', ip.raw && ip.raw !== ip.ip ? ip.raw : ''].filter(Boolean).join(' · ') };
     S.products.push(p); r.pid = r.bc;
+    indexProducts();
     if (DB.saveProduct) await DB.saveProduct(p);
   }
   indexProducts();
