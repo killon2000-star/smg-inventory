@@ -50,7 +50,10 @@ service cloud.firestore {
     // 상품 목록
     match /products/{pid} {
       allow read: if active();
-      allow write: if perm('move') || perm('approve');
+      allow create, update: if perm('move') || perm('approve');
+      // 제안(아직 배포하지 않음): 실사 되돌리기에서 방금 만든 상품만 실사 권한자가 지우게 하려면 아래를 쓰고 위 create, update 와 함께 배포.
+      // allow delete: if perm('move') || perm('approve') || (perm('count') && resource.data.createdBy == request.auth.uid);
+      allow delete: if perm('move') || perm('approve');
     }
 
     // 매장 재고 (q = 상품별 수량)
