@@ -50,7 +50,7 @@ const PERM_DEF = [
 ];
 
 const DEFAULT_ORDER = STORES.map(s => s.id);
-const APP_VERSION = '2026-11-13 10:40';   // 앱 화면을 마지막으로 고친 시각 (한국 시간)
+const APP_VERSION = '2026-11-13 14:55';   // 앱 화면을 마지막으로 고친 시각 (한국 시간)
 /* ───────── 작은 도구 ───────── */
 const $ = (s, el = document) => el.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -2403,12 +2403,13 @@ function countView() {
   <div class="card cntbox"><h2>실사 수량 가져오기</h2>
     <p class="src">구글 시트나 엑셀에서 복사한 표를 붙이거나, 엑셀 파일을 올립니다. 코드·품번·바코드와 실사·수량·재고·현재고 칸을 알아서 찾습니다. [등록]을 눌러야 재고에 반영됩니다.</p>
     <label class="lb" for="cntPaste">붙여넣기</label>
-    <textarea class="inp cntpaste" id="cntPaste" placeholder="상품코드와 실사 수량이 있는 표를 여기에 붙여 넣으세요">${esc(S.ui.cntPaste || '')}</textarea>
-    <div class="row cntacts"><button class="btn" id="cntTpl">실사 양식 받기</button><button class="btn pri" id="cntPasteGo">붙여넣기 확인</button><button class="btn pri" id="cntFile">실사 엑셀 올리기</button></div>
+    <textarea class="inp cntpaste" id="cntPaste" placeholder="상품코드와 실사 수량이 있는 표를 여기에 붙여 넣으세요" style="height:${S.ui.cntPaste ? Math.min(160, Math.max(120, String(S.ui.cntPaste).split('\n').length * 24 + 16)) : 120}px">${esc(S.ui.cntPaste || '')}</textarea>
+    <div class="row cntacts"><button class="btn pri" id="cntPasteGo">붙여넣기 확인</button></div>
+    ${countPrevHtml()}
+    <div class="row cntacts"><button class="btn" id="cntTpl">실사 양식 받기</button><button class="btn pri" id="cntFile">실사 엑셀 올리기</button></div>
     <div class="row cntacts"><input class="inp" id="cntLink" placeholder="또는 구글시트 링크"><button class="btn" id="cntLinkGo">링크 열기</button></div>
     ${(S.ui.cntCands || []).length > 1 ? `<div class="cnttabs" role="group" aria-label="엑셀 탭">${S.ui.cntCands.map(n => `<button type="button" class="btn ${S.ui.cntSheet === n ? 'pri' : ''}" data-cntsheet="${esc(n)}">${esc(n)}</button>`).join('')}</div>` : ''}
     ${S.ui.cntMsg ? `<div class="note ${S.ui.cntMsg.bad ? 'bad' : ''}">${S.ui.cntMsg.html}</div>` : ''}
-    ${countPrevHtml()}
   </div>
   <div class="card" style="display:flex;flex-direction:column;gap:10px">
     <div class="row"><div class="search">${ic('search')}<input class="inp" id="cq" type="search" placeholder="상품명·바코드·품번" value="${esc(S.ui.countQ)}" autocomplete="off"></div>
