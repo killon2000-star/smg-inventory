@@ -858,6 +858,26 @@ td,th{font-variant-numeric:tabular-nums}
 .fseg.sm button.on{background:var(--red);color:#fff}
 .flt .fseg:has(> :nth-child(6)){grid-template-columns:repeat(3,1fr)}
 @media(max-width:520px){.eqi{min-width:calc(50% - 20px)}.eq .op{width:14px;justify-content:center}.eqi b{font-size:21px}}
+/* 실사 붙여넣기 */
+.cntbox{display:flex;flex-direction:column;gap:10px;width:100%;min-width:0}
+.cntbox .src,.cntprev .src{font-size:14px;line-height:1.45;text-align:left}
+.cntpaste{min-height:120px;height:auto;width:100%;resize:vertical;text-align:left;line-height:1.45}
+.cntacts{width:100%}
+.cntacts .btn{min-height:44px;flex:1 1 140px}
+.cntacts .inp{flex:1 1 180px;min-width:0}
+.cnttabs{display:flex;flex-wrap:wrap;gap:8px;width:100%}
+.cnttabs .btn{min-height:44px;flex:1 1 120px}
+.cntprev{display:flex;flex-direction:column;gap:8px;width:100%;min-width:0;border-top:1px solid var(--line);padding-top:10px}
+.cntprev h2,.cntprev h3{margin:0;font-size:16px;text-align:left}
+.cntgrid{width:100%}
+.cntgrid input.inp.qty{min-height:44px;width:100%}
+.cntgrid .conly{display:none;font-size:13px;line-height:1.35;margin-top:4px}
+@media (max-width:700px){
+  .cntgrid .cwide{display:none}
+  .cntgrid .conly{display:block}
+  .cntacts{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+  .cntacts .inp{grid-column:1 / -1}
+}
 /* 월간 일정 */
 .mcal{display:flex;flex-direction:column;gap:12px;min-width:0;width:100%;text-align:left}
 .mcal-top h2{margin:0;font-size:22px;text-align:left}
@@ -1058,8 +1078,8 @@ body.sched-on .pha > .chip{border-radius:8px;justify-content:center}
 <script defer src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
 <script defer src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 <script defer src="config.js"></script>
-<script defer src="firebase.js?v=102"></script>
-<script defer src="app.js?v=102"></script>
+<script defer src="firebase.js?v=103"></script>
+<script defer src="app.js?v=103"></script>
 <script>if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});</script>
 
 </body></html>
