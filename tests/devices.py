@@ -73,7 +73,7 @@ with sync_playwright() as p:
     pg.route('**/*',lambda r:r.abort() if any(k in r.request.url for k in ('firebase','googleapis','firestore')) else r.continue_())
     pg.goto(B); pg.wait_for_selector('#page',timeout=30000); pg.wait_for_timeout(700)
     assert pg.evaluate('SMGApp.S.mode')=='demo'
-    pg.select_option('#roleSel',label='본부장 (유명훈)'); pg.wait_for_timeout(300)
+    pg.get_by_role('button', name='본부장', exact=True).click(); pg.wait_for_timeout(300)
     res={}
     for v in VIEWS:
       pg.evaluate(OPEN.get(v,f"SMGApp.S.view='{v}';SMGApp.S.ui.ib=null;SMGApp.S.ui.drawer=null;SMGApp.render()")+";scrollTo(0,0)"); pg.wait_for_timeout(300)

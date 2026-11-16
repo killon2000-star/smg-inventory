@@ -50,7 +50,7 @@ const PERM_DEF = [
 ];
 
 const DEFAULT_ORDER = STORES.map(s => s.id);
-const APP_VERSION = '2026-11-16 13:05';   // 앱 화면을 마지막으로 고친 시각 (한국 시간)
+const APP_VERSION = '2026-11-16 13:10';   // 앱 화면을 마지막으로 고친 시각 (한국 시간)
 /* ───────── 작은 도구 ───────── */
 const $ = (s, el = document) => el.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -158,12 +158,12 @@ function demoUsers() {
   ];
 }
 const DEMO_ROLES = [
-  { uid: 'u-owner', label: '대표 (Anthony)' },
-  { uid: 'u-yu', label: '본부장 (유명훈)' },
-  { uid: 'u-lead', label: '팀장 · 수원' },
-  { uid: 'u-mgr', label: '매니저 · 수원' },
-  { uid: 'u-staff', label: '사원 · 수원' },
-  { uid: 'u-ext', label: '기타 소속 (수량만)' },
+  { uid: 'u-owner', label: '대표' },
+  { uid: 'u-yu', label: '본부장' },
+  { uid: 'u-lead', label: '팀장·수원' },
+  { uid: 'u-mgr', label: '매니저·수원' },
+  { uid: 'u-staff', label: '사원·수원' },
+  { uid: 'u-ext', label: '수량만' },
 ];
 let DB = DemoBackend;
 // 누가 올렸는지: 모든 기록에 이름(by)과 회사(co)를 함께 남김 (대표 지시 2026-11-01: 매출·재고 파일 모두 회사와 이름 확인)
@@ -393,7 +393,7 @@ function render() {
     ${headTools()}
     <div class="who"><button class="me-btn" id="meBtn" title="내 정보" aria-label="내 정보 · ${esc(S.user.name)}"><span class="me1"><b>${esc(S.user.name)}</b> ${esc(S.user.position || '')}</span><span class="me2">${esc(meLine(S.user))}</span></button>${S.mode === 'demo' ? '' : '<button class="btn sm" id="logout">로그아웃</button>'}</div>
   </header>
-  ${S.mode === 'demo' ? `<div class="demobar"><span class="demo-tag">미리보기</span><label for="roleSel">권한별로 보기</label><select id="roleSel">${DEMO_ROLES.map(r => `<option value="${r.uid}" ${S.user.uid === r.uid ? 'selected' : ''}>${esc(r.label)}</option>`).join('')}</select><span class="muted hide-s">수원 실제 자료 · 저장한 내용은 새로고침하면 처음 상태로 돌아갑니다</span></div>` : ''}
+  ${S.mode === 'demo' ? `<div class="demobar" role="group" aria-label="권한별로 보기"><span class="demo-tag">미리보기</span>${DEMO_ROLES.map(r => `<button type="button" class="rolebtn${S.user.uid === r.uid ? ' on' : ''}" data-role="${r.uid}">${esc(r.label)}</button>`).join('')}<span class="muted hide-s">수원 실제 자료 · 저장한 내용은 새로고침하면 처음 상태로 돌아갑니다</span></div>` : ''}
   ${S.stores.length > 1 ? `<div class="storebar" aria-label="보고 있는 매장"><span class="lb">보고 있는 매장</span>${S.stores.map(id => `<button class="schip" data-sg="${id}" title="${esc(storeName(id))}만 보기"><span class="dot" style="background:${storeColor(id)}"></span>${esc(storeName(id))}</button>`).join('')}<button class="schip more" id="storeBtn2">바꾸기</button></div>` : ''}
   ${S.ui.storeMenu ? storeMenu() : ''}
   <div class="shell">
@@ -5161,6 +5161,7 @@ function bind() {
     const d = t.dataset;
     const pick = ev.target.closest('[data-cntpick]');
     if (pick && S.ui.cntPrev && !ev.target.closest('input.inp')) { const key = pick.dataset.cntpick; const x = (S.ui.cntPrev.fresh || []).find(f => f.key === key); if (x) { x.on = !x.on; S.ui.cntSkip = S.ui.cntSkip || {}; S.ui.cntSkip[key] = !x.on; S.ui.cntNoScroll = true; render(); } return; }
+    if (d.role) { const u = S.users.find(x => x.uid === d.role); if (u) setUser(u); render(); return; }
     if (d.install != null) { doInstall(); return; }
     if (d.openext != null) { openExternal(); return; }
     if (d.copylink != null) { copyLink(); return; }
@@ -5386,7 +5387,6 @@ function bind() {
     }
     if (t.id === 'cbPlan') { const r = ipPlan().find(x => x.id === t.value); if (r) S.ui.cb = { store: r.store, id: r.id, a: r.start, b: r.end }; render(); return; }
     if (t.id === 'cba' || t.id === 'cbb') { const k = t.id === 'cba' ? 'a' : 'b'; S.ui.cb[k] = t.value; let msg = ''; if (S.ui.cb.b < S.ui.cb.a) { if (k === 'a') S.ui.cb.b = S.ui.cb.a; else S.ui.cb.a = S.ui.cb.b; msg = k === 'a' ? '시작일이 종료일보다 늦어서 종료일을 같은 날로 맞췄습니다' : '종료일이 시작일보다 빨라서 시작일을 같은 날로 맞췄습니다'; } render(); if (msg) toast(msg); return; }
-    if (t.id === 'roleSel') { setUser(S.users.find(u => u.uid === t.value)); render(); return; }
     if (d.sc) { const on = t.checked; let s = S.stores.filter(x => x !== d.sc); if (on) s.push(d.sc); if (!s.length) s = [d.sc]; S.stores = STORES.map(x => x.id).filter(x => s.includes(x)); S.sumStores = null; S.ui.range = null; render(); return; }
     if (t.id === 'pip') { S.ui.ip = t.value; render(); return; }
     if (t.id === 'cip') { S.ui.countIp = t.value; render(); return; }
