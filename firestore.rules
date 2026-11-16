@@ -16,13 +16,18 @@ service cloud.firestore {
     function perm(k) { return isOwner() || (active() && !limitedUser() && me().perms.get(k, false) == true); }
     function settleOf(d) { return d.get('perms', null) != null && d.perms.get('settle', false) == true; }
     function store(s) { return isOwner() || (active() && s in me().perms.stores); }
+    // 매니저·사원은 재고만. 매출 권한이 켜져 있어도 매출·정산·팝업 비용·zip 비밀번호는 못 읽는다.
+    // 재고 쓰기(stores, moves, inbounds, products)는 이 함수로 막지 않는다.
+    function stockFloor() {
+      return !isOwner() && (me().get('position', '') == '매니저' || me().get('position', '') == '사원');
+    }
 
     // 앱 설정 (매장 목록 등)
     match /config/app { allow read: if signed(); allow write: if perm('approve'); }
     // 공지사항: 로그인한 사람 모두 보기, 대표만 쓰기
     match /config/notice { allow read: if signed(); allow write: if isOwner(); }
     // 토스포스 zip 비밀번호: 매출·승인 권한자만
-    match /config/zip { allow read: if perm('sales') || perm('approve'); allow write: if perm('approve') || perm('sales'); }
+    match /config/zip { allow read: if !stockFloor() && (perm('sales') || perm('approve')); allow write: if !stockFloor() && (perm('approve') || perm('sales')); }
 
     // 사용자
     match /users/{uid} {
@@ -66,8 +71,8 @@ service cloud.firestore {
       }
       // 매출: 매출 권한자만
       match /sales/{ym} {
-        allow read: if store(st) && perm('sales');
-        allow write: if store(st) && perm('sales');
+        allow read: if store(st) && perm('sales') && !stockFloor();
+        allow write: if store(st) && perm('sales') && !stockFloor();
       }
     }
 
@@ -100,9 +105,9 @@ service cloud.firestore {
     match /warehouse/{doc} { allow read: if active() && !limitedUser(); allow write: if perm('move'); }
 
     // 정산: 대표만
-    match /settle/{m} { allow read, write: if isOwner(); }
-    // 팝업 시공비: 대표와 승인권자(본부장)만
-    match /popups/{id} { allow read, write: if isOwner() || perm('approve'); }
+    match /settle/{m} { allow read, write: if isOwner() && !stockFloor(); }
+    // 팝업 시공비: 대표와 승인권자(본부장)만. 매니저·사원은 제외.
+    match /popups/{id} { allow read, write: if !stockFloor() && (isOwner() || perm('approve')); }
     // 월간 일정: 대표만. 공개 사이트에 일정 파일을 올리지 않고 여기만 둔다.
     // 게시 전: Firebase 콘솔 또는 규칙 워크플로로 이 파일을 올려야 앱에서 저장이 된다.
     match /schedules/{id} { allow read, write: if isOwner(); }

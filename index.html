@@ -916,6 +916,12 @@ tr.off td{opacity:.45}
 .ibrow.bad .ibdiff{color:var(--bad)}
 .iblbl{display:none;font-size:12px;font-weight:700;color:var(--muted)}
 .glist .grow.on{border-color:var(--red);box-shadow:inset 0 0 0 2px var(--red)}
+.gunwrap{display:flex;flex-direction:column;gap:8px;margin:0 0 10px}
+.gunwrap > .btn{min-height:52px;font-size:18px}
+.gunbox input.inp{min-height:56px;font-size:22px;width:100%}
+.gunbox.bad .src{color:var(--bad);font-weight:800;font-size:16px}
+.scanflash{animation:scanflash .7s ease}
+@keyframes scanflash{0%{box-shadow:inset 0 0 0 3px #1f8a4c;background:color-mix(in srgb,#1f8a4c 28%,var(--surface))}100%{}}
 .pullbox{display:flex;flex-direction:column;gap:12px}
 .pullbox input.inp,.pullgo{min-height:56px;font-size:20px;width:100%}
 @media(max-width:700px){
@@ -1135,8 +1141,8 @@ body.sched-on .pha > .chip{border-radius:8px;justify-content:center}
 <script defer src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
 <script defer src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 <script defer src="config.js"></script>
-<script defer src="firebase.js?v=114"></script>
-<script defer src="app.js?v=114"></script>
+<script defer src="firebase.js?v=115"></script>
+<script defer src="app.js?v=115"></script>
 <script>if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});</script>
 
 </body></html>
