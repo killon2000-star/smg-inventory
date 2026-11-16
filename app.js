@@ -50,7 +50,7 @@ const PERM_DEF = [
 ];
 
 const DEFAULT_ORDER = STORES.map(s => s.id);
-const APP_VERSION = '2026-11-13 19:40';   // 앱 화면을 마지막으로 고친 시각 (한국 시간)
+const APP_VERSION = '2026-11-16 12:10';   // 앱 화면을 마지막으로 고친 시각 (한국 시간)
 /* ───────── 작은 도구 ───────── */
 const $ = (s, el = document) => el.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -193,6 +193,8 @@ function findProduct(code) {
 }
 function stockOf(store, pid) { return (S.stock[store] || {})[pid] || 0; }
 const SHELF_STORE = 'suwon';
+const SHELF_IPS = ['에반게리온', '진격의 거인'];   // 수원 창고·매대 시범. 여기만 더하면 다음 IP도 같은 화면을 쓴다
+function onShelf(p) { return !!(p && SHELF_IPS.includes(p.ip)); }
 function shelfOf(st, pid) { return st === SHELF_STORE ? +((S.cab || {})[pid] || 0) : 0; }
 function roomOf(st, pid) { return stockOf(st, pid) - shelfOf(st, pid); }
 function stampList(list) {
@@ -201,7 +203,7 @@ function stampList(list) {
   const curCab = (st, pid) => cab[key(st, pid)] != null ? cab[key(st, pid)] : shelfOf(st, pid);
   const curTot = (st, pid) => tot[key(st, pid)] != null ? tot[key(st, pid)] : stockOf(st, pid);
   for (const m of list) {
-    if (m.cab == null && m.store === SHELF_STORE) {
+    if (m.cab == null && m.store === SHELF_STORE && onShelf(S.P[m.pid])) {
       const c = curCab(m.store, m.pid), t = curTot(m.store, m.pid), room = t - c;
       if (!(m.qty < 0)) m.cab = 0;
       else {
@@ -209,7 +211,7 @@ function stampList(list) {
         const fromShelf = m.type === '판매' ? Math.min(Math.max(0, c), need) : Math.min(Math.max(0, c), Math.max(0, need - Math.max(0, room)));
         m.cab = fromShelf ? -fromShelf : 0;
       }
-    }
+    } else if (m.cab == null) m.cab = 0;
     const k = key(m.store, m.pid);
     tot[k] = curTot(m.store, m.pid) + (m.qty || 0);
     if (m.store === SHELF_STORE) cab[k] = curCab(m.store, m.pid) + (m.cab || 0);
@@ -303,7 +305,7 @@ function render() {
   document.body.classList.toggle('in-app', inApp);
   if (!S.user || S.ui.showApply) { app.innerHTML = loginView(); bindLogin(); return; }
   const nav = NAV.filter(n => n.show());
-  if (S.view !== 'more' && S.view !== 'mclose' && !nav.find(n => n.id === S.view)) S.view = 'home';
+  if (S.view !== 'more' && S.view !== 'mclose' && S.view !== 'pull' && !nav.find(n => n.id === S.view)) S.view = 'home';
   document.body.classList.toggle('mclose-on', S.view === 'mclose');
   document.body.classList.toggle('sched-on', S.view === 'sched');
   trackNav();
@@ -324,7 +326,7 @@ function render() {
   ${S.ui.storeMenu ? storeMenu() : ''}
   <div class="shell">
     <nav class="side" aria-label="메뉴">
-      ${nav.map(n => `${n.grp ? `<div class="grp">${n.grp}</div>` : ''}<button data-nav="${n.id}" class="${S.view === n.id ? 'on' : ''}">${esc(n.t)}${n.id === 'admin' && pendingN && can('approve') ? `<span class="cnt">${pendingN}</span>` : ''}</button>`).join('')}
+      ${nav.map(n => `${n.grp ? `<div class="grp">${n.grp}</div>` : ''}<button data-nav="${n.id}" class="${S.view === n.id || (n.id === 'products' && S.view === 'pull') ? 'on' : ''}">${esc(n.t)}${n.id === 'admin' && pendingN && can('approve') ? `<span class="cnt">${pendingN}</span>` : ''}</button>`).join('')}
       <div class="grp" style="margin-top:16px">앱 업데이트 ${fd(APP_VERSION.slice(0, 10))} ${APP_VERSION.slice(11)}</div>
     </nav>
     <main><div class="page" id="page">${pageView()}</div></main>
@@ -365,7 +367,7 @@ function tabbar(nav) {
   }
   if (rows.length > 1) { const k = rows[1].findIndex(x => x.id === 'admin'); if (k >= 0) rows[0].push(...rows[1].splice(k, 1)); }   // 11/4 대표: 관리는 윗줄 끝, 설정 바로 위
   const btn = (x, i, row) => { const [t, ic2] = x.id === 'more' ? ['설정', 'more'] : (TAB[x.id] || [x.id, 'more']);
-    return `<button data-nav="${x.id}" class="${S.view === x.id ? 'on' : ''}${i && (!row[i - 1] || row[i - 1].g !== x.g) ? ' gs' : ''}">${ic(ic2, 18)}<span>${t}</span>${x.id === 'admin' && pendingN ? `<b class="tcnt">${pendingN}</b>` : ''}</button>`; };
+    return `<button data-nav="${x.id}" class="${S.view === x.id || (x.id === 'products' && S.view === 'pull') ? 'on' : ''}${i && (!row[i - 1] || row[i - 1].g !== x.g) ? ' gs' : ''}">${ic(ic2, 18)}<span>${t}</span>${x.id === 'admin' && pendingN ? `<b class="tcnt">${pendingN}</b>` : ''}</button>`; };
   // 11/4 대표: 간격 맞추기 → 두 줄 모두 같은 칸 너비. 짧은 줄은 관리 앞에 빈칸을 둬서 관리가 설정 바로 위에 오게
   const cols = Math.max(...rows.map(r => r.length));
   rows.forEach(r => { while (r.length < cols) { const k = r.findIndex(x => x && x.id === 'admin'); r.splice(k >= 0 ? k : r.length, 0, null); } });
@@ -818,6 +820,7 @@ function pageView() {
     case 'home': return homeView();
     case 'ipnow': return ipView();
     case 'products': return productsView();
+    case 'pull': return pullView();
     case 'entry': return entryView();
     case 'count': return countView();
     case 'transfer': return transferView();
@@ -1559,6 +1562,7 @@ function productRows() {
     return { p, per, t, has, sold, days, dead };
   }).filter(r => r.has || S.ui.f === 'allp');
   if (q) rows = rows.filter(r => norm(r.p.name).includes(q) || (r.p.barcode || '').includes(S.ui.q.trim()) || norm(r.p.sku).includes(q) || norm(r.p.ip).includes(q));
+  if (st.length === 1 && st[0] === SHELF_STORE && !S.ui.shelfAll) rows = rows.filter(r => onShelf(r.p));
   if (S.ui.ip) rows = rows.filter(r => r.p.ip === S.ui.ip);
   if (S.ui.f === 'out') rows = rows.filter(r => r.t === 0);
   if (S.ui.f === 'neg') rows = rows.filter(r => r.t < 0 || r.per.some(x => x < 0));
@@ -1576,24 +1580,31 @@ function productsView() {
   const ips = [...new Set(S.products.filter(p => st.some(s => (S.stock[s] || {})[p.id] != null)).map(p => p.ip))].sort((a, b) => a.localeCompare(b, 'ko'));
   const shown = rows.slice(0, 300);
   const oneSuwon = st.length === 1 && st[0] === SHELF_STORE;
+  const pilot = oneSuwon && !S.ui.shelfAll;
   const cls = n => n < 0 ? 'qty-neg' : n === 0 ? 'qty-zero' : '';
+  const splitCells = (p, total) => {
+    if (!onShelf(p)) return `<td class="n bin-wide">—</td><td class="n bin-wide">—</td><td class="n big ${cls(total)}" style="font-size:16px">${fmt(total)}</td>`;
+    const cab = shelfOf(SHELF_STORE, p.id), wh = total - cab;
+    return `<td class="n bin-wide ${cls(wh)}">${fmt(wh)}</td><td class="n bin-wide ${cls(cab)}">${fmt(cab)}</td><td class="n big ${cls(total)}" style="font-size:16px">${fmt(total)}<small class="bin-sub">창고 ${fmt(wh)} · 매대 ${fmt(cab)}</small></td>`;
+  };
   const stockCells = r => {
-    if (oneSuwon) {
-      const cab = shelfOf(SHELF_STORE, r.p.id), wh = r.t - cab;
-      return `<td class="n bin-wide ${cls(wh)}">${fmt(wh)}</td><td class="n bin-wide ${cls(cab)}">${fmt(cab)}</td><td class="n big ${cls(r.t)}" style="font-size:16px">${fmt(r.t)}<small class="bin-sub">창고 ${fmt(wh)} · 하부장 ${fmt(cab)}</small></td>`;
-    }
-    const per = multi ? r.per.map((x, i) => { const s = st[i]; if (s !== SHELF_STORE) return `<td class="n ${cls(x)}">${fmt(x)}</td>`; const cab = shelfOf(s, r.p.id); return `<td class="n ${cls(x)}">${fmt(x)}<small class="bin-sub on">창고 ${fmt(x - cab)} · 하부장 ${fmt(cab)}</small></td>`; }).join('') : '';
+    if (pilot) return splitCells(r.p, r.t);
+    if (oneSuwon && onShelf(r.p)) { const cab = shelfOf(SHELF_STORE, r.p.id), wh = r.t - cab; return `<td class="n big ${cls(r.t)}" style="font-size:16px">${fmt(r.t)}<small class="bin-sub on">창고 ${fmt(wh)} · 매대 ${fmt(cab)}</small></td>`; }
+    if (oneSuwon) return `<td class="n big ${cls(r.t)}" style="font-size:16px">${fmt(r.t)}</td>`;
+    const per = multi ? r.per.map((x, i) => { const s = st[i]; if (s !== SHELF_STORE || !onShelf(r.p)) return `<td class="n ${cls(x)}">${fmt(x)}</td>`; const cab = shelfOf(s, r.p.id); return `<td class="n ${cls(x)}">${fmt(x)}<small class="bin-sub on">창고 ${fmt(x - cab)} · 매대 ${fmt(cab)}</small></td>`; }).join('') : '';
     return `${per}<td class="n big ${cls(r.t)}" style="font-size:16px">${fmt(r.t)}</td>`;
   };
-  return `${head('상품·재고', `${fmt(rows.length)}종 · ${freshLine(st) || '이름·바코드·품번·IP로 찾기'}`, `<button class="btn" id="scanBtn">${ic('scan')} 바코드 스캔</button><button class="btn pri" id="stockDoc">재고 문서 출력</button>`)}${freshTable(st, { sales: false })}
+  const heads = oneSuwon && pilot ? '<th class="n bin-wide">창고</th><th class="n bin-wide">매대</th><th class="n">실재고</th>' : `<th class="n">${multi ? '합계' : '재고'}</th>`;
+  return `${head('상품·재고', `${fmt(rows.length)}종 · ${pilot ? SHELF_IPS.join(' · ') + ' · ' : ''}${freshLine(st) || '이름·바코드·품번·IP로 찾기'}`, `${oneSuwon ? '<button class="btn pri" id="pullOpen">매대로 꺼내기</button>' : ''}<button class="btn" id="scanBtn">${ic('scan')} 바코드 스캔</button><button class="btn pri" id="stockDoc">재고 문서 출력</button>`)}${freshTable(st, { sales: false })}
   <div class="card" style="display:flex;flex-direction:column;gap:10px">
+    ${pilot ? `<p class="src">지금은 ${esc(SHELF_IPS.join(' · '))}만 창고와 매대로 나눕니다. 실재고 = 창고 + 매대.</p><button class="btn" type="button" id="shelfAll">다른 IP 보기</button>` : (oneSuwon ? '<button class="btn" type="button" id="shelfAll">에반게리온 · 진격의 거인만</button>' : '')}
     <div class="row"><div class="search">${ic('search')}<input class="inp" id="pq" type="search" placeholder="상품명, 바코드, 품번, IP" value="${esc(S.ui.q)}" autocomplete="off"></div>
-      <select class="inp" id="pip" style="width:auto;min-width:160px" aria-label="IP"><option value="">IP 전체</option>${ips.map(i => `<option ${S.ui.ip === i ? 'selected' : ''}>${esc(i)}</option>`).join('')}</select></div>
+      ${pilot ? '' : `<select class="inp" id="pip" style="width:auto;min-width:160px" aria-label="IP"><option value="">IP 전체</option>${ips.map(i => `<option ${S.ui.ip === i ? 'selected' : ''}>${esc(i)}</option>`).join('')}</select>`}</div>
     <div class="chips">${[['all', '재고 등록 상품'], ['in', '재고 있음'], ['out', '품절'], ['neg', '마이너스'], ['risk', '품절 위험순'], ['low', `품절 임박 (${LOW_QTY}개↓·${LOW_DAYS}일 내)`], ['dead', '악성재고']].map(([k, t]) => `<button class="chip ${S.ui.f === k ? 'on' : ''}" data-pf="${k}">${t}</button>`).join('')}</div>
     ${deadNote(st)}
   </div>
   <div class="card" style="padding:8px 12px">
-    ${rows.length ? `<div class="tw"><table><thead><tr><th>상품명</th><th class="hide-s">IP</th><th class="hide-s">바코드·품번</th>${multi ? st.map(s => `<th class="n">${sdot(s)}${esc(shortName(s))}</th>`).join('') : ''}${oneSuwon ? '<th class="n bin-wide">창고</th><th class="n bin-wide">하부장</th><th class="n">총</th>' : `<th class="n">${multi ? '합계' : '재고'}</th>`}<th class="n" title="재고 ÷ 최근 28일 하루 평균 판매">재고 일수</th><th class="hide-s">상태</th></tr></thead><tbody>
+    ${rows.length ? `<div class="tw"><table><thead><tr><th>상품명</th><th class="hide-s">IP</th><th class="hide-s">바코드·품번</th>${multi ? st.map(s => `<th class="n">${sdot(s)}${esc(shortName(s))}</th>`).join('') : ''}${heads}<th class="n" title="재고 ÷ 최근 28일 하루 평균 판매">재고 일수</th><th class="hide-s">상태</th></tr></thead><tbody>
       ${shown.map(r => `<tr class="click" data-pid="${esc(r.p.id)}"><td class="nm">${esc(r.p.name)}</td><td class="hide-s nowrap">${esc(r.p.ip)}</td><td class="code hide-s">${esc(r.p.barcode || r.p.sku)}</td>
         ${stockCells(r)}<td class="n nowrap ${r.t > 0 && r.days <= 7 ? 'qty-neg' : r.dead ? 'muted' : ''}">${r.t <= 0 ? '–' : r.dead ? '<span class="pill p-warn">60일 무판매</span>' : daysTxt(r.days)}</td><td class="hide-s">${statusPill(r.t)}</td></tr>`).join('')}
     </tbody></table></div>${rows.length > 300 ? `<p class="muted" style="font-size:13px">앞 300종만 보여 줍니다. 검색으로 좁혀 주세요.</p>` : ''}` : '<div class="empty">찾는 상품이 없습니다</div>'}
@@ -1818,7 +1829,7 @@ function productDrawer(pid) {
   const mv = limited() ? [] : S.moves.filter(m => m.pid === pid && myStores().includes(m.store)).slice(-30).reverse();
   return `<div class="hd"><div><div class="muted" style="font-size:12px">${esc(p.ip)}${p.cat ? ' · ' + esc(p.cat) : ''}</div><h3>${esc(p.name)}</h3></div>${S.ui.prevDrawer ? '<button class="btn sm" data-hback="1">← 목록</button>' : ''}<button class="x" data-close aria-label="닫기">×</button></div>
   <div class="card"><dl class="kv"><dt>바코드</dt><dd class="num" style="text-align:left">${esc(p.barcode || '-')}</dd><dt>품번</dt><dd>${esc(p.sku || '-')}</dd>${!limited() && p.price ? `<dt>판매가</dt><dd>${won(p.price)}</dd>` : ''}${S.warehouse[pid] ? `<dt>창고 보관</dt><dd>${fmt(S.warehouse[pid])}개</dd>` : ''}${allPlaces().filter(pl => (pl.q || {})[pid]).map(pl => `<dt>외부 · ${esc(pl.kind)}</dt><dd>${esc(placeLabel(pl))} — ${fmt(pl.q[pid])}개</dd>`).join('')}</dl></div>
-  <div class="card"><h2>매장별 재고</h2><table><tbody>${rows.map(r => `<tr><td class="nowrap"><span class="dot" style="background:${storeColor(r.s.id)};display:inline-block;margin-right:6px"></span>${esc(r.s.name)}${r.s.id === SHELF_STORE && r.has ? `<div class="muted" style="font-size:12px">창고 ${fmt(roomOf(r.s.id, pid))} · 하부장 ${fmt(shelfOf(r.s.id, pid))}</div>` : ''}</td><td class="n big ${r.q < 0 ? 'qty-neg' : ''}" style="font-size:18px">${r.has ? fmt(r.q) : '-'}</td><td style="width:1%">${r.has ? statusPill(r.q) : '<span class="pill p-mute">미등록</span>'}</td></tr>`).join('')}</tbody></table></div>
+  <div class="card"><h2>매장별 재고</h2><table><tbody>${rows.map(r => `<tr><td class="nowrap"><span class="dot" style="background:${storeColor(r.s.id)};display:inline-block;margin-right:6px"></span>${esc(r.s.name)}${r.s.id === SHELF_STORE && r.has && onShelf(p) ? `<div class="muted" style="font-size:12px">창고 ${fmt(roomOf(r.s.id, pid))} · 매대 ${fmt(shelfOf(r.s.id, pid))} · 실재고 ${fmt(r.q)}</div>` : ''}</td><td class="n big ${r.q < 0 ? 'qty-neg' : ''}" style="font-size:18px">${r.has ? fmt(r.q) : '-'}</td><td style="width:1%">${r.has ? statusPill(r.q) : '<span class="pill p-mute">미등록</span>'}</td></tr>`).join('')}</tbody></table></div>
   ${can('move') ? `<div class="row"><button class="btn pri" data-quick="입고" data-qp="${esc(pid)}">입고 등록</button><button class="btn" data-quick="매장 이동" data-qp="${esc(pid)}">매장 이동</button>${can('count') ? `<button class="btn" data-quick="count" data-qp="${esc(pid)}">실사 입력</button>` : ''}</div>` : ''}
   ${limited() ? '' : `<div class="card"><h2>입출고 기록 <span class="r">최근 30건</span></h2>${movesTable(mv, false, true)}</div>`}`;
 }
@@ -1827,10 +1838,10 @@ function byRecent(L) { return L.map((m, i) => [m, i]).sort((a, b) => (b[0].date 
 function movesTable(list, withName = true, compact = false) {
   if (!list.length) return '<div class="empty">기록이 없습니다</div>';
   return `<div class="tw"><table><thead><tr><th class="hide-s">날짜</th>${S.stores.length > 1 || compact ? '<th class="hide-s">매장</th>' : ''}<th class="hide-s">구분</th>${withName ? '<th>상품명</th>' : '<th class="show-s">내용</th>'}<th class="n">수량</th><th class="hide-s">메모</th></tr></thead><tbody>
-  ${list.map(m => { const n = m.type === '하부장' ? (m.cab || 0) : m.qty; return `<tr><td class="nowrap num hide-s" style="text-align:left">${md(m.date)}</td>${S.stores.length > 1 || compact ? `<td class="nowrap hide-s">${sdot(m.store)}${esc(shortName(m.store))}</td>` : ''}<td class="hide-s">${typePill(m.type)}</td>${withName ? `<td class="nm"><span class="show-s muted" style="font-size:12px">${md(m.date)} · ${S.stores.length > 1 || compact ? esc(shortName(m.store)) + ' · ' : ''}${typePill(m.type)}<br></span>${esc((S.P[m.pid] || {}).name || m.pid)}</td>` : `<td class="show-s muted" style="font-size:12px">${md(m.date)} · ${typePill(m.type)}</td>`}<td class="n ${n < 0 ? 'qty-neg' : ''}" style="font-weight:600">${n > 0 ? '+' : ''}${fmt(n)}</td><td class="hide-s muted" style="font-size:12px">${esc(m.memo || '')}${m.by && !/claude/i.test(m.by) ? ` · ${esc(m.by === '자동(POS)' ? (m.upBy ? `POS 파일 · ${whoText(m.upBy, m.co)}` : '자동(POS)') : whoText(m.by, m.co))}` : ''}${m.file ? `<br><span style="font-size:11px">📎 ${esc(m.file)}</span>` : ''}</td></tr>`; }).join('')}
+  ${list.map(m => { const n = m.type === '하부장' || m.type === '매대' ? (m.cab || 0) : m.qty; return `<tr><td class="nowrap num hide-s" style="text-align:left">${md(m.date)}</td>${S.stores.length > 1 || compact ? `<td class="nowrap hide-s">${sdot(m.store)}${esc(shortName(m.store))}</td>` : ''}<td class="hide-s">${typePill(m.type)}</td>${withName ? `<td class="nm"><span class="show-s muted" style="font-size:12px">${md(m.date)} · ${S.stores.length > 1 || compact ? esc(shortName(m.store)) + ' · ' : ''}${typePill(m.type)}<br></span>${esc((S.P[m.pid] || {}).name || m.pid)}</td>` : `<td class="show-s muted" style="font-size:12px">${md(m.date)} · ${typePill(m.type)}</td>`}<td class="n ${n < 0 ? 'qty-neg' : ''}" style="font-weight:600">${n > 0 ? '+' : ''}${fmt(n)}</td><td class="hide-s muted" style="font-size:12px">${esc(m.memo || '')}${m.by && !/claude/i.test(m.by) ? ` · ${esc(m.by === '자동(POS)' ? (m.upBy ? `POS 파일 · ${whoText(m.upBy, m.co)}` : '자동(POS)') : whoText(m.by, m.co))}` : ''}${m.file ? `<br><span style="font-size:11px">📎 ${esc(m.file)}</span>` : ''}</td></tr>`; }).join('')}
   </tbody></table></div>`;
 }
-function typePill(t) { const pos = ['입고', '창고에서 가져옴', '매장 이동(받음)']; return `<span class="pill ${t === COUNT_TYPE || t === '하부장' ? 'p-info' : pos.includes(t) ? 'p-ok' : t === '판매' ? 'p-mute' : 'p-warn'}">${esc(t)}</span>`; }
+function typePill(t) { const pos = ['입고', '창고에서 가져옴', '매장 이동(받음)']; const label = t === '하부장' ? '매대' : t; return `<span class="pill ${t === COUNT_TYPE || t === '하부장' || t === '매대' ? 'p-info' : pos.includes(t) ? 'p-ok' : t === '판매' ? 'p-mute' : 'p-warn'}">${esc(label)}</span>`; }
 
 /* ───────── 외부 장소 ───────── */
 const placeById = id => allPlaces().find(p => p.id === id);
@@ -2027,14 +2038,6 @@ function ibDropStale(ib) {
   S.ui.ibStep = 1;
   if (DB.saveInbound) DB.saveInbound(ib);
 }
-function ibSteps(n) {
-  const t = ['1 예정 올리기', '2 실입고 올리기', '3 비교·확정'];
-  return `<div class="ibsteps">${t.map((x, i) => `<button type="button" class="${i + 1 === n ? 'on' : i + 1 < n ? 'done' : ''}" data-ibstep="${i + 1}">${x}</button>${i < 2 ? '<i>→</i>' : ''}`).join('')}</div>`;
-}
-function ibTools(step, done) {
-  if (done) return '';
-  return `<div class="row cntacts"><button class="btn" type="button" id="ibCancel">취소</button>${step === 3 ? '<button class="btn" type="button" id="ibReup">다시 올리기</button>' : ''}</div>`;
-}
 function ibPhase(ib) {
   if (!ib) return 1;
   if (ib.status === 'received') return 3;
@@ -2044,62 +2047,93 @@ function ibPhase(ib) {
 function ibCard(name, code, bits, bad) {
   return `<div class="grow${bad ? ' bad' : ''}"><b>${esc(name)}</b>${code ? `<div class="code">${esc(code)}</div>` : ''}<div class="gnums">${bits}</div></div>`;
 }
+function pullView() {
+  const p = S.ui.pull ||= { q: '', pid: '', qty: '' };
+  const q = norm(p.q || '');
+  const pool = S.products.filter(x => onShelf(x));
+  const hits = (q ? pool.filter(x => norm(x.name).includes(q) || (x.barcode || '').includes(String(p.q).trim()) || norm(x.sku || '').includes(q)) : pool).slice(0, 8);
+  const sel = p.pid && onShelf(S.P[p.pid]) ? S.P[p.pid] : null;
+  return `${head('매대로 꺼내기', SHELF_IPS.join(' · '), sel ? '<button class="btn pri" data-act="pullOk">확인</button><button class="btn" id="pullBack">상품 목록</button>' : '<button class="btn" id="pullBack">상품 목록</button>')}
+  <div class="card pullbox">
+    <p class="src">창고에 있는 수량을 매대로 꺼냅니다. 실재고는 창고와 매대를 더한 값이라 변하지 않습니다.</p>
+    <label class="lb" for="pullQ">상품</label>
+    <div class="search">${ic('search')}<input class="inp" id="pullQ" placeholder="상품명·바코드" value="${esc(p.q || '')}" autocomplete="off"></div>
+    <div class="glist">${hits.map(x => `<button type="button" class="grow${p.pid === x.id ? ' on' : ''}" data-pullpid="${esc(x.id)}"><b>${esc(x.name)}</b><div class="code">${esc(x.ip)} · 창고 ${fmt(roomOf('suwon', x.id))} · 매대 ${fmt(shelfOf('suwon', x.id))}</div></button>`).join('') || '<p class="src">에반게리온 · 진격의 거인 상품이 없습니다.</p>'}</div>
+    ${sel ? `<p class="cntwhy">${esc(sel.name)}<br>창고 ${fmt(roomOf('suwon', sel.id))} · 매대 ${fmt(shelfOf('suwon', sel.id))} · 실재고 ${fmt(stockOf('suwon', sel.id))}</p>
+      <label class="lb" for="pullQty">꺼낼 수량</label>
+      <input class="inp" id="pullQty" inputmode="numeric" value="${esc(p.qty || '')}" placeholder="수량" aria-label="꺼낼 수량">
+      <button class="btn pri pullgo" type="button" id="pullOk">확인</button>` : ''}
+  </div>`;
+}
+async function pullSave() {
+  const p = S.ui.pull; if (!p || !p.pid) { toast('상품을 고르세요'); return; }
+  const prod = S.P[p.pid];
+  if (!onShelf(prod)) { toast('이 상품은 창고·매대 시범이 아닙니다'); return; }
+  const raw = (document.getElementById('pullQty') || {}).value;
+  const ask = Math.abs(parseInt(String(raw || p.qty || '').replace(/[^\d-]/g, ''), 10) || 0);
+  const can = Math.max(0, roomOf('suwon', p.pid));
+  const n = Math.min(ask, can);
+  if (!n) { toast('창고에 꺼낼 수량이 없습니다'); return; }
+  const at = new Date().toISOString();
+  const m = { id: 'n' + Date.now().toString(36), date: today(), store: 'suwon', type: '매대', pid: p.pid, qty: 0, cab: n, memo: '창고 → 매대', by: S.user.name, at };
+  await DB.saveMoves(stampMoves([m], ''));
+  S.moves.push(m); applyStock(m);
+  p.qty = '';
+  toast(n < ask ? `창고에 있는 ${fmt(n)}개만 매대로 옮겼습니다` : `${fmt(n)}개를 매대로 옮겼습니다`);
+  render();
+}
 function inboundView() {
   const list = S.inbounds.filter(x => S.stores.includes(x.store)).sort((a, b) => (b.date || '').localeCompare(a.date || ''));
   if (S.ui.ib === 'new') return ibNewView();
   const ib = S.inbounds.find(x => x.id === S.ui.ib);
   if (ib) { ibDropStale(ib); return ibDetailView(ib); }
-  return `${head('입고 확인', '입고 예정 파일을 올리고, 나중에 실입고 수량을 올려 비교합니다', '<button class="btn pri" id="ibNew">입고 예정 올리기</button>')}
-  <div class="glist">${list.map(x => { const ph = ibPhase(x); return `<button type="button" class="grow" data-ib="${esc(x.id)}"><b>${esc(x.title)}</b><div class="code">${esc(storeName(x.store))} · ${x.items.length}종 · ${ph === 3 && x.status === 'received' ? '입고 완료' : ph === 3 ? '비교·확정' : '실입고 대기'}</div></button>`; }).join('') || '<p class="src">아직 입고 예정이 없습니다.</p>'}</div>`;
+  return `${head('입고 확인', '예정 수량을 한 번 올리고, 표에서 실입고를 적습니다', '<button class="btn pri" id="ibNew">입고 예정 올리기</button>')}
+  <div class="glist">${list.map(x => `<button type="button" class="grow" data-ib="${esc(x.id)}"><b>${esc(x.title)}</b><div class="code">${esc(storeName(x.store))} · ${x.items.length}종 · ${x.status === 'received' ? '입고 완료' : '실입고 입력'}</div></button>`).join('') || '<p class="src">아직 입고 예정이 없습니다.</p>'}</div>`;
 }
 function ibNewView() {
   const f = S.ui.ibForm ||= { store: S.stores[0], date: today(), title: '', ip: '', from: '', parsed: null, src: '', err: '' };
   const P = (f.parsed || []).filter(r => (r.qty > 0) || (r.actual > 0));
-  const known = P.filter(r => r.pid).length, nw = P.length - known;
-  const blank = (f.parsed || []).length - P.length;
-  return `${head('입고 확인', '1단계 · 입고 예정', P.length ? '<button class="btn pri" data-act="ibCreate">입고 예정 등록</button>' : '<button class="btn" id="ibBack">목록</button>')}
-  ${ibSteps(1)}
-  ${ibTools(1, false)}
+  return `${head('입고 확인', '입고 예정', P.length ? '<button class="btn pri" data-act="ibCreate">입고 예정 등록</button>' : '<button class="btn" id="ibBack">목록</button>')}
   <div class="card cntbox">
     <div class="sgrid">${myStores().map(s => `<button type="button" class="sbtn ${f.store === s ? 'on' : ''}" data-ibstore="${s}">${esc(shortName(s))}</button>`).join('')}</div>
     ${P.length ? `<div class="row cntacts"><button class="btn" id="ibSheetFile">엑셀 다시 올리기</button></div>` : `<label class="lb" for="ibPaste">입고 예정 붙여넣기</label>
     <textarea class="inp cntpaste" id="ibPaste" placeholder="구글 시트에서 복사해 붙이세요"></textarea>
     <div class="row cntacts"><button class="btn pri" id="ibSheetFile">엑셀 올리기</button></div>`}
     ${f.err ? `<p class="cntwhy bad">${esc(f.err)}</p>` : ''}
-    ${P.length ? `<p class="cntwhy">${esc(f.readLine || ('상품 ' + P.length + '종'))}</p>${(f.warns || []).length ? `<p class="src">${esc(f.warns.join(' '))}</p>` : ''}` : '<p class="src">표를 붙이거나 엑셀을 올리세요.</p>'}
-    ${P.length ? `<div class="glist">${P.map(r => ibCard(r.pid && S.P[r.pid] ? S.P[r.pid].name : r.name, `${r.bc || ''}${r.lines > 1 ? ' · ' + r.lines + '줄 합침' : ''} · ${r.pid ? '기존' : '새 상품'}`, `<span>예정 ${fmt(r.qty)}</span>${r.actual != null ? `<span>실입고 ${fmt(r.actual)}</span>` : ''}`, false)).join('')}</div>` : ''}
+    ${P.length ? `<p class="cntwhy">상품 ${P.length}종${f.readLine ? ' · ' + esc(f.readLine) : ''}</p>` : '<p class="src">표를 붙이거나 엑셀을 올리세요. 칸은 자동으로 찾습니다.</p>'}
+    ${P.length ? `<div class="glist">${P.map(r => ibCard(r.pid && S.P[r.pid] ? S.P[r.pid].name : r.name, r.bc || '', `<span>예정 ${fmt(r.qty)}</span>`, false)).join('')}</div>` : ''}
   </div>
   ${P.length ? `<div class="cntregbar"><p class="cntwhy">상품 ${P.length}종</p><button class="btn pri" data-act="ibCreate">입고 예정 등록</button></div>` : ''}`;
 }
+function ibDiff(x) { return x.actual == null ? null : x.actual - (x.plan || 0); }
 function ibDetailView(ib) {
-  const auto = ibPhase(ib);
-  const step = S.ui.ibStep || auto;
   const done = ib.status === 'received';
-  const only = !!S.ui.ibOnly;
-  const rows = ib.items.map(x => ({ ...x, d: x.actual == null ? null : x.actual - (x.plan || 0) }));
-  const extra = ib.extra || [];
-  const same = rows.filter(r => r.d === 0).length;
-  const diff = rows.filter(r => r.d != null && r.d !== 0).length;
-  const miss = rows.filter(r => !xHasActual(r) || (r.plan > 0 && r.actual === 0)).length;
-  const sum = `${rows.length + extra.length}종 중 일치 ${same} · 차이 ${diff} · 예정에 없던 상품 ${extra.length} · 미입고 ${miss}`;
-  const show = r => !only || r.d !== 0;
-  const line = ib.readLine || (ib.src ? `읽은 파일: ${ib.src}` : '');
-  const cards = rows.filter(show).map(r => ibCard(r.name, r.code || '', `<span>예정 ${fmt(r.plan)}</span><span>실입고 ${r.actual == null ? '—' : fmt(r.actual)}</span><span class="${r.d ? 'bad' : ''}">차이 ${r.d == null ? '—' : (r.d > 0 ? '+' : '') + fmt(r.d)}</span>`, r.d)).join('')
-    + extra.filter(() => !only || true).map(r => ibCard(r.name, (r.code || '') + ' · 예정에 없던 상품', `<span>예정 0</span><span>실입고 ${fmt(r.actual)}</span><span class="bad">차이 +${fmt(r.actual)}</span>`, true)).join('');
-  const kept = step === 1 && rows.some(r => r.actual != null) ? '<p class="src">이미 올린 실입고 수량은 남겨 둡니다.</p>' : (step === 2 && rows.length ? '<p class="src">예정 수량은 남겨 두고, 실입고 파일만 바꿉니다.</p>' : '');
-  const upload = step === 1
-    ? `<label class="lb" for="ibPaste">입고 예정 붙여넣기</label><textarea class="inp cntpaste" id="ibPaste" placeholder="구글 시트에서 복사해 붙이세요"></textarea><button class="btn pri" id="ibSheetFile">예정 엑셀 올리기</button>`
-    : `<label class="lb" for="ibActPaste">실입고 붙여넣기</label><textarea class="inp cntpaste" id="ibActPaste" placeholder="실입고 수량 표를 붙이세요"></textarea><button class="btn pri" id="ibActFile">실입고 엑셀 올리기</button>`;
-  return `${head('입고 확인', esc(ib.title), step === 3 && !done ? '<button class="btn pri" data-act="ibConfirm">실제 수량으로 입고 확정</button>' : '<button class="btn" id="ibBack">목록</button>')}
-  ${ibSteps(step)}
-  ${ibTools(step, done)}
-  ${step < 3 ? `<div class="card cntbox">${(ib.warns || []).length ? `<p class="src">${esc(ib.warns.join(' '))}</p>` : ''}${kept}${upload}
+  const rows = ib.items || [];
+  const diffN = rows.filter(x => { const d = ibDiff(x); return d != null && d !== 0; }).length;
+  const typed = rows.filter(x => x.actual != null).length;
+  const row = (x, i) => {
+    const d = ibDiff(x);
+    const bad = d != null && d !== 0;
+    const diff = d == null ? '—' : (d > 0 ? '+' : '') + fmt(d);
+    return `<div class="ibrow${bad ? ' bad' : ''}">
+      <div class="nm">${esc(x.name)}<div class="code">${esc(x.code || x.bc || '')}</div></div>
+      <div><span class="iblbl">예정수량</span><b>${fmt(x.plan || 0)}</b></div>
+      <div><span class="iblbl">실입고수량</span>${done ? `<b>${x.actual == null ? '—' : fmt(x.actual)}</b>` : `<input class="inp" inputmode="numeric" data-ibq="${i}" value="${x.actual == null ? '' : x.actual}" aria-label="${esc(x.name)} 실입고수량" placeholder="수량">`}</div>
+      <div><span class="iblbl">차이</span><b class="ibdiff" data-ibdiff>${diff}</b></div>
+      <div class="note"><span class="iblbl">비고</span>${done ? `<span>${esc(x.note || '')}</span>` : `<input class="inp" data-ibnote="${i}" value="${esc(x.note || '')}" aria-label="${esc(x.name)} 비고" placeholder="${bad ? '차이 이유를 적어 주세요' : '비고'}">`}</div>
+    </div>`;
+  };
+  return `${head('입고 확인', esc(ib.title), done ? '<button class="btn" id="ibBack">목록</button>' : '<button class="btn pri" data-act="ibConfirm">입고 확정</button>')}
+  <div class="card cntbox">
+    ${done && ib.result ? `<p class="cntwhy">${esc(ib.result)}</p>` : `<p class="src">실입고 수량을 적으면 차이가 바로 나옵니다. 차이가 있는 줄은 붉게 표시됩니다.</p>`}
     ${S.ui.ibMsg ? `<p class="src">${esc(S.ui.ibMsg.t)}</p>` : ''}
-    ${step === 2 ? `<div class="glist">${ib.items.map(x => ibCard(x.name, x.code || '', `<span>예정 ${fmt(x.plan)}</span>`, false)).join('')}</div>` : ''}</div>` : ''}
-  ${step === 3 ? `<div class="card cntbox">${line ? `<p class="cntwhy">${esc(line)}</p>` : ''}${done && ib.result ? `<p class="cntwhy">${esc(ib.result)}</p>` : ''}${(ib.warns || []).length ? `<p class="src">${esc(ib.warns.join(' '))}</p>` : ''}<p class="cntwhy">${sum}</p>
-    <button class="btn" type="button" id="ibOnly">${only ? '전체 보기' : '차이만'}</button>
-    <div class="glist">${cards || '<p class="src">보이는 상품이 없습니다.</p>'}</div></div>
-    ${done ? '' : `<div class="cntregbar"><p class="cntwhy">${sum}</p><button class="btn pri" data-act="ibConfirm">실제 수량으로 입고 확정</button></div>`}` : ''}`;
+    ${done ? '' : '<div class="row cntacts"><button class="btn" type="button" id="ibActFile">실입고 엑셀로 채우기</button></div>'}
+    <div class="ibsheet">
+      <div class="ibhd"><span>상품</span><span>예정수량</span><span>실입고수량</span><span>차이</span><span>비고</span></div>
+      ${rows.map(row).join('') || '<p class="src">상품이 없습니다.</p>'}
+    </div>
+  </div>
+  ${done ? '' : `<div class="cntregbar"><p class="cntwhy">${rows.length}종 · 적은 수량 ${typed} · 차이 ${diffN}</p><button class="btn pri" data-act="ibConfirm">입고 확정</button></div>`}`;
 }
 function xHasActual(r) { return r.actual != null; }
 function ibApplyActual(ib, rows, src) {
@@ -2154,14 +2188,12 @@ async function ibReadFile(f) {
 }
 function ibActLoaded(ib, x) {
   const parsed = countParseRows(x.rows, { mode: 'actual' });
-  if (x && x.readLine) ib.readLine = x.readLine;
-  if (x && x.warns) ib.warns = x.warns;
   ib.parseRev = IB_PARSE;
-  S.ui.ibStep = 3;
+  if (!ib || ib.status === 'received') return;
   if (parsed.err) { S.ui.ibMsg = { t: parsed.err, bad: true }; render(); return; }
   const rows = (parsed.items || []).filter(r => r.qty != null).map(r => ({ ...r, qty: r.qty }));
   if (!rows.length) { S.ui.ibMsg = { t: '실입고 수량을 찾지 못했습니다.', bad: true }; render(); return; }
-  ibApplyActual(ib, rows, x.src); if (DB.saveInbound) DB.saveInbound(ib); render();
+  ibApplyActual(ib, rows, x.src); S.ui.ibMsg = { t: `실입고 ${rows.length}종을 표에 넣었습니다. 틀린 칸은 직접 고치세요.` }; if (DB.saveInbound) DB.saveInbound(ib); render();
 }
 async function ibCreate() {
   const f = S.ui.ibForm; if (!f || !f.parsed) return;
@@ -2178,10 +2210,10 @@ async function ibCreate() {
   }
   indexProducts();
   const items = {};
-  for (const r of f.parsed) { if (!(r.qty > 0) && !(r.actual > 0)) continue; const k = itemKey(r); const x = items[k] ||= { key: k, pid: r.pid, name: r.pid ? S.P[r.pid].name : r.name, code: r.bc || r.sku || (r.pid ? (S.P[r.pid].barcode || S.P[r.pid].sku) : ''), bc: r.bc, sku: r.sku, plan: 0, price: r.price == null ? null : r.price, ip: r.ip || f.ip || '', cat: r.cat || '', vendor: r.vendor || '', actual: null }; x.plan += r.qty || 0; if (r.actual != null) x.actual = (x.actual || 0) + r.actual; }
-  const ib = { id: 'IB-' + f.date.replace(/-/g, '').slice(2) + '-' + Math.random().toString(36).slice(2, 6).toUpperCase(), store: f.store, date: f.date, title: f.title.trim() || f.src, ip: f.ip.trim(), from: f.from.trim(), status: 'planned', items: Object.values(items), extra: [], by: S.user.name, co: userCo(S.user), src: f.src, readLine: f.readLine || '', warns: f.warns || [], parseRev: IB_PARSE, at: new Date().toISOString() };
+  for (const r of f.parsed) { if (!(r.qty > 0) && !(r.actual > 0)) continue; const k = itemKey(r); const x = items[k] ||= { key: k, pid: r.pid, name: r.pid ? S.P[r.pid].name : r.name, code: r.bc || r.sku || (r.pid ? (S.P[r.pid].barcode || S.P[r.pid].sku) : ''), bc: r.bc, sku: r.sku, plan: 0, price: r.price == null ? null : r.price, ip: r.ip || f.ip || '', cat: r.cat || '', vendor: r.vendor || '', actual: null, note: '' }; x.plan += r.qty || 0; }
+  const ib = { id: 'IB-' + f.date.replace(/-/g, '').slice(2) + '-' + Math.random().toString(36).slice(2, 6).toUpperCase(), store: f.store, date: f.date, title: f.title.trim() || f.src, ip: f.ip.trim(), from: f.from.trim(), status: 'planned', items: Object.values(items), extra: [], by: S.user.name, co: userCo(S.user), src: f.src, readLine: '', warns: [], parseRev: IB_PARSE, at: new Date().toISOString() };
   if (DB.saveInbound) await DB.saveInbound(ib);
-  S.inbounds.push(ib); S.ui.ibForm = null; S.ui.ib = ib.id; S.ui.ibStep = ib.items.some(x => x.actual != null) ? 3 : 2; toast(`입고 예정 ${ib.items.length}종을 등록했습니다`);
+  S.inbounds.push(ib); S.ui.ibForm = null; S.ui.ib = ib.id; toast(`입고 예정 ${ib.items.length}종을 등록했습니다`);
 }
 async function ibApplyPlanTo(ib, rows, src, extra) {
   const parsed = countParseRows(rows, { mode: 'plan' });
@@ -2218,6 +2250,8 @@ async function ibCancel() {
   toast('비교를 지웠습니다. 재고는 그대로입니다.');
 }
 async function ibConfirm(ib) {
+  if (!ib || ib.status === 'received') return;
+  ib.items.forEach(x => { if (x.actual == null) x.actual = 0; });
   const lines = [...ib.items.map(x => ({ ...x, q: x.actual || 0 })), ...(ib.extra || []).map(x => ({ ...x, q: x.actual || 0, plan: 0 }))];
   let made = 0;
   for (const l of lines) {
@@ -2236,7 +2270,7 @@ async function ibConfirm(ib) {
   }
   indexProducts();
   const at = new Date().toISOString();
-  const moves = lines.filter(l => l.pid && l.q > 0).map((l, i) => ({ id: 'ib' + Date.now().toString(36) + i, date: today(), store: ib.store, type: '입고', pid: l.pid, qty: l.q, memo: `${ib.title} · 예정 ${fmt(l.plan)}${l.q !== l.plan ? ` · 차이 ${l.q - l.plan > 0 ? '+' : ''}${fmt(l.q - l.plan)}` : ''}`, by: S.user.name, at }));
+  const moves = lines.filter(l => l.pid && l.q > 0).map((l, i) => ({ id: 'ib' + Date.now().toString(36) + i, date: today(), store: ib.store, type: '입고', pid: l.pid, qty: l.q, memo: `${ib.title} · 예정 ${fmt(l.plan)} · 실입고 ${fmt(l.q)}${l.note ? ' · ' + l.note : ''}`, by: S.user.name, at }));
   stampList(moves);
   await DB.saveMoves(stampMoves(moves, ib.actSrc || ib.src || ib.title));
   for (const m of moves) { S.moves.push(m); applyStock(m); }
@@ -2696,10 +2730,10 @@ function countParseRows(rows, pick) {
   const vendCol = labels.findIndex(h => /거래처/.test(normHead(h)) && !/수령/.test(normHead(h)));
   const planCol = map.planCol >= 0 ? map.planCol : -1;
   const ipCol = labels.findIndex(h => normHead(h) === 'ip');
-  const whCol = labels.findIndex(h => { const n = normHead(h); return /창고/.test(n) && !/하부장|물류|보관/.test(n); });
-  const shelfCol = labels.findIndex(h => /하부장/.test(normHead(h)));
+  const whCol = labels.findIndex(h => { const n = normHead(h); return /창고/.test(n) && !/하부장|매대|물류|보관/.test(n); });
+  const shelfCol = labels.findIndex(h => /하부장|매대/.test(normHead(h)));
   const bins = mode === 'count' && whCol >= 0 && shelfCol >= 0;
-  if (bins) map = { ...map, qty: whCol, countCol: true, qtyLabel: '창고+하부장' };
+  if (bins) map = { ...map, qty: whCol, countCol: true, qtyLabel: '창고+매대' };
   const optCol = labels.findIndex(h => /옵션/.test(normHead(h)) && !/상품명|품명/.test(normHead(h)));
   const items = [];
   body.forEach(r => {
@@ -2784,7 +2818,7 @@ function countSetPreview(parsed, src) {
   const absent = S.products.filter(p => stockOf(st, p.id) !== 0 && !seen.has(p.id)).length;
   const blankN = (parsed.items || []).filter(r => r.blank || r.qty == null).length;
   S.ui.cntPrev = { src, matched: [...matched.values()], missing, fresh: [...fresh.values()], absent, blankN, cols: parsed.cols || [], prod: parsed.prod, qty: parsed.qty, prodLabel: parsed.prodLabel, qtyLabel: parsed.qtyLabel };
-  S.ui.cntLine = readLineText('', parsed.planLabel, parsed.qtyLabel) + ((parsed.items || []).some(r => r.bins) ? ' · 창고와 하부장을 따로 비교' : '');
+  S.ui.cntLine = readLineText('', parsed.planLabel, parsed.qtyLabel) + ((parsed.items || []).some(r => r.bins) ? ' · 창고와 매대를 따로 비교' : '');
   S.ui.cntWarns = parsed.warns || [];
   S.ui.cntMsg = null;
   render();
@@ -2996,7 +3030,7 @@ function countPrevHtml() {
   const only = !!S.ui.cntOnly;
   const rows = p.matched.filter(m => !only || m.diff !== 0 || (m.bins && (m.wh !== m.bookWh || m.cabQty !== m.bookCab)));
   const can = p.matched.length > 0;
-  const card = m => `<div class="grow${m.diff || (m.bins && (m.wh !== m.bookWh || m.cabQty !== m.bookCab)) ? ' bad' : ''}"><b>${esc(m.name)}</b><div class="code">${esc(m.code)}${m.lines > 1 ? ' · ' + m.lines + '줄 합침' : ''}</div><div class="gnums">${m.bins ? `<span>전산 창고 ${fmt(m.bookWh)} · 하부장 ${fmt(m.bookCab)}</span><span>실사 창고 ${fmt(m.wh)} · 하부장 ${fmt(m.cabQty)}</span>` : `<span>전산 ${fmt(m.book)}</span><span>실사 ${fmt(m.qty)}</span>`}<span class="${m.diff ? 'bad' : ''}">총 ${m.diff > 0 ? '+' : ''}${fmt(m.diff)}</span></div></div>`;
+  const card = m => `<div class="grow${m.diff || (m.bins && (m.wh !== m.bookWh || m.cabQty !== m.bookCab)) ? ' bad' : ''}"><b>${esc(m.name)}</b><div class="code">${esc(m.code)}${m.lines > 1 ? ' · ' + m.lines + '줄 합침' : ''}</div><div class="gnums">${m.bins ? `<span>전산 창고 ${fmt(m.bookWh)} · 매대 ${fmt(m.bookCab)}</span><span>실사 창고 ${fmt(m.wh)} · 매대 ${fmt(m.cabQty)}</span>` : `<span>전산 ${fmt(m.book)}</span><span>실사 ${fmt(m.qty)}</span>`}<span class="${m.diff ? 'bad' : ''}">합계 ${m.diff > 0 ? '+' : ''}${fmt(m.diff)}</span></div></div>`;
   const unk = only ? '' : (p.fresh || []).map(x => `<div class="grow"><b>${esc(x.name || '이름 없음')}</b><div class="code">${esc(x.bc)} · 전산에 없음</div><div class="gnums"><span>실사 ${x.qty == null ? '—' : fmt(x.qty)}</span></div></div>`).join('');
   const cols = S.ui.cntCols ? `<div class="cntpick"><span class="lb">실사 칸</span><div class="cnttabs">${(p.cols || []).filter(c => c.role === 'qty').map(c => `<button type="button" class="btn ${c.i === p.qty ? 'pri' : ''}" data-cntqty="${c.i}">${esc(c.label)}</button>`).join('')}</div></div>` : '';
   return `<div class="cntprev">${S.ui.cntLine ? `<p class="cntwhy">${esc(S.ui.cntLine)}</p>` : ''}${(S.ui.cntWarns || []).length ? `<p class="src">${esc(S.ui.cntWarns.join(' '))}</p>` : ''}<p class="cntwhy">${countSummary(p)}${p.blankN ? ` · 빈 줄 ${p.blankN}개 제외` : ''}</p>
@@ -3016,9 +3050,10 @@ async function saveCount() {
   const bins = S.ui.cntBins || {};
   const list = Object.keys(c).filter(pid => { const b = bins[pid]; return b ? (b.wh + b.cab) !== stockOf(st, pid) || b.cab !== shelfOf(st, pid) : c[pid] !== stockOf(st, pid); }).map(pid => {
     const b = bins[pid];
-    const total = b ? b.wh + b.cab : c[pid];
-    const nextCab = b ? b.cab : Math.min(Math.max(0, shelfOf(st, pid)), Math.max(0, total));
-    return { id: 'c' + Date.now().toString(36) + pid, date: today(), store: st, type: COUNT_TYPE, pid, qty: total - stockOf(st, pid), cab: nextCab - shelfOf(st, pid), memo: b ? `실사 창고 ${fmt(b.wh)} · 하부장 ${fmt(b.cab)} (총 ${fmt(total)})` : `실사 ${fmt(total)}개 (장부 ${fmt(stockOf(st, pid))})${vend[pid] ? ` · 매입 거래처 ${vend[pid]}` : ''}`, by: S.user.name, at };
+    const shelfP = st === SHELF_STORE && onShelf(S.P[pid]);
+    const total = b && shelfP ? b.wh + b.cab : c[pid];
+    const nextCab = shelfP ? (b ? b.cab : Math.min(Math.max(0, shelfOf(st, pid)), Math.max(0, total))) : shelfOf(st, pid);
+    return { id: 'c' + Date.now().toString(36) + pid, date: today(), store: st, type: COUNT_TYPE, pid, qty: total - stockOf(st, pid), cab: nextCab - shelfOf(st, pid), memo: b ? `실사 창고 ${fmt(b.wh)} · 매대 ${fmt(b.cab)} (실재고 ${fmt(total)})` : `실사 ${fmt(total)}개 (장부 ${fmt(stockOf(st, pid))})${vend[pid] ? ` · 매입 거래처 ${vend[pid]}` : ''}`, by: S.user.name, at };
   });
   stampList(list);
   await DB.saveMoves(stampMoves(list, S.ui.cntSrc));
@@ -3032,18 +3067,18 @@ function transferView() {
   const m = S.ui.move ||= { from: S.stores[0] || 'suwon', to: '', lines: [], q: '', note: '' };
   const places = STORES.map(s => s.id);
   const laneOn = m.from === 'suwon' && (m.lane === 'toShelf' || m.lane === 'toRoom');
-  const laneText = m.lane === 'toShelf' ? '창고 → 하부장' : '하부장 → 창고';
+  const laneText = m.lane === 'toShelf' ? '창고 → 매대' : '매대 → 창고';
   const ready = m.lines.length && (laneOn || (m.from && m.to && m.from !== m.to));
-  const here = pid => m.from === 'suwon' ? `창고 ${fmt(roomOf('suwon', pid))} · 하부장 ${fmt(shelfOf('suwon', pid))}` : `${fmt(stockOf(m.from, pid))}개`;
+  const here = pid => m.from === 'suwon' && onShelf(S.P[pid]) ? `창고 ${fmt(roomOf('suwon', pid))} · 매대 ${fmt(shelfOf('suwon', pid))}` : `${fmt(stockOf(m.from, pid))}개`;
   const btns = (cur, key) => `<div class="sgrid">${places.map(id => `<button type="button" class="sbtn ${!laneOn && cur === id ? 'on' : ''}" data-${key}="${id}" ${key === 'mvto' && id === m.from ? 'disabled' : ''}>${esc(moveLabel(id))}</button>`).join('')}</div>`;
   const q = norm(m.q || '');
   const hits = q ? S.products.filter(p => norm(p.name).includes(q) || (p.barcode || '').includes(String(m.q).trim()) || norm(p.sku || '').includes(q)).slice(0, 8) : [];
   const pend = S.transfers.filter(t => S.stores.includes(t.to) && t.status === 'sent');
   const line = l => { const p = S.P[l.pid] || {}; return `<div class="grow"><b>${esc(p.name || l.pid)}</b><div class="code">${esc(p.barcode || p.sku || '')} · ${here(l.pid)}</div><div class="gnums"><label>수량 <input class="inp qty" type="number" min="1" inputmode="numeric" value="${l.qty}" data-mvq="${esc(l.pid)}" aria-label="이동 수량"></label><button class="btn sm" type="button" data-mvdel="${esc(l.pid)}">빼기</button></div></div>`; };
-  return `${head('상품 이동', '다른 매장으로 보내거나, 수원 매장 안에서 창고와 하부장을 바꿉니다', ready ? `<button class="btn pri" data-act="mvSave">이동 등록 (${m.lines.length}종)</button>` : '')}
+  return `${head('상품 이동', '다른 매장으로 보내거나, 수원에서 창고와 매대를 바꿉니다', ready ? `<button class="btn pri" data-act="mvSave">이동 등록 (${m.lines.length}종)</button>` : '')}
   <div class="card" style="display:flex;flex-direction:column;gap:12px">
     <div class="field"><label>보내는 곳</label>${btns(m.from, 'mvfrom')}</div>
-    ${m.from === 'suwon' ? `<div class="field"><label>수원 매장 안</label><div class="sgrid"><button type="button" class="sbtn ${m.lane === 'toShelf' ? 'on' : ''}" data-lane="toShelf">창고 → 하부장</button><button type="button" class="sbtn ${m.lane === 'toRoom' ? 'on' : ''}" data-lane="toRoom">하부장 → 창고</button></div><p class="src">매장 안 이동은 총 재고가 변하지 않습니다.</p></div>` : ''}
+    ${m.from === 'suwon' ? `<div class="field"><label>수원 · ${esc(SHELF_IPS.join(' · '))}</label><div class="sgrid"><button type="button" class="sbtn ${m.lane === 'toShelf' ? 'on' : ''}" data-lane="toShelf">창고 → 매대</button><button type="button" class="sbtn ${m.lane === 'toRoom' ? 'on' : ''}" data-lane="toRoom">매대 → 창고</button></div><p class="src">이 이동은 실재고를 바꾸지 않습니다. 한 개씩은 상품 화면의 매대로 꺼내기를 씁니다.</p></div>` : ''}
     ${laneOn ? '' : `<div class="field"><label>받는 곳</label>${btns(m.to, 'mvto')}</div>`}
     <div class="field"><label for="mvQ">상품</label><div class="search">${ic('search')}<input class="inp" id="mvQ" placeholder="상품명·바코드" value="${esc(m.q || '')}" autocomplete="off"></div>
       ${hits.length ? `<div class="glist" style="margin-top:8px">${hits.map(p => `<button type="button" class="grow" data-mvadd="${esc(p.id)}"><b>${esc(p.name)}</b><div class="code">${esc(p.barcode || p.sku || '')} · ${here(p.id)}</div></button>`).join('')}</div>` : ''}
@@ -3084,18 +3119,19 @@ async function moveSave() {
     const list = []; const short = [];
     for (const l of m.lines) {
       if (!(l.qty > 0) || !S.P[l.pid]) continue;
+      if (!onShelf(S.P[l.pid])) { short.push(S.P[l.pid].name); continue; }
       const ask = Math.abs(+l.qty || 0);
       const can = toShelf ? Math.max(0, roomOf('suwon', l.pid)) : Math.max(0, shelfOf('suwon', l.pid));
       const n = Math.min(ask, can);
       if (n < ask) short.push(S.P[l.pid].name);
       if (!n) continue;
-      list.push({ id: 'n' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), date: today(), store: 'suwon', type: '하부장', pid: l.pid, qty: 0, cab: toShelf ? n : -n, memo: toShelf ? '창고 → 하부장' : '하부장 → 창고', by: S.user.name, at });
+      list.push({ id: 'n' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), date: today(), store: 'suwon', type: '매대', pid: l.pid, qty: 0, cab: toShelf ? n : -n, memo: toShelf ? '창고 → 매대' : '매대 → 창고', by: S.user.name, at });
     }
     if (!list.length) { toast('옮길 수량이 없습니다'); return; }
     await DB.saveMoves(stampMoves(list, m.src || ''));
     for (const mv of list) { S.moves.push(mv); applyStock(mv); }
     const keep = m.from; S.ui.move = { from: keep, to: '', lane: m.lane, lines: [], q: '', note: '' };
-    toast(`${toShelf ? '창고 → 하부장' : '하부장 → 창고'} ${list.length}종` + (short.length ? ` · 있는 수량만 ${short.length}종` : '')); render();
+    toast(`${toShelf ? '창고 → 매대' : '매대 → 창고'} ${list.length}종` + (short.length ? ` · 시범 IP가 아니거나 수량이 부족한 상품 ${short.length}종` : '')); render();
     return;
   }
   const list = m.lines.filter(l => l.qty > 0 && S.P[l.pid]).map(l => ({ id: 'n' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), date: today(), store: m.from, type: '매장 이동', pid: l.pid, qty: -Math.abs(+l.qty || 0), memo: `→ ${storeName(m.to)}`, by: S.user.name, at }));
@@ -4890,9 +4926,13 @@ function bind() {
     if (t.id === 'ibCreate' || d.act === 'ibCreate') { await ibCreate(); return; }
     if (t.id === 'ibActFile') { const ib = S.inbounds.find(x => x.id === S.ui.ib); pickFile('.xlsx,.xls,.csv', f => stockReadFile(f, 'actual').then(x => ibActLoaded(ib, x)).catch(e => { S.ui.ibMsg = { t: e.message || String(e), bad: true }; render(); })); return; }
     if (t.id === 'ibActLinkGo') { const ib = S.inbounds.find(x => x.id === S.ui.ib); linkRows($('#ibActLink').value.trim()).then(x => ibActLoaded(ib, x)).catch(e => { S.ui.ibMsg = { t: '🔺 ' + e.message, bad: true }; render(); }); return; }
-    if (t.id === 'ibConfirm' || d.act === 'ibConfirm') { const ib = S.inbounds.find(x => x.id === S.ui.ib); const st = ibStats(ib), left = ib.items.filter(x => x.actual == null);
-      const warn = left.length ? `<div class="note warn" style="margin-top:10px">🔸 <b>아직 실제 수량을 안 넣은 상품 ${left.length}종</b>(예정 ${fmt(left.reduce((a, b) => a + (b.plan || 0), 0))}개)은 <b>0개로 입고</b>됩니다. 정말 안 왔는지 확인해 주세요.<ul style="margin:6px 0 0;padding-left:18px;font-size:12.5px">${left.slice(0, 8).map(x => `<li>${esc(x.name)} · 예정 ${fmt(x.plan)}개</li>`).join('')}${left.length > 8 ? `<li>외 ${left.length - 8}종</li>` : ''}</ul></div>` : '';
-      confirmDrawer('실제 수량으로 입고 확정', `<p style="margin:0">${esc(ib.title)} — 실제 <b>${fmt(st.act)}개</b>(예정 ${fmt(st.plan)}개)를 재고에 더합니다. 확정한 뒤에는 수량을 고칠 수 없고, 차이는 기록으로 남습니다.</p>${warn}`, left.length ? `${left.length}종 0개로 두고 확정` : '입고 확정', () => ibConfirm(ib)); return; }
+    if (t.id === 'pullOpen') { if (S.stores[0] !== 'suwon' || S.stores.length !== 1) { toast('매대로 꺼내기는 수원에서만 합니다'); return; } S.view = 'pull'; S.ui.pull = { q: '', pid: '', qty: '' }; render(); return; }
+    if (t.id === 'pullBack') { S.view = 'products'; render(); return; }
+    if (d.pullpid) { S.ui.pull = S.ui.pull || { q: '', qty: '' }; S.ui.pull.pid = d.pullpid; render(); return; }
+    if (t.id === 'pullOk' || d.act === 'pullOk') { await pullSave(); return; }
+    if (t.id === 'shelfAll') { S.ui.shelfAll = !S.ui.shelfAll; render(); return; }
+    if (t.id === 'ibConfirm' || d.act === 'ibConfirm') { const ib = S.inbounds.find(x => x.id === S.ui.ib); if (!ib || ib.status === 'received') return; const left = ib.items.filter(x => x.actual == null); const act = ib.items.reduce((a, x) => a + (x.actual || 0), 0);
+      confirmDrawer('입고 확정', `<p style="margin:0">${esc(ib.title)}의 실입고 <b>${fmt(act)}개</b>를 ${ib.store === 'suwon' ? '창고' : '재고'}에 더합니다. 확정한 뒤에는 수량을 고칠 수 없습니다.</p>${left.length ? `<p style="margin:8px 0 0">수량을 안 적은 ${left.length}종은 0개로 남깁니다.</p>` : ''}`, '입고 확정', () => ibConfirm(ib)); return; }
     if (t.id === 'plNew') { S.ui.placeForm = null; S.ui.drawer = placeDrawer; render(); return; }
     if (d.plk) { S.ui.placeForm.kind = d.plk; render(); return; }
     if (d.ipf) { S.ui.ipF = d.ipf; render(); return; }
@@ -5031,6 +5071,19 @@ function bind() {
   const pq = $('#pq'); if (pq) pq.oninput = debounce(() => { S.ui.q = pq.value; rerenderKeep('#pq'); });
   const cq = $('#cq'); if (cq) cq.oninput = debounce(() => { S.ui.countQ = cq.value; rerenderKeep('#cq'); });
   const mvQ = $('#mvQ'); if (mvQ) mvQ.oninput = debounce(() => { S.ui.move.q = mvQ.value; rerenderKeep('#mvQ'); });
+  const pullQ = $('#pullQ'); if (pullQ) pullQ.oninput = debounce(() => { S.ui.pull.q = pullQ.value; rerenderKeep('#pullQ'); });
+  const pullQty = $('#pullQty'); if (pullQty) pullQty.oninput = () => { if (S.ui.pull) S.ui.pull.qty = pullQty.value; };
+  document.querySelectorAll('[data-ibq]').forEach(el => el.addEventListener('input', () => {
+    const ib = S.inbounds.find(x => x.id === S.ui.ib); const row = ib && ib.items[+el.dataset.ibq]; if (!row || ib.status === 'received') return;
+    const t = el.value.trim(); row.actual = t === '' ? null : countNum(t);
+    const box = el.closest('.ibrow'); const d = ibDiff(row); if (!box) return;
+    box.classList.toggle('bad', d != null && d !== 0);
+    const diff = box.querySelector('[data-ibdiff]'); if (diff) diff.textContent = d == null ? '—' : (d > 0 ? '+' : '') + fmt(d);
+    const note = box.querySelector('[data-ibnote]'); if (note) note.placeholder = d != null && d !== 0 ? '차이 이유를 적어 주세요' : '비고';
+  }));
+  document.querySelectorAll('[data-ibnote]').forEach(el => el.addEventListener('input', () => {
+    const ib = S.inbounds.find(x => x.id === S.ui.ib); const row = ib && ib.items[+el.dataset.ibnote]; if (row) row.note = el.value;
+  }));
   const rq = $('#rq'); if (rq) rq.oninput = debounce(() => { S.ui.recQ = rq.value; rerenderKeep('#rq'); });
   const eq = $('#eq');
   if (eq) {
