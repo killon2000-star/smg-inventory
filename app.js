@@ -50,7 +50,7 @@ const PERM_DEF = [
 ];
 
 const DEFAULT_ORDER = STORES.map(s => s.id);
-const APP_VERSION = '2026-11-16 12:20';   // 앱 화면을 마지막으로 고친 시각 (한국 시간)
+const APP_VERSION = '2026-11-16 13:40';   // 앱 화면을 마지막으로 고친 시각 (한국 시간)
 /* ───────── 작은 도구 ───────── */
 const $ = (s, el = document) => el.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -73,7 +73,8 @@ const fdt = s => /^\d{4}-\d{2}-\d{2}/.test(s || '') ? (/T/.test(s) ? kst(s) : fd
 const kst = iso => { if (!iso) return ''; if (/^\d{4}-\d{2}-\d{2}(T00:00)?$/.test(iso)) return md(iso.slice(0, 10)); const t = new Date(Date.parse(iso) + 9 * 3600e3).toISOString(); return `${md(t.slice(0, 10))} ${t.slice(11, 16)}`; };
 const addDays = (d, n) => new Date(Date.parse(d + 'T00:00:00Z') + n * 864e5).toISOString().slice(0, 10);
 const daysBetween = (a, b) => Math.round((Date.parse(b) - Date.parse(a)) / 864e5);
-const norm = s => String(s || '').toLowerCase().replace(/^에바30주년팝업_/, '').replace(/[\s\[\]()!_\-.,~·&]/g, '');
+const foldText = s => String(s ?? '').normalize('NFKC').replace(/\u3000/g, ' ');
+const norm = s => foldText(s).toLowerCase().replace(/^에바30주년팝업_/, '').replace(/aot[\s_\-]*26[\s_\-]*/g, '').replace(/[\s\[\]()（）!_\-.,~·&]/g, '');
 const storeName = id => (STORES.find(s => s.id === id) || {}).name || id;
 const storeColor = id => `var(--s-${id})`;
 const SHORT = { suwon: '수원', boxcafe: 'BOX CAFE', museum: 'MUSEUM 홍대', omake: 'CAFE 오마케', limission: '리밋션 홍대', gukdae: '국대출판물류' };   // 오마케는 온라인쇼핑몰과 헷갈리지 않게 항상 'CAFE 오마케' (대표 지시 11/2)
@@ -184,7 +185,7 @@ function indexProducts() {
   }
 }
 function looseKey(s) {
-  return String(s || '').toLowerCase().replace(/aot[\s_\-]*26[\s_\-]*/g, '').replace(/[\s_\-\[\]()（）!.,~·&]/g, '');
+  return foldText(s).toLowerCase().replace(/aot[\s_\-]*26[\s_\-]*/g, '').replace(/[\s_\-\[\]()（）!.,~·&]/g, '');
 }
 function findProduct(code) {
   code = String(code || '').trim().replace(/^'/, '');
@@ -242,6 +243,12 @@ function beep(ok) {
     o.start(); o.stop(ctx.currentTime + (ok ? 0.1 : 0.3));
   } catch (e) { }
 }
+function excelZone(id) {
+  return `<div class="xlzone drop"><button type="button" class="btn pri xlbig" id="${id}">엑셀 파일 올리기</button><span class="drophint">또는 이 칸에 파일을 끌어다 놓기</span></div>`;
+}
+function pasteZone(id) {
+  return `<label class="lb" for="${id}">복사한 표 붙여넣기</label><textarea class="inp cntpaste" id="${id}" placeholder="엑셀·구글 시트에서 칸을 복사해 붙여넣으세요. 머리글이 없어도 됩니다."></textarea>`;
+}
 function gunBox() {
   const on = !!S.ui.gun;
   return `<div class="gunwrap"><button type="button" class="btn ${on ? 'pri' : ''}" id="gunToggle">바코드 스캔</button>${on ? `<div class="gunbox${S.ui.scanBad ? ' bad' : ''}"><input id="gunIn" class="inp" autocomplete="off" placeholder="스캐너로 바코드를 찍으세요" aria-label="바코드 스캔"><p class="src">${esc(S.ui.scanMsg || '찍으면 수량이 1개 늘어납니다. 수량은 칸에서 고쳐도 됩니다.')}</p></div>` : ''}</div>`;
@@ -262,7 +269,22 @@ function scanFlash(code) {
     const pull = S.ui.pull ||= { q: '', pid: '', qty: '' };
     const next = (pull.pid === p.id ? (parseInt(pull.qty, 10) || 0) : 0) + 1;
     pull.pid = p.id; pull.qty = String(next);
-    S.ui.scanHit = p.id; S.ui.scanBad = false; S.ui.scanMsg = `${p.name} 꺼낼 수량 ${next}`; beep(true); render(); return;
+    const back = pull.dir === 'toRoom';
+    const have = back ? shelfOf('suwon', p.id) : roomOf('suwon', p.id);
+    if (next > have) { S.ui.scanBad = true; S.ui.scanMsg = `${p.name}은 ${back ? '매대' : '창고'}에 ${fmt(have)}개뿐입니다`; beep(false); render(); return; }
+    S.ui.scanHit = p.id; S.ui.scanBad = false; S.ui.scanMsg = `${p.name} ${back ? '되돌릴' : '꺼낼'} 수량 ${next}`; beep(true); render(); return;
+  }
+  if (view === 'shipout') {
+    const sh = S.ui.ship ||= { dest: '', custom: '', lines: [], miss: [] };
+    const ex = (sh.lines || []).find(l => l.pid === p.id);
+    if (ex) ex.qty = (+ex.qty || 0) + 1; else sh.lines.push({ pid: p.id, qty: 1, name: p.name });
+    S.ui.scanHit = p.id; S.ui.scanBad = false; S.ui.scanMsg = `${p.name} 출고 ${ex ? ex.qty : 1}`; beep(true); render(); return;
+  }
+  if (view === 'transfer') {
+    const mv = S.ui.move ||= { from: S.stores[0] || 'suwon', to: '', lines: [], q: '', note: '' };
+    const ex = (mv.lines || []).find(l => l.pid === p.id);
+    if (ex) ex.qty = (+ex.qty || 0) + 1; else mv.lines.push({ pid: p.id, qty: 1 });
+    S.ui.scanHit = p.id; S.ui.scanBad = false; S.ui.scanMsg = `${p.name} ${(ex ? ex.qty : 1)}`; beep(true); render(); return;
   }
   if (view === 'count') {
     const st = S.stores[0];
@@ -353,9 +375,9 @@ function render() {
   const inApp = !!(S.user && !S.ui.showApply && (S.mode !== 'live' || S.user.status === 'active' || S.user.owner));
   document.body.classList.toggle('in-app', inApp);
   if (!S.user || S.ui.showApply) { app.innerHTML = loginView(); bindLogin(); return; }
-  const nav = NAV.filter(n => n.show());
-  if (stockFloor() && !['products', 'inbound', 'transfer', 'count', 'records', 'pull', 'more'].includes(S.view)) S.view = 'products';
-  if (S.view !== 'more' && S.view !== 'mclose' && S.view !== 'pull' && !nav.find(n => n.id === S.view)) S.view = stockFloor() ? 'products' : 'home';
+  const nav = stockFloor() ? staffNav() : NAV.filter(n => n.show());
+  if (stockFloor() && !['home', 'products', 'inbound', 'transfer', 'count', 'records', 'pull', 'shipout', 'more'].includes(S.view)) S.view = 'home';
+  if (S.view !== 'more' && S.view !== 'mclose' && S.view !== 'pull' && S.view !== 'shipout' && !nav.find(n => n.id === S.view) && S.view !== 'home') S.view = stockFloor() ? 'home' : 'home';
   document.body.classList.toggle('mclose-on', S.view === 'mclose');
   document.body.classList.toggle('sched-on', S.view === 'sched');
   trackNav();
@@ -396,7 +418,18 @@ function render() {
   if (tw && tt && tw.scrollWidth > tw.clientWidth && !tw.dataset.sc) { tw.scrollLeft = Math.max(0, tt.offsetLeft - 108 - tw.clientWidth * 0.2); tw.dataset.sc = 1; }
 }
 // 아래 메뉴: 권한 있는 메뉴를 모두 보여 줌 (6개 넘으면 두 줄)
-const TAB = { home: ['홈', 'home'], ipnow: ['IP현황', 'star'], products: ['상품', 'box'], entry: ['입출고', 'plus'], count: ['실사', 'check'], inbound: ['입고확인', 'truck'], transfer: ['상품이동', 'swap'], records: ['기록', 'list'], files: ['파일', 'list'], sales: ['매출', 'chart'], biz: ['사업부', 'chart'], collab: ['콜라보', 'star'], settle: ['정산', 'won'], popup: ['팝업비용', 'won'], sched: ['월간일정', 'star'], admin: ['관리', 'user'], more: ['설정', 'gear'] };
+const TAB = { home: ['홈', 'home'], ipnow: ['IP현황', 'star'], products: ['상품', 'box'], entry: ['입출고', 'plus'], count: ['실사', 'check'], inbound: ['입고확인', 'truck'], shipout: ['출고', 'swap'], pull: ['매대', 'box'], transfer: ['상품이동', 'swap'], records: ['기록', 'list'], files: ['파일', 'list'], sales: ['매출', 'chart'], biz: ['사업부', 'chart'], collab: ['콜라보', 'star'], settle: ['정산', 'won'], popup: ['팝업비용', 'won'], sched: ['월간일정', 'star'], admin: ['관리', 'user'], more: ['설정', 'gear'] };
+function staffNav() {
+  const items = [
+    { id: 'inbound', t: '입고', g: 3 },
+    { id: 'products', t: '현재 수량', g: 3 },
+    { id: 'shipout', t: '출고', g: 3 },
+    { id: 'count', t: '실사', g: 4 },
+    { id: 'pull', t: '매대', g: 4 },
+    { id: 'records', t: '기록', g: 4 },
+  ];
+  return items.filter(n => n.id !== 'count' || can('count'));
+}
 const TAB_MAIN = ['home', 'products', 'entry', 'transfer', 'sales', 'count'];
 // 아래 메뉴 글씨가 칸 밖으로 나가지 않게: 넘치면 그 칸만 글씨를 줄임 (최소 8px)
 function fitTabLabels() {
@@ -407,7 +440,7 @@ function tabbar(nav) {
   const pendingN = can('approve') ? S.users.filter(u => u.status === 'pending').length : 0;
   // 대표 지시 11/3: 숨김 메뉴 없이 모든 메뉴를 아래에 다 보이게 (최대 두 줄)
   // 11/4: 관련 메뉴끼리 붙여서, 묶음 사이에 옅은 구분선. 한 묶음이 두 줄로 갈라지지 않게 줄을 나눔
-  const items = [...nav.map(n => ({ id: n.id, g: n.g || 9 })), { id: 'more', g: 5 }];
+  const items = [...nav.map(n => ({ id: n.id, t: n.t, g: n.g || 9 })), { id: 'more', g: 5 }];
   const groups = []; items.forEach(x => { const l = groups[groups.length - 1]; if (l && l[0].g === x.g) l.push(x); else groups.push([x]); });
   let rows = [items];
   if (items.length > 6) {   // 두 줄: 줄 길이 차이가 가장 작은 묶음 경계에서 나눔
@@ -416,7 +449,7 @@ function tabbar(nav) {
     rows = best ? [items.slice(0, best.n), items.slice(best.n)] : [items.slice(0, Math.ceil(items.length / 2)), items.slice(Math.ceil(items.length / 2))];
   }
   if (rows.length > 1) { const k = rows[1].findIndex(x => x.id === 'admin'); if (k >= 0) rows[0].push(...rows[1].splice(k, 1)); }   // 11/4 대표: 관리는 윗줄 끝, 설정 바로 위
-  const btn = (x, i, row) => { const [t, ic2] = x.id === 'more' ? ['설정', 'more'] : (TAB[x.id] || [x.id, 'more']);
+  const btn = (x, i, row) => { const tab = x.id === 'more' ? ['설정', 'more'] : (TAB[x.id] || [x.t || x.id, 'box']); const t = stockFloor() && x.t ? x.t : tab[0]; const ic2 = tab[1];
     return `<button data-nav="${x.id}" class="${S.view === x.id || (x.id === 'products' && S.view === 'pull') ? 'on' : ''}${i && (!row[i - 1] || row[i - 1].g !== x.g) ? ' gs' : ''}">${ic(ic2, 18)}<span>${t}</span>${x.id === 'admin' && pendingN ? `<b class="tcnt">${pendingN}</b>` : ''}</button>`; };
   // 11/4 대표: 간격 맞추기 → 두 줄 모두 같은 칸 너비. 짧은 줄은 관리 앞에 빈칸을 둬서 관리가 설정 바로 위에 오게
   const cols = Math.max(...rows.map(r => r.length));
@@ -867,7 +900,8 @@ async function schedSavePreview() {
 }
 function pageView() {
   switch (S.view) {
-    case 'home': return homeView();
+    case 'home': return stockFloor() ? staffHome() : homeView();
+    case 'shipout': return shipoutView();
     case 'ipnow': return ipView();
     case 'products': return productsView();
     case 'pull': return pullView();
@@ -1645,7 +1679,7 @@ function productsView() {
     return `${per}<td class="n big ${cls(r.t)}" style="font-size:16px">${fmt(r.t)}</td>`;
   };
   const heads = oneSuwon && pilot ? '<th class="n bin-wide">창고</th><th class="n bin-wide">매대</th><th class="n">실재고</th>' : `<th class="n">${multi ? '합계' : '재고'}</th>`;
-  return `${head('상품·재고', `${fmt(rows.length)}종 · ${pilot ? SHELF_IPS.join(' · ') + ' · ' : ''}${freshLine(st) || '이름·바코드·품번·IP로 찾기'}`, `${oneSuwon ? '<button class="btn pri" id="pullOpen">매대로 꺼내기</button>' : ''}<button class="btn" id="scanBtn">${ic('scan')} 카메라 스캔</button>${stockFloor() ? '' : '<button class="btn pri" id="stockDoc">재고 문서 출력</button>'}`)}${freshTable(st, { sales: false })}
+  return `${head(stockFloor() ? '현재 수량 확인' : '상품·재고', `${fmt(rows.length)}종 · ${pilot ? SHELF_IPS.join(' · ') + ' · ' : ''}${freshLine(st) || '이름·바코드·품번·IP로 찾기'}`, `<button class="btn" id="scanBtn">${ic('scan')} 카메라 스캔</button>${stockFloor() ? '' : '<button class="btn pri" id="stockDoc">재고 문서 출력</button>'}`)}${oneSuwon ? dirPair() : ''}${freshTable(st, { sales: false })}
   <div class="card" style="display:flex;flex-direction:column;gap:10px">
     ${pilot ? `<p class="src">지금은 ${esc(SHELF_IPS.join(' · '))}만 창고와 매대로 나눕니다. 실재고 = 창고 + 매대.</p><button class="btn" type="button" id="shelfAll">다른 IP 보기</button>` : (oneSuwon ? '<button class="btn" type="button" id="shelfAll">에반게리온 · 진격의 거인만</button>' : '')}
     <div class="row"><div class="search">${ic('search')}<input class="inp" id="pq" type="search" placeholder="상품명, 바코드, 품번, IP" value="${esc(S.ui.q)}" autocomplete="off"></div>
@@ -2097,41 +2131,242 @@ function ibPhase(ib) {
 function ibCard(name, code, bits, bad) {
   return `<div class="grow${bad ? ' bad' : ''}"><b>${esc(name)}</b>${code ? `<div class="code">${esc(code)}</div>` : ''}<div class="gnums">${bits}</div></div>`;
 }
+async function sheetBook(fillHead) {
+  if (!window.ExcelJS) await loadScript('https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js');
+  return window.ExcelJS;
+}
+function saveXlsx(buf, name) {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }));
+  a.download = name; a.click();
+}
+function paintCell(cell, text, grey) {
+  cell.value = text;
+  cell.font = { bold: true };
+  cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: grey ? 'FFE7E6E6' : 'FFFFF2CC' } };
+}
+async function downloadInboundXlsx(ib) {
+  const ExcelJS = await sheetBook();
+  const wb = new ExcelJS.Workbook();
+  const ws = wb.addWorksheet('실입고');
+  ws.getCell(1, 1).value = '입고번호';
+  ws.getCell(1, 2).value = ib.id;
+  ws.getRow(1).font = { bold: true };
+  ['상품코드', '바코드', '상품명', '예정수량', '실입고수량', '비고'].forEach((h, i) => paintCell(ws.getRow(2).getCell(i + 1), h, i < 4));
+  (ib.items || []).forEach((it, n) => {
+    const row = ws.getRow(n + 3);
+    [it.pid || '', it.bc || it.code || '', it.name || '', it.plan || 0, '', ''].forEach((v, i) => {
+      const c = row.getCell(i + 1); c.value = v;
+      if (i < 4) { c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF2F2F2' } }; c.protection = { locked: true }; }
+      else c.protection = { locked: false };
+    });
+  });
+  ws.columns = [{ width: 22 }, { width: 18 }, { width: 36 }, { width: 12 }, { width: 14 }, { width: 28 }];
+  try { await ws.protect('', { selectLockedCells: true, selectUnlockedCells: true }); } catch (e) { }
+  saveXlsx(await wb.xlsx.writeBuffer(), `실입고_${ib.id}.xlsx`);
+}
+async function downloadCountXlsx() {
+  const ExcelJS = await sheetBook();
+  const st = S.stores[0];
+  const wb = new ExcelJS.Workbook();
+  const ws = wb.addWorksheet('실사');
+  ['상품코드', '바코드', '상품명', '전산재고', '실사수량'].forEach((h, i) => paintCell(ws.getRow(1).getCell(i + 1), h, i < 4));
+  S.products.filter(p => (S.stock[st] || {})[p.id] != null).forEach((p, n) => {
+    const row = ws.getRow(n + 2);
+    [p.id, p.barcode || '', p.name, stockOf(st, p.id), ''].forEach((v, i) => {
+      const c = row.getCell(i + 1); c.value = v;
+      if (i < 4) { c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF2F2F2' } }; c.protection = { locked: true }; }
+      else c.protection = { locked: false };
+    });
+  });
+  ws.columns = [{ width: 22 }, { width: 18 }, { width: 36 }, { width: 12 }, { width: 12 }];
+  try { await ws.protect('', { selectLockedCells: true, selectUnlockedCells: true }); } catch (e) { }
+  saveXlsx(await wb.xlsx.writeBuffer(), `실사_${storeName(st)}_${today()}.xlsx`);
+}
+async function downloadPullXlsx() {
+  const ExcelJS = await sheetBook();
+  const wb = new ExcelJS.Workbook();
+  const ws = wb.addWorksheet('매대');
+  const back = (S.ui.pull || {}).dir === 'toRoom';
+  [ '상품코드', '바코드', '상품명', back ? '매대' : '창고', back ? '되돌릴수량' : '꺼낼수량' ].forEach((h, i) => paintCell(ws.getRow(1).getCell(i + 1), h, i < 4));
+  S.products.filter(onShelf).forEach((p, n) => {
+    const row = ws.getRow(n + 2);
+    [p.id, p.barcode || '', p.name, back ? shelfOf('suwon', p.id) : roomOf('suwon', p.id), ''].forEach((v, i) => {
+      const c = row.getCell(i + 1); c.value = v;
+      if (i < 4) { c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF2F2F2' } }; c.protection = { locked: true }; }
+      else c.protection = { locked: false };
+    });
+  });
+  ws.columns = [{ width: 22 }, { width: 18 }, { width: 36 }, { width: 12 }, { width: 12 }];
+  try { await ws.protect('', { selectLockedCells: true, selectUnlockedCells: true }); } catch (e) { }
+  saveXlsx(await wb.xlsx.writeBuffer(), `매대_${today()}.xlsx`);
+}
+function applyPagePaste(text) {
+  const rows = parsePasteTable(text);
+  if (!rows.some(r => (r || []).some(c => String(c || '').trim()))) return;
+  if (S.view === 'inbound') {
+    const ib = S.inbounds.find(x => x.id === S.ui.ib);
+    if (!ib || S.ui.ib === 'new') ibApplyCountRows(rows, '붙여넣기');
+    else ibActLoaded(ib, { rows, src: '붙여넣기' });
+  } else if (S.view === 'count') countSetPreview(countParseRows(rows, { mode: 'count' }), '붙여넣기');
+  else if (S.view === 'transfer') moveFromRows(rows, '붙여넣기');
+  else if (S.view === 'pull') pullFromRows(rows, '붙여넣기');
+  else if (S.view === 'shipout') shipFromRows(rows, '붙여넣기');
+}
+function dirPair() {
+  const back = S.view === 'pull' && (S.ui.pull || {}).dir === 'toRoom';
+  const out = S.view === 'pull' && !back;
+  return `<div class="dirpair"><button type="button" class="dirbtn dir-out${out ? ' on' : ''}" id="pullOpen"><b>창고 → 매대</b><small>매대로 꺼내기</small></button><button type="button" class="dirbtn dir-back${back ? ' on' : ''}" id="backOpen"><b>매대 → 창고</b><small>창고로 되돌리기</small></button></div>`;
+}
+function staffHome() {
+  return `${head('수원 매장', '오늘 할 일')}
+  <div class="staffhome">
+    <button class="staffbig" data-nav="inbound"><b>1</b><span>입고</span><small>입고 확인</small></button>
+    <button class="staffbig" data-nav="products"><b>2</b><span>현재 수량 확인</span><small>검색 · 스캔 · 창고 / 매대 / 실재고</small></button>
+    <button class="staffbig" data-nav="shipout"><b>3</b><span>수량 정리 후 출고</span><small>물류창고 · 홍대 · 팝업 현장</small></button>
+    ${dirPair()}
+    <div class="staffsmall">${can('count') ? '<button data-nav="count">실사</button>' : ''}<button data-nav="records">기록</button></div>
+  </div>`;
+}
 function pullView() {
-  const p = S.ui.pull ||= { q: '', pid: '', qty: '' };
+  const p = S.ui.pull ||= { q: '', pid: '', qty: '', lines: [], miss: [], dir: 'toShelf' };
+  const back = p.dir === 'toRoom';
   const q = norm(p.q || '');
   const pool = S.products.filter(x => onShelf(x));
   const hits = (q ? pool.filter(x => norm(x.name).includes(q) || (x.barcode || '').includes(String(p.q).trim()) || norm(x.sku || '').includes(q)) : pool).slice(0, 8);
   const sel = p.pid && onShelf(S.P[p.pid]) ? S.P[p.pid] : null;
-  return `${head('매대로 꺼내기', SHELF_IPS.join(' · '), sel ? '<button class="btn pri" data-act="pullOk">확인</button><button class="btn" id="pullBack">상품 목록</button>' : '<button class="btn" id="pullBack">상품 목록</button>')}
+  const lines = p.lines || [];
+  const ready = lines.length || sel;
+  return `${head(back ? '창고로 되돌리기' : '매대로 꺼내기', back ? '매대 → 창고' : '창고 → 매대', ready ? '<button class="btn pri" data-act="pullOk">확인</button>' : '<button class="btn" id="pullBack">상품 목록</button>')}
+  ${dirPair()}
   <div class="card pullbox">
-    <p class="src">창고에 있는 수량을 매대로 꺼냅니다. 실재고는 창고와 매대를 더한 값이라 변하지 않습니다.</p>
+    <p class="src">${back ? '팔리지 않은 매대 수량을 창고로 되돌립니다. 지금 매대에 있는 수량보다 많이 되돌릴 수 없습니다. 실재고는 그대로입니다.' : '창고에 있는 수량을 매대로 꺼냅니다. 실재고는 변하지 않습니다.'}</p>
+    ${excelZone('pullFile')}
+    <button type="button" class="btn" id="pullDl">${back ? '되돌리기' : '꺼내기'} 입력용 엑셀 내려받기</button>
+    ${p.note ? `<p class="cntwhy">${esc(p.note)}</p>` : ''}
+    ${lines.length ? `<div class="glist">${lines.map(l => { const g = S.P[l.pid] || {}; const have = back ? shelfOf('suwon', l.pid) : roomOf('suwon', l.pid); return `<div class="grow${S.ui.scanHit === l.pid ? ' scanflash' : ''}${l.qty > have ? ' bad' : ''}"><b>${esc(g.name || l.name)}</b><div class="code">${esc(g.barcode || '')} · ${back ? '매대' : '창고'} ${fmt(have)}</div><div class="gnums"><label>수량 <input class="inp qty" data-pullq="${esc(l.pid)}" value="${l.qty}" inputmode="numeric" aria-label="${back ? '되돌릴' : '꺼낼'} 수량"></label></div></div>`; }).join('')}</div>` : ''}
+    ${(p.miss || []).length ? `<h3>맞추지 못한 줄</h3><div class="glist">${p.miss.map(r => `<div class="grow"><b>${esc(r.name || r.bc || '이름 없음')}</b><div class="code">${esc(r.bc || '')} · ${fmt(r.qty)}</div></div>`).join('')}</div>` : ''}
+    ${pasteZone('pullPaste')}
     ${gunBox()}
-    <label class="lb" for="pullQ">상품</label>
+    <label class="lb" for="pullQ">또는 상품을 직접 고르기</label>
     <div class="search">${ic('search')}<input class="inp" id="pullQ" placeholder="상품명·바코드" value="${esc(p.q || '')}" autocomplete="off"></div>
     <div class="glist">${hits.map(x => `<button type="button" class="grow${p.pid === x.id ? ' on' : ''}${S.ui.scanHit === x.id ? ' scanflash' : ''}" data-pullpid="${esc(x.id)}"><b>${esc(x.name)}</b><div class="code">${esc(x.ip)} · 창고 ${fmt(roomOf('suwon', x.id))} · 매대 ${fmt(shelfOf('suwon', x.id))}</div></button>`).join('') || '<p class="src">에반게리온 · 진격의 거인 상품이 없습니다.</p>'}</div>
-    ${sel ? `<p class="cntwhy">${esc(sel.name)}<br>창고 ${fmt(roomOf('suwon', sel.id))} · 매대 ${fmt(shelfOf('suwon', sel.id))} · 실재고 ${fmt(stockOf('suwon', sel.id))}</p>
-      <label class="lb" for="pullQty">꺼낼 수량</label>
-      <input class="inp" id="pullQty" inputmode="numeric" value="${esc(p.qty || '')}" placeholder="수량" aria-label="꺼낼 수량">
-      <button class="btn pri pullgo" type="button" id="pullOk">확인</button>` : ''}
-  </div>`;
+    ${sel ? `<p class="cntwhy">${esc(sel.name)} · 창고 ${fmt(roomOf('suwon', sel.id))} · 매대 ${fmt(shelfOf('suwon', sel.id))}</p>
+      <label class="lb" for="pullQty">${back ? '되돌릴 수량' : '꺼낼 수량'}</label>
+      <input class="inp" id="pullQty" inputmode="numeric" value="${esc(p.qty || '')}" placeholder="수량" aria-label="꺼낼 수량">` : ''}
+  </div>
+  ${ready ? `<div class="cntregbar"><p class="cntwhy">${lines.length ? lines.length + '종' : '1종'}</p><button class="btn pri" data-act="pullOk">확인</button></div>` : ''}`;
+}
+function pullFromRows(rows, src) {
+  const parsed = countParseRows(rows, { mode: 'move' });
+  const p = S.ui.pull ||= { q: '', pid: '', qty: '', lines: [], miss: [] };
+  if (parsed.err) { p.note = parsed.err; render(); return; }
+  const lines = [], miss = [];
+  for (const r of parsed.items || []) {
+    const qty = r.qty != null ? r.qty : r.plan;
+    if (qty == null) continue;
+    if (!r.pid || !onShelf(S.P[r.pid])) { miss.push({ name: r.name, bc: r.bc || r.idCode || '', qty }); continue; }
+    const ex = lines.find(l => l.pid === r.pid);
+    if (ex) ex.qty += qty; else lines.push({ pid: r.pid, qty, name: S.P[r.pid].name });
+  }
+  p.lines = lines; p.miss = miss; p.note = `${src}: ${lines.length}종` + (miss.length ? ` · 맞추지 못한 ${miss.length}줄` : '');
+  render();
 }
 async function pullSave() {
-  const p = S.ui.pull; if (!p || !p.pid) { toast('상품을 고르세요'); return; }
-  const prod = S.P[p.pid];
-  if (!onShelf(prod)) { toast('이 상품은 창고·매대 시범이 아닙니다'); return; }
-  const raw = (document.getElementById('pullQty') || {}).value;
-  const ask = Math.abs(parseInt(String(raw || p.qty || '').replace(/[^\d-]/g, ''), 10) || 0);
-  const can = Math.max(0, roomOf('suwon', p.pid));
-  const n = Math.min(ask, can);
-  if (!n) { toast('창고에 꺼낼 수량이 없습니다'); return; }
+  const p = S.ui.pull; if (!p) return;
+  const batch = (p.lines || []).map(l => ({ pid: l.pid, qty: Math.abs(+l.qty || 0) }));
+  if (!batch.length && p.pid) {
+    const raw = (document.getElementById('pullQty') || {}).value;
+    batch.push({ pid: p.pid, qty: Math.abs(parseInt(String(raw || p.qty || '').replace(/[^\d-]/g, ''), 10) || 0) });
+  }
+  const list = []; let short = 0;
   const at = new Date().toISOString();
-  const m = { id: 'n' + Date.now().toString(36), date: today(), store: 'suwon', type: '매대', pid: p.pid, qty: 0, cab: n, memo: '창고 → 매대', by: S.user.name, at };
-  await DB.saveMoves(stampMoves([m], ''));
-  S.moves.push(m); applyStock(m);
-  p.qty = '';
-  toast(n < ask ? `창고에 있는 ${fmt(n)}개만 매대로 옮겼습니다` : `${fmt(n)}개를 매대로 옮겼습니다`);
+  for (const l of batch) {
+    const prod = S.P[l.pid];
+    if (!onShelf(prod) || !(l.qty > 0)) continue;
+    const back = p.dir === 'toRoom';
+    const have = Math.max(0, back ? shelfOf('suwon', l.pid) : roomOf('suwon', l.pid));
+    const n = Math.min(l.qty, have);
+    if (n < l.qty) short++;
+    if (!n) continue;
+    list.push({ id: 'n' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5), date: today(), store: 'suwon', type: '매대', pid: l.pid, qty: 0, cab: back ? -n : n, memo: back ? '매대 → 창고' : '창고 → 매대', by: S.user.name, at });
+  }
+  if (!list.length) { toast(p.dir === 'toRoom' ? '매대에 되돌릴 수량이 없습니다' : '창고에 꺼낼 수량이 없습니다'); return; }
+  await DB.saveMoves(stampMoves(list, p.note || ''));
+  for (const m of list) { S.moves.push(m); applyStock(m); }
+  p.lines = []; p.qty = ''; p.pid = '';
+  const back = p.dir === 'toRoom';
+  toast(short ? `${list.length}종을 옮겼습니다. ${back ? '매대' : '창고'}가 모자란 ${short}종은 있는 만큼만 옮겼습니다` : `${list.length}종을 ${back ? '창고로 되돌렸습니다' : '매대로 옮겼습니다'}`);
   render();
+}
+function shipoutView() {
+  const s = S.ui.ship ||= { dest: '', custom: '', lines: [], miss: [], note: '' };
+  const dests = [['gukdae', '물류창고'], ['museum', '홍대'], ['custom', '기타 팝업 현장']];
+  const lines = s.lines || [];
+  return `${head('수량 정리 후 출고', '수원에서 내보냅니다', lines.length && s.dest ? '<button class="btn pri" data-act="shipOk">출고 확정</button>' : '')}
+  <div class="card pullbox">
+    <p class="src">콜라보·팝업과 상설 상품을 보냅니다. 출고는 창고에서 먼저 빼고, 모자라면 매대에서 뺍니다.</p>
+    ${excelZone('shipFile')}
+    <button type="button" class="btn" id="shipDl">출고 입력용 엑셀 내려받기</button>
+    <div class="field"><label>받는 곳</label><div class="sgrid">${dests.map(([id, name]) => `<button type="button" class="sbtn ${s.dest === id ? 'on' : ''}" data-shipdest="${id}">${esc(name)}</button>`).join('')}</div></div>
+    ${s.dest === 'custom' ? `<label class="lb" for="shipCustom">현장 이름</label><input class="inp" id="shipCustom" value="${esc(s.custom || '')}" placeholder="기타 팝업 현장" aria-label="현장 이름">` : ''}
+    ${s.note ? `<p class="cntwhy">${esc(s.note)}</p>` : ''}
+    ${lines.length ? `<div class="glist">${lines.map(l => { const g = S.P[l.pid] || {}; return `<div class="grow${S.ui.scanHit === l.pid ? ' scanflash' : ''}"><b>${esc(g.name || l.name)}</b><div class="code">${esc(g.barcode || '')} · 창고 ${fmt(roomOf('suwon', l.pid))} · 매대 ${fmt(shelfOf('suwon', l.pid))}</div><div class="gnums"><label>수량 <input class="inp qty" data-shipq="${esc(l.pid)}" value="${l.qty}" inputmode="numeric" aria-label="출고 수량"></label></div></div>`; }).join('')}</div>` : '<p class="src">엑셀을 올리면 출고할 상품이 여기 쌓입니다.</p>'}
+    ${(s.miss || []).length ? `<h3>맞추지 못한 줄</h3><div class="glist">${s.miss.map(r => `<div class="grow"><b>${esc(r.name || '이름 없음')}</b><div class="code">${esc(r.bc || '')} · ${fmt(r.qty)}</div></div>`).join('')}</div>` : ''}
+    ${pasteZone('shipPaste')}
+    ${gunBox()}
+  </div>
+  ${lines.length ? `<div class="cntregbar"><p class="cntwhy">${lines.length}종 · ${s.dest === 'gukdae' ? '물류창고' : s.dest === 'museum' ? '홍대' : s.dest === 'custom' ? '기타 팝업 현장' : '받는 곳'}</p><button class="btn pri" data-act="shipOk" ${s.dest ? '' : 'disabled'}>출고 확정</button></div>` : ''}`;
+}
+function shipFromRows(rows, src) {
+  const parsed = countParseRows(rows, { mode: 'move' });
+  const s = S.ui.ship ||= { dest: '', custom: '', lines: [], miss: [], note: '' };
+  if (parsed.err) { s.note = parsed.err; render(); return; }
+  const lines = [], miss = [];
+  for (const r of parsed.items || []) {
+    const qty = r.qty != null ? r.qty : r.plan;
+    if (qty == null) continue;
+    if (!r.pid) { miss.push({ name: r.name, bc: r.bc || r.idCode || '', qty }); continue; }
+    const ex = lines.find(l => l.pid === r.pid);
+    if (ex) ex.qty += qty; else lines.push({ pid: r.pid, qty, name: S.P[r.pid].name });
+  }
+  s.lines = lines; s.miss = miss; s.note = `${src}: ${lines.length}종` + (miss.length ? ` · 맞추지 못한 ${miss.length}줄` : '');
+  render();
+}
+async function shipSave() {
+  const s = S.ui.ship; if (!s || !s.dest || !(s.lines || []).length) { toast('받는 곳과 상품을 넣어 주세요'); return; }
+  const custom = ((document.getElementById('shipCustom') || {}).value || s.custom || '').trim();
+  if (s.dest === 'custom' && !custom) { toast('팝업 현장 이름을 적어 주세요'); return; }
+  const toId = s.dest === 'custom' ? '' : s.dest;
+  const toName = s.dest === 'custom' ? custom : storeName(s.dest);
+  const at = new Date().toISOString();
+  const list = s.lines.filter(l => l.qty > 0 && S.P[l.pid]).map(l => ({ id: 'n' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5), date: today(), store: 'suwon', type: '매장 이동', pid: l.pid, qty: -Math.abs(+l.qty || 0), memo: `→ ${toName}`, by: S.user.name, at }));
+  if (!list.length) return;
+  stampList(list);
+  await DB.saveMoves(stampMoves(list, s.note || ''));
+  for (const mv of list) { S.moves.push(mv); applyStock(mv); if (toId) S.transfers.push({ id: mv.id, pid: mv.pid, qty: -mv.qty, from: 'suwon', to: toId, date: mv.date, by: S.user.name, at, status: 'sent' }); }
+  s.lines = []; s.miss = [];
+  toast(`${list.length}종을 ${toName}으로 보냈습니다`);
+  render();
+}
+async function downloadShipXlsx() {
+  const ExcelJS = await sheetBook();
+  const wb = new ExcelJS.Workbook();
+  const ws = wb.addWorksheet('출고');
+  ['상품코드', '바코드', '상품명', '창고', '매대', '실재고', '출고수량'].forEach((h, i) => paintCell(ws.getRow(1).getCell(i + 1), h, i < 6));
+  S.products.filter(p => (S.stock.suwon || {})[p.id] != null).forEach((p, n) => {
+    const row = ws.getRow(n + 2);
+    const cab = onShelf(p) ? shelfOf('suwon', p.id) : 0;
+    const tot = stockOf('suwon', p.id);
+    [p.id, p.barcode || '', p.name, onShelf(p) ? tot - cab : tot, onShelf(p) ? cab : '', tot, ''].forEach((v, i) => {
+      const c = row.getCell(i + 1); c.value = v;
+      if (i < 6) { c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF2F2F2' } }; c.protection = { locked: true }; }
+      else c.protection = { locked: false };
+    });
+  });
+  ws.columns = [{ width: 22 }, { width: 18 }, { width: 36 }, { width: 10 }, { width: 10 }, { width: 10 }, { width: 12 }];
+  try { await ws.protect('', { selectLockedCells: true, selectUnlockedCells: true }); } catch (e) { }
+  saveXlsx(await wb.xlsx.writeBuffer(), `출고_${today()}.xlsx`);
 }
 function inboundView() {
   const list = S.inbounds.filter(x => S.stores.includes(x.store)).sort((a, b) => (b.date || '').localeCompare(a.date || ''));
@@ -2146,13 +2381,11 @@ function ibNewView() {
   const P = (f.parsed || []).filter(r => (r.qty > 0) || (r.actual > 0));
   return `${head('입고 확인', '입고 예정', P.length ? '<button class="btn pri" data-act="ibCreate">입고 예정 등록</button>' : '<button class="btn" id="ibBack">목록</button>')}
   <div class="card cntbox">
+    ${excelZone('ibSheetFile')}
     <div class="sgrid">${myStores().map(s => `<button type="button" class="sbtn ${f.store === s ? 'on' : ''}" data-ibstore="${s}">${esc(shortName(s))}</button>`).join('')}</div>
-    ${P.length ? `<div class="row cntacts"><button class="btn" id="ibSheetFile">엑셀 다시 올리기</button></div>` : `<label class="lb" for="ibPaste">입고 예정 붙여넣기</label>
-    <textarea class="inp cntpaste" id="ibPaste" placeholder="구글 시트에서 복사해 붙이세요"></textarea>
-    <div class="row cntacts"><button class="btn pri" id="ibSheetFile">엑셀 올리기</button></div>`}
     ${f.err ? `<p class="cntwhy bad">${esc(f.err)}</p>` : ''}
-    ${P.length ? `<p class="cntwhy">상품 ${P.length}종${f.readLine ? ' · ' + esc(f.readLine) : ''}</p>` : '<p class="src">표를 붙이거나 엑셀을 올리세요. 칸은 자동으로 찾습니다.</p>'}
-    ${P.length ? `<div class="glist">${P.map(r => ibCard(r.pid && S.P[r.pid] ? S.P[r.pid].name : r.name, r.bc || '', `<span>예정 ${fmt(r.qty)}</span>`, false)).join('')}</div>` : ''}
+    ${P.length ? `<p class="cntwhy">상품 ${P.length}종${f.readLine ? ' · ' + esc(f.readLine) : ''}</p><div class="glist">${P.map(r => ibCard(r.pid && S.P[r.pid] ? S.P[r.pid].name : r.name, r.bc || '', `<span>예정 ${fmt(r.qty)}</span>`, !r.pid)).join('')}</div>` : '<p class="src">엑셀을 올리면 상품과 예정수량을 읽어 표로 보여 줍니다.</p>'}
+    ${pasteZone('ibPaste')}
   </div>
   ${P.length ? `<div class="cntregbar"><p class="cntwhy">상품 ${P.length}종</p><button class="btn pri" data-act="ibCreate">입고 예정 등록</button></div>` : ''}`;
 }
@@ -2174,16 +2407,20 @@ function ibDetailView(ib) {
       <div class="note"><span class="iblbl">비고</span>${done ? `<span>${esc(x.note || '')}</span>` : `<input class="inp" data-ibnote="${i}" value="${esc(x.note || '')}" aria-label="${esc(x.name)} 비고" placeholder="${bad ? '차이 이유를 적어 주세요' : '비고'}">`}</div>
     </div>`;
   };
+  const miss = ib.extra || [];
   return `${head('입고 확인', esc(ib.title), done ? '<button class="btn" id="ibBack">목록</button>' : '<button class="btn pri" data-act="ibConfirm">입고 확정</button>')}
   <div class="card cntbox">
-    ${done && ib.result ? `<p class="cntwhy">${esc(ib.result)}</p>` : `<p class="src">실입고 수량을 적으면 차이가 바로 나옵니다. 차이가 있는 줄은 붉게 표시됩니다.</p>`}
-    ${done ? '' : gunBox()}
-    ${S.ui.ibMsg ? `<p class="src">${esc(S.ui.ibMsg.t)}</p>` : ''}
-    ${done ? '' : '<div class="row cntacts"><button class="btn" type="button" id="ibActFile">실입고 엑셀로 채우기</button></div>'}
+    ${done ? '' : excelZone('ibActFile')}
+    ${done ? '' : '<button type="button" class="btn xlbig" id="ibDl">실입고 입력용 엑셀 내려받기</button>'}
+    ${done && ib.result ? `<p class="cntwhy">${esc(ib.result)}</p>` : `<p class="src">올린 표의 실입고와 비고를 채운 뒤 확정합니다. 차이가 있는 줄은 붉게 표시됩니다.</p>`}
+    ${S.ui.ibMsg ? `<p class="src${S.ui.ibMsg.bad ? ' bad' : ''}">${esc(S.ui.ibMsg.t)}</p>` : ''}
     <div class="ibsheet">
       <div class="ibhd"><span>상품</span><span>예정수량</span><span>실입고수량</span><span>차이</span><span>비고</span></div>
       ${rows.map(row).join('') || '<p class="src">상품이 없습니다.</p>'}
     </div>
+    ${miss.length ? `<h3>맞추지 못한 줄</h3><div class="glist">${miss.map(r => `<div class="grow"><b>${esc(r.name || '이름 없음')}</b><div class="code">${esc(r.code || r.bc || '')} · ${fmt(r.actual)}</div></div>`).join('')}</div>` : ''}
+    ${done ? '' : pasteZone('ibFillPaste')}
+    ${done ? '' : gunBox()}
   </div>
   ${done ? '' : `<div class="cntregbar"><p class="cntwhy">${rows.length}종 · 적은 수량 ${typed} · 차이 ${diffN}</p><button class="btn pri" data-act="ibConfirm">입고 확정</button></div>`}`;
 }
@@ -2197,10 +2434,10 @@ function ibApplyActual(ib, rows, src) {
     let i = byKey[k];
     if (i == null && r.bc) i = ib.items.findIndex(x => x.bc === r.bc || x.code === r.bc);
     if (i == null && r.name) i = ib.items.findIndex(x => norm(x.name) === norm(r.name));
-    if (i != null && i >= 0) { ib.items[i].actual = q; matched++; }
+    if (i != null && i >= 0) { ib.items[i].actual = q; if (r.note) ib.items[i].note = r.note; matched++; }
     else { ib.extra = (ib.extra || []).filter(x => x.key !== k); ib.extra.push({ key: k, pid: r.pid, name: r.pid ? S.P[r.pid].name : r.name, code: r.bc || r.sku, bc: r.bc, sku: r.sku, ip: r.ip, actual: q, price: r.price }); extra++; }
   }
-  S.ui.ibMsg = { t: `${src}: 예정 상품 ${matched}종 수량을 넣었습니다${extra ? ` · 예정에 없던 상품 ${extra}종` : ''}.` };
+  return { matched, extra };
 }
 function ibDupWarn() {
   const hit = (S.inbounds || []).filter(x => x.id === 'IB-261112-AOT' || (x.status !== 'received' && /AOT|진격/.test((x.title || '') + (x.ip || ''))));
@@ -2245,7 +2482,10 @@ function ibActLoaded(ib, x) {
   if (parsed.err) { S.ui.ibMsg = { t: parsed.err, bad: true }; render(); return; }
   const rows = (parsed.items || []).filter(r => r.qty != null).map(r => ({ ...r, qty: r.qty }));
   if (!rows.length) { S.ui.ibMsg = { t: '실입고 수량을 찾지 못했습니다.', bad: true }; render(); return; }
-  ibApplyActual(ib, rows, x.src); S.ui.ibMsg = { t: `실입고 ${rows.length}종을 표에 넣었습니다. 틀린 칸은 직접 고치세요.` }; if (DB.saveInbound) DB.saveInbound(ib); render();
+  const got = ibApplyActual(ib, rows, x.src) || { matched: 0, extra: 0 };
+  const fid = inboundIdIn(x.rows);
+  S.ui.ibMsg = { t: `실입고 ${got.matched}종을 표에 넣었습니다.` + (got.extra ? ` 맞추지 못한 ${got.extra}줄은 아래 목록에만 있습니다.` : '') + (fid ? (fid === ib.id ? ` 입고번호 ${fid}` : ` 파일의 입고번호는 ${fid} 입니다.`) : '') };
+  if (DB.saveInbound) DB.saveInbound(ib); render();
 }
 async function ibCreate() {
   const f = S.ui.ibForm; if (!f || !f.parsed) return;
@@ -2304,7 +2544,7 @@ async function ibCancel() {
 async function ibConfirm(ib) {
   if (!ib || ib.status === 'received') return;
   ib.items.forEach(x => { if (x.actual == null) x.actual = 0; });
-  const lines = [...ib.items.map(x => ({ ...x, q: x.actual || 0 })), ...(ib.extra || []).map(x => ({ ...x, q: x.actual || 0, plan: 0 }))];
+  const lines = ib.items.map(x => ({ ...x, q: x.actual || 0 }));
   let made = 0;
   for (const l of lines) {
     if (!(l.q > 0)) continue;
@@ -2510,12 +2750,13 @@ let cntBuf = null, cntRows = null;
 const cntTick = () => new Promise(r => setTimeout(r, 0));
 function countNum(v) { const t = String(v ?? '').replace(/[₩,원\s]/g, '').replace(/(개|ea|pcs)$/i, ''); if (t === '' || t === '-') return null; const n = Number(t); return isNaN(n) ? null : n; }
 function countMatchRow(r) {
-  const name = r.name || '', bc = r.bc || '', sku = r.sku || '';
+  if (r.idCode) return { ...r, pid: S.P[r.idCode] ? r.idCode : '', multi: false };
+  const name = r.name || '', bc = foldText(r.bc || '').replace(/\s/g, ''), sku = r.sku || '';
   let cand = bc ? findProduct(bc) : [];
   if (!cand.length && sku) cand = findProduct(sku);
   if (!cand.length && name) cand = S.byName[norm(name)] || [];
   if (!cand.length && name) { const hit = (S.byLoose || {})[looseKey(name)] || []; const seen = new Set(); cand = hit.filter(p => !seen.has(p.id) && seen.add(p.id)); }
-  return { ...r, pid: cand.length === 1 ? cand[0].id : '', multi: cand.length > 1 };
+  return { ...r, bc, pid: cand.length === 1 ? cand[0].id : '', multi: cand.length > 1 };
 }
 const COUNT_WORDS = ['실입고수량', '실제수량확인', '실제수량', '수량확인', '확인수량', '실제재고', '현장수량', '실재고', '실수량', '실입고', '실수령', '센수량', '실사'];
 function normHead(s) { return String(s ?? '').replace(/[\s\n\r\t()（）\[\]{}:：·.\-_/]/g, '').toLowerCase(); }
@@ -2538,18 +2779,20 @@ function headerish(row) {
   return hits >= 2;
 }
 function mapLabels(labels) {
-  let bc = -1, name = -1, nameKo = -1;
+  let bc = -1, name = -1, nameKo = -1, sku = -1, idc = -1;
   labels.forEach((h, i) => {
-    const n = normHead(h); if (!n) return;
-    if (/바코드|barcode|ean|jan|upc|gtin/.test(n) && !/상품명|품명/.test(n)) bc = bc < 0 ? i : bc;
-    if (/토스/.test(n)) return;
+    const n = normHead(h); if (!n || /토스/.test(n)) return;
+    if (/^(상품코드|상품id|앱상품코드|pid)$/.test(n)) { idc = idc < 0 ? i : idc; return; }
+    if (/바코드|barcode|ean|jan|upc|gtin/.test(n) && !/상품명|품명/.test(n)) { bc = bc < 0 ? i : bc; return; }
+    if (n === '코드' && bc < 0) { bc = i; return; }
     if (/한글/.test(n) && /상품명|품명/.test(n)) nameKo = i;
     else if (/상품명|품명|제품명|품목명/.test(n)) { if (name < 0) name = i; }
-    else if (/품번|상품코드|품목코드/.test(n) && name < 0 && nameKo < 0) name = i;
+    else if (/품번|^sku$/.test(n)) sku = sku < 0 ? i : sku;
   });
   if (nameKo >= 0) name = nameKo;
-  const prod = bc >= 0 ? bc : name;
-  return { qty: -1, prod, bc, name, countCol: false, planCol: -1, actCol: -1 };
+  if (name < 0 && sku >= 0) name = sku;
+  const prod = bc >= 0 ? bc : (idc >= 0 ? idc : name);
+  return { qty: -1, prod, bc, name, sku, idc, countCol: false, planCol: -1, actCol: -1 };
 }
 function planRank(h) {
   const n = normHead(h);
@@ -2564,15 +2807,19 @@ function actualRank(h) {
   const n = normHead(h);
   if (!n || /판매수량|dp수량|판매가|구매제한/.test(n)) return 0;
   if (n.includes('실입고수량')) return 100;
+  if (/되돌릴수량|꺼낼수량|출고수량|이동수량/.test(n)) return 95;
   if (n.includes('실입고')) return 90;
   if (n.includes('실제수량확인')) return 85;
   if (/실재고|실제수량|실사/.test(n)) return 80;
+  if (n.includes('실수량')) return 75;
+  if (n === '수량개') return 70;
   return 0;
 }
 function genericRank(h) {
   const n = normHead(h);
-  if (!n || planRank(h) || actualRank(h) || /판매수량|dp수량|판매가|구매제한|재고/.test(n)) return 0;
-  if (n === '수량' || n === '개수' || n === 'qty') return 40;
+  if (!n || planRank(h) || actualRank(h) || /판매수량|dp수량|판매가|구매제한/.test(n)) return 0;
+  if (n === '수량' || n === '개수' || n === 'qty' || n === '입고') return 40;
+  if (n === '재고' || n === '현재고' || n === '재고수량') return 25;
   return 0;
 }
 function catalogHead(labels) { return labels.some(h => /판매가|구매제한|이미지|옵션명|토스상품명|pos등록/.test(normHead(h))); }
@@ -2698,7 +2945,20 @@ function clipBigo(rows) {
   if (!h) return rows || [];
   const b = h.labels.findIndex(x => { const n = normHead(x); return n === '비고' || n.startsWith('비고'); });
   if (b < 0) return rows || [];
-  return (rows || []).map(r => (r || []).slice(0, b));
+  return (rows || []).map(r => (r || []).slice(0, b + 1));
+}
+function isJunkRow(r) {
+  const cells = (r || []).map(c => foldText(c).trim()).filter(Boolean);
+  if (!cells.length) return true;
+  if (cells.some(c => /^(합계|총계|소계|총합|total|sum)$/i.test(c.replace(/\s/g, '')))) return true;
+  if (cells.length === 1 && !isBarcodeCell(foldText(cells[0])) && !isPlainNum(cells[0])) return true;
+  return false;
+}
+function inboundIdIn(rows) {
+  for (const r of (rows || []).slice(0, 8)) {
+    for (let i = 0; i < (r || []).length; i++) if (normHead(r[i]) === '입고번호' && r[i + 1]) return foldText(r[i + 1]).trim();
+  }
+  return '';
 }
 function foldStockItems(items) {
   const groups = new Map();
@@ -2778,7 +3038,15 @@ function countParseRows(rows, pick) {
     if (!role) continue;
     cols.push({ i: c, role, label: label || ('칸 ' + (c + 1)) });
   }
-  const cell = (r, i) => i >= 0 ? String(r[i] ?? '').trim() : '';
+  const cell = (r, i) => i >= 0 ? foldText(r[i] ?? '').trim() : '';
+  const noteCol = labels.findIndex(h => { const n = normHead(h); return n === '비고' || n.startsWith('비고'); });
+  const skuCol = map.sku >= 0 ? map.sku : labels.findIndex(h => /품번|^sku$/.test(normHead(h)) && !/상품명|품명/.test(normHead(h)));
+  let idCol = map.idc >= 0 ? map.idc : -1;
+  if (idCol >= 0) {
+    const vs = body.map(r => cell(r, idCol)).filter(Boolean);
+    const bcN = vs.filter(v => isBarcodeCell(foldText(v))).length;
+    if (vs.length && bcN / vs.length >= 0.6) { if (map.bc < 0) map = { ...map, bc: idCol }; idCol = -1; }
+  }
   const vendCol = labels.findIndex(h => /거래처/.test(normHead(h)) && !/수령/.test(normHead(h)));
   const planCol = map.planCol >= 0 ? map.planCol : -1;
   const ipCol = labels.findIndex(h => normHead(h) === 'ip');
@@ -2789,11 +3057,14 @@ function countParseRows(rows, pick) {
   const optCol = labels.findIndex(h => /옵션/.test(normHead(h)) && !/상품명|품명/.test(normHead(h)));
   const items = [];
   body.forEach(r => {
-    const filled = (r || []).map(c => String(c ?? '').trim()).filter(Boolean);
-    if (filled.length && !filled.some(isBarcodeCell) && filled.every(isLabelCell)) return;
+    if (isJunkRow(r)) return;
+    const filled = (r || []).map(c => foldText(c).trim()).filter(Boolean);
+    if (filled.length && !filled.some(c => isBarcodeCell(foldText(c))) && filled.every(isLabelCell)) return;
     const stop = bigo >= 0 ? bigo : (r || []).length;
-    let bc = cell(r, map.bc).replace(/^'+/, '');
-    if (!isBarcodeCell(bc)) { bc = ''; for (let c = 0; c < stop; c++) { const t = String((r || [])[c] ?? '').trim(); if (isBarcodeCell(t)) { bc = t; break; } } }
+    let bc = foldText(cell(r, map.bc)).replace(/^'+/, '').replace(/\s/g, '');
+    if (!isBarcodeCell(bc)) { bc = ''; for (let c = 0; c < stop; c++) { const t = foldText((r || [])[c] ?? '').trim().replace(/\s/g, ''); if (isBarcodeCell(t)) { bc = t; break; } } }
+    const idCode = idCol >= 0 ? cell(r, idCol) : '';
+    const skuCell = skuCol >= 0 ? cell(r, skuCol) : '';
     let name = cell(r, map.name >= 0 ? map.name : (map.bc !== map.prod ? map.prod : -1));
     if (map.name < 0 && map.prod >= 0 && map.prod !== map.bc && !isBarcodeCell(cell(r, map.prod))) name = cell(r, map.prod);
     const opt = cell(r, optCol);
@@ -2818,7 +3089,7 @@ function countParseRows(rows, pick) {
       if (wh == null || cabQty == null) { blank = true; qty = null; }
       else { wh = Math.max(0, wh); cabQty = Math.max(0, cabQty); qty = wh + cabQty; blank = false; rowBins = true; }
     }
-    items.push(countMatchRow({ name, bc, sku: /_|[A-Za-z]{2,}\d/.test(name) ? name : '', qty: blank ? null : qty, plan, blank, countCol: !!map.countCol, vendor: cell(r, vendCol), lot: cell(r, lotCol), ip: cell(r, ipCol), opt: opt && !isLabelCell(opt) ? opt : '', wh, cabQty, bins: rowBins }));
+    items.push(countMatchRow({ name, bc, idCode, sku: skuCell || (/_|[A-Za-z]{2,}\d/.test(name) ? name : ''), qty: blank ? null : qty, plan, blank, countCol: !!map.countCol, vendor: cell(r, vendCol), lot: cell(r, lotCol), ip: cell(r, ipCol), note: cell(r, noteCol), opt: opt && !isLabelCell(opt) ? opt : '', wh, cabQty, bins: rowBins }));
   });
   const folded = foldStockItems(items);
   const prodLabel = cleanLabel(labels[map.bc >= 0 ? map.bc : map.prod] || '') || (map.bc >= 0 ? '바코드' : '상품');
@@ -3066,12 +3337,13 @@ function countView() {
   if (S.ui.cntUndo === undefined) { try { S.ui.cntUndo = JSON.parse(localStorage.getItem('smg-count-undo') || 'null'); } catch (e) { S.ui.cntUndo = null; } }
   const st = S.stores[0];
   const p = S.ui.cntPrev;
-  return `${head('실사', `${esc(storeName(st))} · 월말 실사. 엑셀이나 붙여넣으면 전산재고와 바로 비교합니다`, p && p.matched.length ? `<button class="btn pri" data-cntgo="1">${countRegLabel(p)}</button>` : '')}
+  return `${head('실사', `${esc(storeName(st))} · 엑셀을 올리면 전산재고와 바로 비교합니다`, p && p.matched.length ? `<button class="btn pri" data-cntgo="1">${countRegLabel(p)}</button>` : '')}
   <div class="card cntbox">
+    ${excelZone('cntFile')}
+    <button type="button" class="btn xlbig" id="cntDl">실사 입력용 엑셀 내려받기</button>
+    ${S.ui.cntUndo ? '<button class="btn" id="cntUndo">되돌리기</button>' : ''}
+    ${pasteZone('cntPaste')}
     ${gunBox()}
-    ${p ? `<div class="row cntacts"><button class="btn" id="cntFile">엑셀 다시 올리기</button>${S.ui.cntUndo ? '<button class="btn" id="cntUndo">되돌리기</button>' : ''}</div>` : `<label class="lb" for="cntPaste">실사표 붙여넣기</label>
-    <textarea class="inp cntpaste" id="cntPaste" placeholder="구글 시트에서 복사해 붙이세요. 붙이면 바로 비교가 나옵니다."></textarea>
-    <div class="row cntacts"><button class="btn pri" id="cntFile">엑셀 올리기</button>${S.ui.cntUndo ? '<button class="btn" id="cntUndo">되돌리기</button>' : ''}</div>`}
     ${(S.ui.cntCands || []).length > 1 ? `<div class="cnttabs" role="group" aria-label="엑셀 탭">${S.ui.cntCands.map(n => `<button type="button" class="btn ${S.ui.cntSheet === n ? 'pri' : ''}" data-cntsheet="${esc(n)}">${esc(n)}</button>`).join('')}</div>` : ''}
     ${S.ui.cntMsg ? `<p class="src">${S.ui.cntMsg.html}</p>` : ''}
     ${countPrevHtml()}
@@ -3087,7 +3359,7 @@ function countPrevHtml() {
   const unk = only ? '' : (p.fresh || []).map(x => `<div class="grow"><b>${esc(x.name || '이름 없음')}</b><div class="code">${esc(x.bc)} · 전산에 없음</div><div class="gnums"><span>실사 ${x.qty == null ? '—' : fmt(x.qty)}</span></div></div>`).join('');
   const cols = S.ui.cntCols ? `<div class="cntpick"><span class="lb">실사 칸</span><div class="cnttabs">${(p.cols || []).filter(c => c.role === 'qty').map(c => `<button type="button" class="btn ${c.i === p.qty ? 'pri' : ''}" data-cntqty="${c.i}">${esc(c.label)}</button>`).join('')}</div></div>` : '';
   return `<div class="cntprev">${S.ui.cntLine ? `<p class="cntwhy">${esc(S.ui.cntLine)}</p>` : ''}${(S.ui.cntWarns || []).length ? `<p class="src">${esc(S.ui.cntWarns.join(' '))}</p>` : ''}<p class="cntwhy">${countSummary(p)}${p.blankN ? ` · 빈 줄 ${p.blankN}개 제외` : ''}</p>
-    <div class="row"><button class="btn" type="button" id="cntOnly">${only ? '전체 보기' : '차이만'}</button><button class="btn" type="button" id="cntCols">${S.ui.cntCols ? '칸 닫기' : '열 직접 고르기'}</button></div>
+    <div class="row"><button class="btn" type="button" id="cntOnly">${only ? '전체 보기' : '차이만'}</button></div>
     ${cols}
     <div class="glist">${rows.map(card).join('') || '<p class="src">보이는 상품이 없습니다.</p>'}</div>
     ${unk ? `<h3>전산에 없는 상품</h3><div class="glist">${unk}</div>` : ''}
@@ -3128,19 +3400,20 @@ function transferView() {
   const hits = q ? S.products.filter(p => norm(p.name).includes(q) || (p.barcode || '').includes(String(m.q).trim()) || norm(p.sku || '').includes(q)).slice(0, 8) : [];
   const pend = S.transfers.filter(t => S.stores.includes(t.to) && t.status === 'sent');
   const line = l => { const p = S.P[l.pid] || {}; return `<div class="grow"><b>${esc(p.name || l.pid)}</b><div class="code">${esc(p.barcode || p.sku || '')} · ${here(l.pid)}</div><div class="gnums"><label>수량 <input class="inp qty" type="number" min="1" inputmode="numeric" value="${l.qty}" data-mvq="${esc(l.pid)}" aria-label="이동 수량"></label><button class="btn sm" type="button" data-mvdel="${esc(l.pid)}">빼기</button></div></div>`; };
-  return `${head('상품 이동', '다른 매장으로 보내거나, 수원에서 창고와 매대를 바꿉니다', ready ? `<button class="btn pri" data-act="mvSave">이동 등록 (${m.lines.length}종)</button>` : '')}
+  return `${head('상품 이동', '엑셀로 올릴 상품과 수량을 확인한 뒤 이동합니다', ready ? `<button class="btn pri" data-act="mvSave">이동 등록 (${m.lines.length}종)</button>` : '')}
   <div class="card" style="display:flex;flex-direction:column;gap:12px">
+    ${excelZone('mvFile')}
     <div class="field"><label>보내는 곳</label>${btns(m.from, 'mvfrom')}</div>
     ${m.from === 'suwon' ? `<div class="field"><label>수원 · ${esc(SHELF_IPS.join(' · '))}</label><div class="sgrid"><button type="button" class="sbtn ${m.lane === 'toShelf' ? 'on' : ''}" data-lane="toShelf">창고 → 매대</button><button type="button" class="sbtn ${m.lane === 'toRoom' ? 'on' : ''}" data-lane="toRoom">매대 → 창고</button></div><p class="src">이 이동은 실재고를 바꾸지 않습니다. 한 개씩은 상품 화면의 매대로 꺼내기를 씁니다.</p></div>` : ''}
     ${laneOn ? '' : `<div class="field"><label>받는 곳</label>${btns(m.to, 'mvto')}</div>`}
     <div class="field"><label for="mvQ">상품</label><div class="search">${ic('search')}<input class="inp" id="mvQ" placeholder="상품명·바코드" value="${esc(m.q || '')}" autocomplete="off"></div>
       ${hits.length ? `<div class="glist" style="margin-top:8px">${hits.map(p => `<button type="button" class="grow" data-mvadd="${esc(p.id)}"><b>${esc(p.name)}</b><div class="code">${esc(p.barcode || p.sku || '')} · ${here(p.id)}</div></button>`).join('')}</div>` : ''}
     </div>
-    <label class="lb" for="mvPaste">또는 목록 붙여넣기</label>
-    <textarea class="inp cntpaste" id="mvPaste" placeholder="상품과 수량이 있는 표를 붙이거나 엑셀을 올리세요"></textarea>
-    <div class="row cntacts"><button class="btn" type="button" id="mvFile">엑셀 올리기</button><button class="btn" type="button" id="scanBtn">${ic('scan')} 스캔</button></div>
+    ${pasteZone('mvPaste')}
+    ${gunBox()}
     ${m.note ? `<p class="cntwhy">${esc(m.note)}</p>` : ''}
-    ${m.lines.length ? `<div class="glist">${m.lines.map(line).join('')}</div>` : '<p class="src">보낼 상품을 고르거나, 표를 붙이세요.</p>'}
+    ${m.lines.length ? `<div class="glist">${m.lines.map(line).join('')}</div>` : '<p class="src">엑셀을 올리면 보낼 상품이 여기 쌓입니다.</p>'}
+    ${(m.miss || []).length ? `<h3>맞추지 못한 줄</h3><div class="glist">${m.miss.map(r => `<div class="grow"><b>${esc(r.name || '이름 없음')}</b><div class="code">${esc(r.bc || '')} · ${fmt(r.qty)}</div></div>`).join('')}</div>` : ''}
   </div>
   ${m.lines.length ? `<div class="cntregbar"><p class="cntwhy">${m.lines.length}종 · ${laneOn ? esc(laneText) : esc(moveLabel(m.from)) + ' → ' + (m.to ? esc(moveLabel(m.to)) : '받는 곳')}</p><button class="btn pri" data-act="mvSave" ${ready ? '' : 'disabled'}>이동 등록</button></div>` : ''}
   <div class="card"><h2>받을 상품 <span class="r">${pend.length}건</span></h2>${pend.length ? pend.map(t => `<div class="grow"><b>${esc((S.P[t.pid] || {}).name || t.pid)}</b><div class="code">${esc(moveLabel(t.from))} → ${esc(moveLabel(t.to))} · ${fmt(t.qty)}개</div><div class="gnums"><input class="inp qty" id="rq_${t.id}" type="number" min="0" value="${t.qty}" aria-label="받은 수량"><button class="btn pri" data-recv="${t.id}">받기 확인</button></div></div>`).join('') : '<p class="src">받을 상품이 없습니다.</p>'}</div>`;
@@ -3149,16 +3422,17 @@ async function moveFromRows(rows, src) {
   const parsed = countParseRows(rows, { mode: 'move' });
   const m = S.ui.move ||= { from: S.stores[0], to: '', lines: [], q: '' };
   if (parsed.err) { m.note = parsed.err; render(); return; }
-  let n = 0, unknown = 0, blank = 0;
+  let n = 0, unknown = 0, blank = 0; const miss = [];
   for (const r of parsed.items || []) {
     if (r.qty == null && r.plan == null) { blank++; continue; }
     const qty = r.qty != null ? r.qty : r.plan;
-    if (!r.pid) { unknown++; continue; }
+    if (!r.pid) { unknown++; miss.push({ name: r.name, bc: r.bc || r.idCode || '', qty }); continue; }
     const ex = m.lines.find(l => l.pid === r.pid);
     if (ex) ex.qty += qty; else m.lines.push({ pid: r.pid, qty });
     n++;
   }
-  m.note = `상품 ${m.lines.length}종 읽음` + (unknown ? ` · 전산에 없는 상품 ${unknown}` : '') + (blank ? ` · 빈 줄 ${blank}개 제외` : '');
+  m.miss = miss;
+  m.note = `상품 ${m.lines.length}종 읽음` + (unknown ? ` · 맞추지 못한 ${unknown}줄` : '') + (blank ? ` · 빈 줄 ${blank}개 제외` : '');
   m.src = src;
   render();
 }
@@ -3740,7 +4014,7 @@ async function readBook(f) { await needX();
   return XLSX.read(await f.arrayBuffer(), { type: 'array' });
 }
 // 파일 끌어다 놓기: 파일 고르기 버튼이 있는 칸 어디에 놓아도 그 버튼을 누른 것과 같게
-const FILE_BTNS = ['fileBtn', 'posFileBtn', 'rulesBtn', 'ibPlanFile', 'ibSheetFile', 'ibPlanImg', 'ibActFile', 'cntFile', 'machFileBtn', 'naverFileBtn', 'schedFile'];
+const FILE_BTNS = ['fileBtn', 'posFileBtn', 'rulesBtn', 'ibPlanFile', 'ibSheetFile', 'ibPlanImg', 'ibActFile', 'cntFile', 'mvFile', 'pullFile', 'shipFile', 'machFileBtn', 'naverFileBtn', 'schedFile'];
 let pendingDrop = null;
 const okType = (f, accept) => !accept || accept.split(',').some(a => { a = a.trim().toLowerCase(); if (!a) return false; if (a.endsWith('/*')) return (f.type || '').toLowerCase().startsWith(a.slice(0, -1)); if (a.startsWith('.')) return f.name.toLowerCase().endsWith(a); return (f.type || '').toLowerCase() === a; });
 function markDropZones() {
@@ -3755,6 +4029,15 @@ const fzoneAt = e => e.target && e.target.closest ? e.target.closest('[data-fzon
 let dzOn = null;
 document.addEventListener('dragover', e => { const z = fzoneAt(e); if (!z) return; e.preventDefault(); if (dzOn !== z) { dzOn && dzOn.classList.remove('dropok', 'on'); z.classList.add('dropok', 'on'); dzOn = z; } });
 document.addEventListener('dragleave', e => { if (dzOn && !dzOn.contains(e.relatedTarget)) { dzOn.classList.remove('dropok', 'on'); dzOn = null; } });
+document.addEventListener('paste', e => {
+  if (!S.user || !['inbound', 'pull', 'transfer', 'count'].includes(S.view)) return;
+  const t = e.target;
+  if (t && t.matches && t.matches('input,textarea')) return;
+  const text = e.clipboardData && e.clipboardData.getData ? e.clipboardData.getData('text') : '';
+  if (!text || (!text.includes('\t') && !text.includes('\n'))) return;
+  e.preventDefault();
+  applyPagePaste(text);
+});
 document.addEventListener('drop', e => {
   const z = fzoneAt(e); dzOn && dzOn.classList.remove('dropok', 'on'); dzOn = null;
   if (!z) { if (e.dataTransfer && e.dataTransfer.types && [...e.dataTransfer.types].includes('Files')) e.preventDefault(); return; }
@@ -4847,7 +5130,16 @@ function bind() {
   const mvPaste = document.getElementById('mvPaste');
   if (mvPaste) mvPaste.addEventListener('paste', e => { const text = (e.clipboardData || window.clipboardData || {}).getData ? (e.clipboardData || window.clipboardData).getData('text') : ''; if (text && (text.includes('\t') || text.includes('\n'))) { e.preventDefault(); moveFromRows(parsePasteTable(text), '붙여넣기'); } });
   const ibPaste = document.getElementById('ibPaste');
-  if (ibPaste) ibPaste.addEventListener('paste', e => { const text = (e.clipboardData || window.clipboardData || {}).getData ? (e.clipboardData || window.clipboardData).getData('text') : ''; if (text && (text.includes('\t') || text.includes('\n'))) { e.preventDefault(); const ib = S.inbounds.find(x => x.id === S.ui.ib); const rows = parsePasteTable(text); if (ib && ib.status !== 'received') ibApplyPlanTo(ib, rows, '붙여넣기'); else ibApplyCountRows(rows, '붙여넣기'); } });
+  if (ibPaste) ibPaste.addEventListener('paste', e => { const text = (e.clipboardData || window.clipboardData || {}).getData ? (e.clipboardData || window.clipboardData).getData('text') : ''; if (text && (text.includes('\t') || text.includes('\n'))) { e.preventDefault(); applyPagePaste(text); } });
+  const ibFillPaste = document.getElementById('ibFillPaste');
+  if (ibFillPaste) ibFillPaste.addEventListener('paste', e => { const text = (e.clipboardData || window.clipboardData || {}).getData ? (e.clipboardData || window.clipboardData).getData('text') : ''; if (text && (text.includes('\t') || text.includes('\n'))) { e.preventDefault(); applyPagePaste(text); } });
+  const pullPaste = document.getElementById('pullPaste');
+  if (pullPaste) pullPaste.addEventListener('paste', e => { const text = (e.clipboardData || window.clipboardData || {}).getData ? (e.clipboardData || window.clipboardData).getData('text') : ''; if (text && (text.includes('\t') || text.includes('\n'))) { e.preventDefault(); applyPagePaste(text); } });
+  const shipPaste = document.getElementById('shipPaste');
+  if (shipPaste) shipPaste.addEventListener('paste', e => { const text = (e.clipboardData || window.clipboardData || {}).getData ? (e.clipboardData || window.clipboardData).getData('text') : ''; if (text && (text.includes('\t') || text.includes('\n'))) { e.preventDefault(); applyPagePaste(text); } });
+  document.querySelectorAll('[data-shipq]').forEach(el => el.addEventListener('input', () => {
+    const l = ((S.ui.ship || {}).lines || []).find(x => x.pid === el.dataset.shipq); if (l) l.qty = Math.abs(parseInt(el.value, 10) || 0);
+  }));
   const paste = document.getElementById('cntPaste');
   if (paste) paste.addEventListener('paste', e => { const text = (e.clipboardData || window.clipboardData || {}).getData ? (e.clipboardData || window.clipboardData).getData('text') : ''; if (text && (text.includes('\t') || text.includes('\n'))) { e.preventDefault(); countFromPaste(text); } });
   document.querySelectorAll('[data-cntip],[data-cntcat]').forEach(el => el.addEventListener('change', () => {
@@ -4980,7 +5272,15 @@ function bind() {
     if (t.id === 'ibActFile') { const ib = S.inbounds.find(x => x.id === S.ui.ib); pickFile('.xlsx,.xls,.csv', f => stockReadFile(f, 'actual').then(x => ibActLoaded(ib, x)).catch(e => { S.ui.ibMsg = { t: e.message || String(e), bad: true }; render(); })); return; }
     if (t.id === 'ibActLinkGo') { const ib = S.inbounds.find(x => x.id === S.ui.ib); linkRows($('#ibActLink').value.trim()).then(x => ibActLoaded(ib, x)).catch(e => { S.ui.ibMsg = { t: '🔺 ' + e.message, bad: true }; render(); }); return; }
     if (t.id === 'gunToggle') { S.ui.gun = !S.ui.gun; S.ui.scanBad = false; S.ui.scanMsg = ''; render(); return; }
-    if (t.id === 'pullOpen') { if (S.stores[0] !== 'suwon' || S.stores.length !== 1) { toast('매대로 꺼내기는 수원에서만 합니다'); return; } S.view = 'pull'; S.ui.pull = { q: '', pid: '', qty: '' }; render(); return; }
+    if (t.id === 'ibDl') { const ib = S.inbounds.find(x => x.id === S.ui.ib); if (ib) downloadInboundXlsx(ib).catch(e => toast(e.message || String(e))); return; }
+    if (t.id === 'cntDl') { downloadCountXlsx().catch(e => toast(e.message || String(e))); return; }
+    if (t.id === 'pullDl') { downloadPullXlsx().catch(e => toast(e.message || String(e))); return; }
+    if (t.id === 'pullFile') { pickFile('.xlsx,.xls,.csv', f => stockReadFile(f, 'move').then(x => pullFromRows(x.rows, x.src)).catch(e => { S.ui.pull.note = e.message || String(e); render(); })); return; }
+    if (t.id === 'pullOpen' || t.id === 'backOpen') { if ((S.stores[0] !== 'suwon' && !S.stores.includes('suwon')) || S.stores.length !== 1) { toast('수원 매장에서만 합니다'); return; } S.view = 'pull'; S.ui.pull = { q: '', pid: '', qty: '', lines: [], miss: [], dir: t.id === 'backOpen' ? 'toRoom' : 'toShelf' }; render(); return; }
+    if (d.shipdest) { S.ui.ship = S.ui.ship || { lines: [], miss: [] }; S.ui.ship.dest = d.shipdest; render(); return; }
+    if (t.id === 'shipOk' || d.act === 'shipOk') { await shipSave(); return; }
+    if (t.id === 'shipDl') { downloadShipXlsx().catch(e => toast(e.message || String(e))); return; }
+    if (t.id === 'shipFile') { pickFile('.xlsx,.xls,.csv', f => stockReadFile(f, 'move').then(x => shipFromRows(x.rows, x.src)).catch(e => { S.ui.ship = S.ui.ship || {}; S.ui.ship.note = e.message || String(e); render(); })); return; }
     if (t.id === 'pullBack') { S.view = 'products'; render(); return; }
     if (d.pullpid) { S.ui.pull = S.ui.pull || { q: '', qty: '' }; S.ui.pull.pid = d.pullpid; render(); return; }
     if (t.id === 'pullOk' || d.act === 'pullOk') { await pullSave(); return; }
@@ -5127,6 +5427,9 @@ function bind() {
   const mvQ = $('#mvQ'); if (mvQ) mvQ.oninput = debounce(() => { S.ui.move.q = mvQ.value; rerenderKeep('#mvQ'); });
   const pullQ = $('#pullQ'); if (pullQ) pullQ.oninput = debounce(() => { S.ui.pull.q = pullQ.value; rerenderKeep('#pullQ'); });
   const pullQty = $('#pullQty'); if (pullQty) pullQty.oninput = () => { if (S.ui.pull) S.ui.pull.qty = pullQty.value; };
+  document.querySelectorAll('[data-pullq]').forEach(el => el.addEventListener('input', () => {
+    const l = ((S.ui.pull || {}).lines || []).find(x => x.pid === el.dataset.pullq); if (l) l.qty = Math.abs(parseInt(el.value, 10) || 0);
+  }));
   document.querySelectorAll('[data-cntedit]').forEach(el => el.addEventListener('input', () => {
     const m = ((S.ui.cntPrev || {}).matched || []).find(x => x.pid === el.dataset.cntedit); if (!m) return;
     const n = countNum(el.value); m.qty = n == null ? 0 : Math.max(0, n); m.diff = m.qty - (m.book || 0);
@@ -5205,30 +5508,34 @@ const KR_HOLIDAYS = {
   '2027-07-17': '제헌절', '2027-07-19': '대체공휴일(제헌절)', '2027-08-15': '광복절', '2027-08-16': '대체공휴일(광복절)', '2027-09-14': '추석 연휴', '2027-09-15': '추석', '2027-09-16': '추석 연휴',
   '2027-10-03': '개천절', '2027-10-04': '대체공휴일(개천절)', '2027-10-09': '한글날', '2027-10-11': '대체공휴일(한글날)', '2027-12-25': '성탄절', '2027-12-27': '대체공휴일(성탄절)',
 };
-// 왼쪽 아래 시계 — 쓰는 기기의 시스템 시간 (해외에서는 현지 시간 + 한국 시간 함께). 상자 너비에 맞춰 글씨 크기를 채움
+// 왼쪽 아래 시계 — 큰 글씨는 항상 한국 시간. 기기가 한국이 아니면 현지 시각만 작게.
 (function kclock() {
-  const el = document.createElement('div'); el.className = 'kclock'; el.setAttribute('aria-label', '현재 시간');
-  el.innerHTML = '<div class="kr1"><span class="kd"></span><b class="kw"></b></div><div class="kh"></div><div class="kt"><span></span></div><div class="kr2"><span class="kz"></span><span class="kk"></span></div>';
+  const el = document.createElement('div'); el.className = 'kclock'; el.setAttribute('aria-label', '한국 시간');
+  el.innerHTML = '<div class="kr1"><span class="kd"></span><b class="kw"></b></div><div class="kh"></div><div class="kt"><span></span></div><div class="kr2"><span class="kk"></span></div>';
   const q = c => el.querySelector(c), W = ['일요일', '월요일', '화요일', '수요일', '목요일', '금요일', '토요일'], p2 = n => String(n).padStart(2, '0');
-  const kF = new Intl.DateTimeFormat('ko-KR', { timeZone: 'Asia/Seoul', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false });
-  const kst2 = d => { const o = Object.fromEntries(kF.formatToParts(d).map(x => [x.type, x.value])); return `${o.year}.${o.month}.${o.day}(${'일월화수목금토'[new Date(`${o.year}-${o.month}-${o.day}T00:00:00Z`).getUTCDay()]}) ${o.hour}:${o.minute}`; };
-  let zone = ''; try { zone = Intl.DateTimeFormat().resolvedOptions().timeZone.split('/').pop().replace(/_/g, ' '); } catch (e) { }
-  const fit = () => {   // 컴퓨터: 시간 글씨가 상자 가로를 꽉 채우게
-    const sp = q('.kt span'), box = q('.kt');
-    if (!matchMedia('(min-width: 901px)').matches) { sp.style.fontSize = ''; return; }
-    sp.style.fontSize = '40px'; const w = sp.getBoundingClientRect().width, tw = box.clientWidth;
-    if (w && tw) sp.style.fontSize = Math.min(64, 40 * tw / w * 0.99).toFixed(1) + 'px';
+  const kF = new Intl.DateTimeFormat('en-US', { timeZone: 'Asia/Seoul', hourCycle: 'h23', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  const seoul = d => { const o = {}; for (const p of kF.formatToParts(d)) if (p.type !== 'literal') o[p.type] = p.value; return o; };
+  const fit = () => {
+    const sp = q('.kt span'); if (!sp) return;
+    const wide = matchMedia('(min-width: 901px)').matches;
+    let size = wide ? 34 : 22;
+    sp.style.fontSize = size + 'px';
+    const box = q('.kt');
+    while (size > 14 && box && sp.scrollWidth > box.clientWidth + 1) { size -= 1; sp.style.fontSize = size + 'px'; }
   };
   const tick = () => {
-    const d = new Date(), abroad = d.getTimezoneOffset() !== -540;
-    q('.kd').textContent = `${d.getFullYear()}.${p2(d.getMonth() + 1)}.${p2(d.getDate())}`;
-    q('.kw').textContent = W[d.getDay()];
-    const hol = KR_HOLIDAYS[`${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())}`] || '';
-    q('.kh').textContent = hol; el.classList.toggle('hol', !!hol); el.classList.toggle('sun', d.getDay() === 0); el.classList.toggle('sat', d.getDay() === 6 && !hol);
-    q('.kt span').textContent = `${p2(d.getHours())}:${p2(d.getMinutes())}:${p2(d.getSeconds())}`;
-    el.classList.toggle('abroad', abroad); q('.kt').dataset.k = abroad ? '한국 ' + kst2(d).split(' ')[1] : '';
-    if (abroad) { q('.kz').textContent = (zone || '현지') + ' 시간'; q('.kk').textContent = '한국 ' + kst2(d); }
-    if (!el._fit && el.offsetWidth) { el._fit = 1; fit(); }
+    const d = new Date(), s = seoul(d);
+    const ymd = `${s.year}-${s.month}-${s.day}`;
+    const day = new Date(ymd + 'T12:00:00Z').getUTCDay();
+    const abroad = (Intl.DateTimeFormat().resolvedOptions().timeZone || '') !== 'Asia/Seoul';
+    q('.kd').textContent = `${s.year}.${s.month}.${s.day}`;
+    q('.kw').textContent = W[day];
+    const hol = KR_HOLIDAYS[ymd] || '';
+    q('.kh').textContent = hol; el.classList.toggle('hol', !!hol); el.classList.toggle('sun', day === 0 && !hol); el.classList.toggle('sat', day === 6 && !hol);
+    q('.kt span').textContent = `${s.hour}:${s.minute}:${s.second}`;
+    el.classList.toggle('abroad', abroad);
+    q('.kk').textContent = abroad ? `현지 ${p2(d.getHours())}:${p2(d.getMinutes())}` : '';
+    fit();
   };
   const start = () => { document.body.appendChild(el); tick(); setInterval(tick, 1000); addEventListener('resize', fit); document.fonts && document.fonts.ready.then(fit); setTimeout(fit, 1500); };
   document.body ? start() : document.addEventListener('DOMContentLoaded', start);
@@ -5338,7 +5645,7 @@ function salesPeriodRollover() {
 }
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') salesPeriodRollover(); });
 setInterval(salesPeriodRollover, 30000);
-window.SMGApp = { S, render, indexProducts, setUser, salesPresetRange, resolveSalesPeriod, salesPeriodRollover, parseSchedText, parseSchedJson, schedDocs, countFromPaste, countParseRows, parsePasteTable, ibApplyCountRows, moveFromRows, ibActLoaded, chooseSheet, sheetScore, readLineText, stampList, applyStock, shelfOf, roomOf, stockOf };
+window.SMGApp = { S, render, indexProducts, setUser, salesPresetRange, resolveSalesPeriod, salesPeriodRollover, parseSchedText, parseSchedJson, schedDocs, countFromPaste, countParseRows, parsePasteTable, ibApplyCountRows, moveFromRows, ibActLoaded, chooseSheet, sheetScore, readLineText, stampList, applyStock, shelfOf, roomOf, stockOf, applyPagePaste };
 start();
 })();
 

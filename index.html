@@ -168,31 +168,31 @@ button{cursor:pointer}
 .tzlist button{background:none;border:0;border-top:1px solid var(--line-2);text-align:left;padding:0 14px;min-height:44px;color:var(--ink,inherit)}
 .tzlist button:first-child{border-top:0}
 .tzlist button.on{color:var(--red);font-weight:700;background:var(--surface-2)}
-.kclock{position:fixed;z-index:56;left:max(10px,env(safe-area-inset-left,0px));bottom:10px;width:190px;box-sizing:border-box;display:flex;flex-direction:column;gap:2px;padding:12px 14px 12px;border-radius:10px;background:var(--black,#111);color:#fff;font-variant-numeric:tabular-nums;box-shadow:0 4px 14px rgba(0,0,0,.18);pointer-events:none;line-height:1.2}
+.kclock{position:fixed;z-index:56;left:max(10px,env(safe-area-inset-left,0px));bottom:10px;width:min(190px,calc(100vw - 20px));max-width:calc(100vw - 20px);box-sizing:border-box;overflow:hidden;display:flex;flex-direction:column;gap:2px;padding:12px 14px 12px;border-radius:10px;background:var(--black,#111);color:#fff;font-variant-numeric:tabular-nums;box-shadow:0 4px 14px rgba(0,0,0,.18);pointer-events:none;line-height:1.2}
 body:not(.in-app) .kclock{display:none!important}
-.kclock .kr1,.kclock .kr2{display:flex;justify-content:space-between;align-items:baseline;gap:6px;white-space:nowrap}
-.kclock .kd{font-size:16px;font-weight:600;color:#e6e6ea}
-.kclock .kw{font-size:16px;font-weight:700;color:#fff}
-.kclock .kt{line-height:1.05}
-.kclock .kt span{display:inline-block;font-size:38px;font-weight:800;letter-spacing:.01em;white-space:nowrap}
-.kclock .kr2{display:none;font-size:11px;color:#bdbdc4;border-top:1px solid #2c2c31;padding-top:5px;margin-top:3px}
+.kclock .kr1,.kclock .kr2{display:flex;justify-content:space-between;align-items:baseline;gap:6px;min-width:0;flex-wrap:wrap}
+.kclock .kd{font-size:15px;font-weight:600;color:#e6e6ea;min-width:0}
+.kclock .kw{font-size:15px;font-weight:700;color:#fff;min-width:0}
+.kclock .kt{line-height:1.05;min-width:0;max-width:100%}
+.kclock .kt span{display:block;max-width:100%;font-size:32px;font-weight:800;letter-spacing:0;overflow:hidden}
+.kclock .kr2{display:none;font-size:11px;color:#bdbdc4;border-top:1px solid #2c2c31;padding-top:5px;margin-top:3px;min-width:0}
 .kclock.abroad .kr2{display:flex}
-.kclock .kk{color:#fff;font-weight:700}
-.kclock .kh{display:none;font-size:12.5px;font-weight:700;color:#FF5A5F}
+.kclock .kk{color:#fff;font-weight:700;min-width:0;overflow-wrap:anywhere}
+.kclock .kh{display:none;font-size:12.5px;font-weight:700;color:#FF5A5F;min-width:0;overflow-wrap:anywhere}
 .kclock.hol .kh{display:block}
 .kclock.hol .kw,.kclock.sun .kw{color:#FF5A5F}
 .kclock.sat .kw{color:#7DB4FF}
 .side{padding-bottom:calc(var(--kch,90px) + 36px)}
 @media (max-width: 900px){
-  .kclock{left:0;right:0;width:auto;bottom:var(--tabh,64px);border-radius:0;box-shadow:none;flex-direction:row;align-items:center;gap:12px;padding:6px max(16px,env(safe-area-inset-left,0px))}
-  .kclock .kr1{gap:8px}
-  .kclock .kd,.kclock .kw{font-size:15px}
-  .kclock .kt{margin-left:auto}
-  .kclock .kt span{font-size:24px}
-  .kclock .kr2{display:none!important}
-  .kclock .kh{font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
-  .kclock.abroad .kt::after{content:attr(data-k);font-size:11px;color:#bdbdc4;margin-left:6px;font-weight:600}
-  main{padding-bottom:calc(var(--tabh,64px) + 20px)}
+  .kclock{left:0;right:0;width:auto;bottom:var(--tabh,64px);border-radius:0;box-shadow:none;flex-direction:row;flex-wrap:nowrap;align-items:center;gap:8px;padding:6px max(12px,env(safe-area-inset-left,0px));overflow:hidden}
+  .kclock .kr1{gap:6px;flex-wrap:nowrap;flex:0 1 auto;min-width:0}
+  .kclock .kd,.kclock .kw{font-size:13px;white-space:nowrap}
+  .kclock .kt{margin-left:auto;flex:0 0 auto}
+  .kclock .kt span{font-size:20px;white-space:nowrap}
+  .kclock.abroad .kr2{display:flex;flex:0 0 auto;border-top:0;margin:0;padding:0}
+  .kclock .kk{white-space:nowrap;font-size:12px}
+  .kclock .kh{font-size:12px;min-width:0;white-space:nowrap}
+  main{padding-bottom:calc(var(--tabh,64px) + 48px)}
 }
 .ipgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px}
 .ipcard{display:flex;flex-direction:column;gap:10px;border-top:4px solid var(--c)}
@@ -568,7 +568,6 @@ body:has(.cntregbar) .toast{bottom:calc(var(--tabh,64px) + 96px)}
   main{padding-bottom:calc(var(--tabh,64px) + 20px)}
   .tabgrid.two button{min-height:46px;padding:4px 1px 3px}
   .tabbar button{position:relative;background:none;border:0;min-height:52px;justify-content:center;padding:7px 1px 5px;display:flex;flex-direction:column;align-items:center;gap:2px;font-size:11px;font-weight:600;color:var(--muted);white-space:nowrap;min-width:0}
-  .kclock{display:none!important}
   .moregrid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
   .mbtn{position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;min-height:76px;border:1px solid var(--line);border-radius:10px;background:var(--surface);font-weight:700;font-size:13px;color:var(--ink)}
   .mbtn .tcnt{top:6px;left:auto;right:8px}
@@ -922,6 +921,23 @@ tr.off td{opacity:.45}
 .gunbox.bad .src{color:var(--bad);font-weight:800;font-size:16px}
 .scanflash{animation:scanflash .7s ease}
 @keyframes scanflash{0%{box-shadow:inset 0 0 0 3px #1f8a4c;background:color-mix(in srgb,#1f8a4c 28%,var(--surface))}100%{}}
+.dirpair{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:0 0 12px}
+.dirbtn{min-height:76px;border:0;border-radius:12px;color:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;padding:10px}
+.dirbtn b{font-size:18px;font-weight:800}
+.dirbtn small{font-size:13px;font-weight:700}
+.dir-out{background:#1f7a4d}
+.dir-back{background:#1f5fbf}
+.dirbtn.on{outline:3px solid #111;outline-offset:2px}
+html[data-theme="dark"] .dirbtn.on{outline-color:#fff}
+.staffhome{display:flex;flex-direction:column;gap:10px}
+.staffbig{min-height:84px;border:1px solid var(--line);border-radius:14px;background:var(--surface);text-align:left;padding:12px 14px;display:flex;flex-direction:column;gap:2px}
+.staffbig b{color:var(--red);font-size:13px}
+.staffbig span{font-size:20px;font-weight:800}
+.staffbig small{color:var(--muted);font-size:13px}
+.staffsmall{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.staffsmall button{min-height:48px;border:1px solid var(--line);border-radius:10px;background:var(--surface-2);font-weight:700}
+.xlzone{display:flex;flex-direction:column;gap:6px;border:2px dashed var(--line);border-radius:12px;padding:12px;background:var(--surface);margin:0 0 8px}
+.xlbig{min-height:56px;width:100%;font-size:18px}
 .pullbox{display:flex;flex-direction:column;gap:12px}
 .pullbox input.inp,.pullgo{min-height:56px;font-size:20px;width:100%}
 @media(max-width:700px){
@@ -1141,8 +1157,8 @@ body.sched-on .pha > .chip{border-radius:8px;justify-content:center}
 <script defer src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
 <script defer src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 <script defer src="config.js"></script>
-<script defer src="firebase.js?v=115"></script>
-<script defer src="app.js?v=115"></script>
+<script defer src="firebase.js?v=118"></script>
+<script defer src="app.js?v=118"></script>
 <script>if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});</script>
 
 </body></html>
