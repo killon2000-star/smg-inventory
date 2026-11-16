@@ -50,7 +50,7 @@ const PERM_DEF = [
 ];
 
 const DEFAULT_ORDER = STORES.map(s => s.id);
-const APP_VERSION = '2026-11-16 14:10';   // 앱 화면을 마지막으로 고친 시각 (한국 시간)
+const APP_VERSION = '2026-11-16 12:45';   // 앱 화면을 마지막으로 고친 시각 (한국 시간)
 /* ───────── 작은 도구 ───────── */
 const $ = (s, el = document) => el.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -2408,7 +2408,7 @@ function ibDetailView(ib) {
     </div>`;
   };
   const miss = ib.extra || [];
-  return `${head('입고 확인', esc(ib.title), done ? '<button class="btn" id="ibBack">목록</button>' : '<button class="btn pri" data-act="ibConfirm">입고 확정</button>')}
+  return `${head('입고 확인', esc(ib.title), done ? '<button class="btn" id="ibBack">목록</button>' : '<button class="btn pri phone-hide" data-act="ibConfirm">입고 확정</button>')}
   <div class="card cntbox">
     ${done ? '' : excelZone('ibActFile')}
     ${done ? '' : '<button type="button" class="btn xlbig" id="ibDl">실입고 입력용 엑셀 내려받기</button>'}
@@ -5513,7 +5513,7 @@ const KR_HOLIDAYS = {
   '2027-07-17': '제헌절', '2027-07-19': '대체공휴일(제헌절)', '2027-08-15': '광복절', '2027-08-16': '대체공휴일(광복절)', '2027-09-14': '추석 연휴', '2027-09-15': '추석', '2027-09-16': '추석 연휴',
   '2027-10-03': '개천절', '2027-10-04': '대체공휴일(개천절)', '2027-10-09': '한글날', '2027-10-11': '대체공휴일(한글날)', '2027-12-25': '성탄절', '2027-12-27': '대체공휴일(성탄절)',
 };
-// 왼쪽 아래 시계 — 큰 글씨는 항상 한국 시간. 기기가 한국이 아니면 현지 시각만 작게.
+// 왼쪽 아래 시계 — 큰 글씨는 항상 한국 시간. 기기 시각이 한국과 다를 때만 현지를 작게.
 (function kclock() {
   const el = document.createElement('div'); el.className = 'kclock'; el.setAttribute('aria-label', '한국 시간');
   el.innerHTML = '<div class="kr1"><span class="kd"></span><b class="kw"></b></div><div class="kh"></div><div class="kt"><span></span></div><div class="kr2"><span class="kk"></span></div>';
@@ -5532,14 +5532,15 @@ const KR_HOLIDAYS = {
     const d = new Date(), s = seoul(d);
     const ymd = `${s.year}-${s.month}-${s.day}`;
     const day = new Date(ymd + 'T12:00:00Z').getUTCDay();
-    const abroad = (Intl.DateTimeFormat().resolvedOptions().timeZone || '') !== 'Asia/Seoul';
+    const localH = p2(d.getHours()), localM = p2(d.getMinutes());
+    const abroad = localH !== s.hour || localM !== s.minute;
     q('.kd').textContent = `${s.year}.${s.month}.${s.day}`;
     q('.kw').textContent = W[day];
     const hol = KR_HOLIDAYS[ymd] || '';
     q('.kh').textContent = hol; el.classList.toggle('hol', !!hol); el.classList.toggle('sun', day === 0 && !hol); el.classList.toggle('sat', day === 6 && !hol);
     q('.kt span').textContent = `${s.hour}:${s.minute}:${s.second}`;
     el.classList.toggle('abroad', abroad);
-    q('.kk').textContent = abroad ? `현지 ${p2(d.getHours())}:${p2(d.getMinutes())}` : '';
+    q('.kk').textContent = abroad ? `현지 ${localH}:${localM}` : '';
     fit();
   };
   const start = () => { document.body.appendChild(el); tick(); setInterval(tick, 1000); addEventListener('resize', fit); document.fonts && document.fonts.ready.then(fit); setTimeout(fit, 1500); };

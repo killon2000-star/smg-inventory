@@ -373,6 +373,8 @@ table.tb tr.click.sel td:first-child{box-shadow:inset 3px 0 0 var(--red)}
   .ph .sp{display:none}
   .pha{flex:1 1 100%;display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px}
   .pha > *{width:100%;justify-content:center}
+  .pha > .phone-hide{display:none}
+  .pha:not(:has(> :not(.phone-hide))){display:none}
   #page .seg{display:grid;grid-template-columns:repeat(auto-fit,minmax(96px,1fr));width:100%}
   #page .seg button{min-height:44px;border-left:0;box-shadow:inset -1px -1px 0 var(--line)}
 }
@@ -1157,8 +1159,8 @@ body.sched-on .pha > .chip{border-radius:8px;justify-content:center}
 <script defer src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
 <script defer src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 <script defer src="config.js"></script>
-<script defer src="firebase.js?v=119"></script>
-<script defer src="app.js?v=119"></script>
+<script defer src="firebase.js?v=120"></script>
+<script defer src="app.js?v=120"></script>
 <script>if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});</script>
 
 </body></html>
