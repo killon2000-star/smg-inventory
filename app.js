@@ -50,7 +50,7 @@ const PERM_DEF = [
 ];
 
 const DEFAULT_ORDER = STORES.map(s => s.id);
-const APP_VERSION = '2026-11-16 12:45';   // 앱 화면을 마지막으로 고친 시각 (한국 시간)
+const APP_VERSION = '2026-11-16 13:05';   // 앱 화면을 마지막으로 고친 시각 (한국 시간)
 /* ───────── 작은 도구 ───────── */
 const $ = (s, el = document) => el.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -398,7 +398,7 @@ function render() {
   ${S.ui.storeMenu ? storeMenu() : ''}
   <div class="shell">
     <nav class="side" aria-label="메뉴">
-      ${nav.map(n => `${n.grp ? `<div class="grp">${n.grp}</div>` : ''}<button data-nav="${n.id}" class="${S.view === n.id || (n.id === 'products' && S.view === 'pull') ? 'on' : ''}">${esc(n.t)}${n.id === 'admin' && pendingN && can('approve') ? `<span class="cnt">${pendingN}</span>` : ''}</button>`).join('')}
+      ${nav.map(n => `${n.grp ? `<div class="grp">${n.grp}</div>` : ''}<button data-nav="${n.id}" class="${S.view === n.id || (n.id === 'products' && S.view === 'pull' && !nav.some(x => x.id === 'pull')) ? 'on' : ''}">${esc(n.t)}${n.id === 'admin' && pendingN && can('approve') ? `<span class="cnt">${pendingN}</span>` : ''}</button>`).join('')}
       <div class="grp" style="margin-top:16px">앱 업데이트 ${fd(APP_VERSION.slice(0, 10))} ${APP_VERSION.slice(11)}</div>
     </nav>
     <main><div class="page" id="page">${pageView()}</div></main>
@@ -422,10 +422,10 @@ const TAB = { home: ['홈', 'home'], ipnow: ['IP현황', 'star'], products: ['�
 function staffNav() {
   const items = [
     { id: 'inbound', t: '입고', g: 3 },
+    { id: 'pull', t: '매대', g: 3 },
     { id: 'products', t: '현재 수량', g: 3 },
     { id: 'shipout', t: '출고', g: 3 },
     { id: 'count', t: '실사', g: 4 },
-    { id: 'pull', t: '매대', g: 4 },
     { id: 'records', t: '기록', g: 4 },
   ];
   return items.filter(n => n.id !== 'count' || can('count'));
@@ -449,8 +449,9 @@ function tabbar(nav) {
     rows = best ? [items.slice(0, best.n), items.slice(best.n)] : [items.slice(0, Math.ceil(items.length / 2)), items.slice(Math.ceil(items.length / 2))];
   }
   if (rows.length > 1) { const k = rows[1].findIndex(x => x.id === 'admin'); if (k >= 0) rows[0].push(...rows[1].splice(k, 1)); }   // 11/4 대표: 관리는 윗줄 끝, 설정 바로 위
+  const pullInNav = nav.some(n => n.id === 'pull');
   const btn = (x, i, row) => { const tab = x.id === 'more' ? ['설정', 'more'] : (TAB[x.id] || [x.t || x.id, 'box']); const t = stockFloor() && x.t ? x.t : tab[0]; const ic2 = tab[1];
-    return `<button data-nav="${x.id}" class="${S.view === x.id || (x.id === 'products' && S.view === 'pull') ? 'on' : ''}${i && (!row[i - 1] || row[i - 1].g !== x.g) ? ' gs' : ''}">${ic(ic2, 18)}<span>${t}</span>${x.id === 'admin' && pendingN ? `<b class="tcnt">${pendingN}</b>` : ''}</button>`; };
+    return `<button data-nav="${x.id}" class="${S.view === x.id || (!pullInNav && x.id === 'products' && S.view === 'pull') ? 'on' : ''}${i && (!row[i - 1] || row[i - 1].g !== x.g) ? ' gs' : ''}">${ic(ic2, 18)}<span>${t}</span>${x.id === 'admin' && pendingN ? `<b class="tcnt">${pendingN}</b>` : ''}</button>`; };
   // 11/4 대표: 간격 맞추기 → 두 줄 모두 같은 칸 너비. 짧은 줄은 관리 앞에 빈칸을 둬서 관리가 설정 바로 위에 오게
   const cols = Math.max(...rows.map(r => r.length));
   rows.forEach(r => { while (r.length < cols) { const k = r.findIndex(x => x && x.id === 'admin'); r.splice(k >= 0 ? k : r.length, 0, null); } });
@@ -2222,9 +2223,9 @@ function staffHome() {
   return `${head('수원 매장', '오늘 할 일')}
   <div class="staffhome">
     <button class="staffbig" data-nav="inbound"><b>1</b><span>입고</span><small>입고 확인</small></button>
-    <button class="staffbig" data-nav="products"><b>2</b><span>현재 수량 확인</span><small>검색 · 스캔 · 창고 / 매대 / 실재고</small></button>
-    <button class="staffbig" data-nav="shipout"><b>3</b><span>수량 정리 후 출고</span><small>물류창고 · 홍대 · 팝업 현장</small></button>
-    ${dirPair()}
+    <button class="staffbig" data-nav="pull"><b>2</b><span>매대</span><small>매대로 꺼내기 · 창고로 되돌리기</small></button>
+    <button class="staffbig" data-nav="products"><b>3</b><span>현재 수량 확인</span><small>검색 · 스캔 · 창고 / 매대 / 실재고</small></button>
+    <button class="staffbig" data-nav="shipout"><b>4</b><span>수량 정리 후 출고</span><small>물류창고 · 홍대 · 외부 팝업 현장</small></button>
     <div class="staffsmall">${can('count') ? '<button data-nav="count">실사</button>' : ''}<button data-nav="records">기록</button></div>
   </div>`;
 }
@@ -2301,22 +2302,22 @@ async function pullSave() {
 }
 function shipoutView() {
   const s = S.ui.ship ||= { dest: '', custom: '', lines: [], miss: [], note: '' };
-  const dests = [['gukdae', '물류창고'], ['museum', '홍대'], ['custom', '기타 팝업 현장']];
+  const dests = [['gukdae', '물류창고'], ['museum', '홍대'], ['custom', '외부 팝업 현장']];
   const lines = s.lines || [];
   return `${head('수량 정리 후 출고', '수원에서 내보냅니다', lines.length && s.dest ? '<button class="btn pri" data-act="shipOk">출고 확정</button>' : '')}
   <div class="card pullbox">
     ${excelZone('shipFile')}
-    <p class="src">콜라보·팝업과 상설 상품을 보냅니다. 출고는 창고에서 먼저 빼고, 모자라면 매대에서 뺍니다.</p>
+    <p class="src">수원 매장에서 밖으로 내보냅니다. 받는 곳은 물류창고, 홍대, 외부 팝업 현장입니다. 수량은 창고에서 먼저 빼고, 모자라면 매대에서 뺍니다.</p>
     <button type="button" class="btn" id="shipDl">출고 입력용 엑셀 내려받기</button>
     <div class="field"><label>받는 곳</label><div class="sgrid">${dests.map(([id, name]) => `<button type="button" class="sbtn ${s.dest === id ? 'on' : ''}" data-shipdest="${id}">${esc(name)}</button>`).join('')}</div></div>
-    ${s.dest === 'custom' ? `<label class="lb" for="shipCustom">현장 이름</label><input class="inp" id="shipCustom" value="${esc(s.custom || '')}" placeholder="기타 팝업 현장" aria-label="현장 이름">` : ''}
+    ${s.dest === 'custom' ? `<label class="lb" for="shipCustom">현장 이름</label><input class="inp" id="shipCustom" value="${esc(s.custom || '')}" placeholder="외부 팝업 현장" aria-label="현장 이름">` : ''}
     ${s.note ? `<p class="cntwhy">${esc(s.note)}</p>` : ''}
     ${lines.length ? `<div class="glist">${lines.map(l => { const g = S.P[l.pid] || {}; return `<div class="grow${S.ui.scanHit === l.pid ? ' scanflash' : ''}"><b>${esc(g.name || l.name)}</b><div class="code">${esc(g.barcode || '')} · 창고 ${fmt(roomOf('suwon', l.pid))} · 매대 ${fmt(shelfOf('suwon', l.pid))}</div><div class="gnums"><label>수량 <input class="inp qty" data-shipq="${esc(l.pid)}" value="${l.qty}" inputmode="numeric" aria-label="출고 수량"></label></div></div>`; }).join('')}</div>` : '<p class="src">엑셀을 올리면 출고할 상품이 여기 쌓입니다.</p>'}
     ${(s.miss || []).length ? `<h3>맞추지 못한 줄</h3><div class="glist">${s.miss.map(r => `<div class="grow"><b>${esc(r.name || '이름 없음')}</b><div class="code">${esc(r.bc || '')} · ${fmt(r.qty)}</div></div>`).join('')}</div>` : ''}
     ${pasteZone('shipPaste')}
     ${gunBox()}
   </div>
-  ${lines.length ? `<div class="cntregbar"><p class="cntwhy">${lines.length}종 · ${s.dest === 'gukdae' ? '물류창고' : s.dest === 'museum' ? '홍대' : s.dest === 'custom' ? '기타 팝업 현장' : '받는 곳'}</p><button class="btn pri" data-act="shipOk" ${s.dest ? '' : 'disabled'}>출고 확정</button></div>` : ''}`;
+  ${lines.length ? `<div class="cntregbar"><p class="cntwhy">${lines.length}종 · ${s.dest === 'gukdae' ? '물류창고' : s.dest === 'museum' ? '홍대' : s.dest === 'custom' ? '외부 팝업 현장' : '받는 곳'}</p><button class="btn pri" data-act="shipOk" ${s.dest ? '' : 'disabled'}>출고 확정</button></div>` : ''}`;
 }
 function shipFromRows(rows, src) {
   const parsed = countParseRows(rows, { mode: 'move' });
