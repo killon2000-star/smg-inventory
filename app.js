@@ -50,7 +50,7 @@ const PERM_DEF = [
 ];
 
 const DEFAULT_ORDER = STORES.map(s => s.id);
-const APP_VERSION = '2026-11-16 13:10';   // 앱 화면을 마지막으로 고친 시각 (한국 시간)
+const APP_VERSION = '2026-11-16 13:15';   // 앱 화면을 마지막으로 고친 시각 (한국 시간)
 /* ───────── 작은 도구 ───────── */
 const $ = (s, el = document) => el.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -232,6 +232,20 @@ const myStores = () => (S.user && S.user.owner ? STORES.map(s => s.id) : S.user 
 const limited = () => !!(S.user && S.user.limited);
 const STOCK_FLOOR = new Set(['매니저', '사원']);   // 이 직급과 그 아래는 재고 화면만
 function stockFloor() { return !!(S.user && !S.user.owner && STOCK_FLOOR.has(S.user.position)); }
+function roleRank(u) {
+  if (!u) return 99;
+  if (u.limited) return POSITIONS.length + 1;
+  const i = POSITIONS.indexOf(u.position || '');
+  return i < 0 ? POSITIONS.length : i;
+}
+function canPreview() {
+  const a = S.actor;
+  return S.mode === 'demo' && !!a && (a.owner || a.position === '대표' || a.position === '본부장');
+}
+function previewRoles() {
+  const floor = roleRank(S.actor);
+  return DEMO_ROLES.filter(r => { const u = (S.users || []).find(x => x.uid === r.uid); return u && roleRank(u) >= floor; });
+}
 function beep(ok) {
   try {
     const ctx = beep.ctx || (beep.ctx = new (window.AudioContext || window.webkitAudioContext)());
@@ -393,7 +407,7 @@ function render() {
     ${headTools()}
     <div class="who"><button class="me-btn" id="meBtn" title="내 정보" aria-label="내 정보 · ${esc(S.user.name)}"><span class="me1"><b>${esc(S.user.name)}</b> ${esc(S.user.position || '')}</span><span class="me2">${esc(meLine(S.user))}</span></button>${S.mode === 'demo' ? '' : '<button class="btn sm" id="logout">로그아웃</button>'}</div>
   </header>
-  ${S.mode === 'demo' ? `<div class="demobar" role="group" aria-label="권한별로 보기"><span class="demo-tag">미리보기</span>${DEMO_ROLES.map(r => `<button type="button" class="rolebtn${S.user.uid === r.uid ? ' on' : ''}" data-role="${r.uid}">${esc(r.label)}</button>`).join('')}<span class="muted hide-s">수원 실제 자료 · 저장한 내용은 새로고침하면 처음 상태로 돌아갑니다</span></div>` : ''}
+  ${canPreview() ? `<div class="demobar" role="group" aria-label="권한별로 보기"><span class="demo-tag">미리보기</span>${previewRoles().map(r => `<button type="button" class="rolebtn${S.user.uid === r.uid ? ' on' : ''}" data-role="${r.uid}">${esc(r.label)}</button>`).join('')}<span class="muted hide-s">수원 실제 자료 · 저장한 내용은 새로고침하면 처음 상태로 돌아갑니다</span></div>` : ''}
   ${S.stores.length > 1 ? `<div class="storebar" aria-label="보고 있는 매장"><span class="lb">보고 있는 매장</span>${S.stores.map(id => `<button class="schip" data-sg="${id}" title="${esc(storeName(id))}만 보기"><span class="dot" style="background:${storeColor(id)}"></span>${esc(storeName(id))}</button>`).join('')}<button class="schip more" id="storeBtn2">바꾸기</button></div>` : ''}
   ${S.ui.storeMenu ? storeMenu() : ''}
   <div class="shell">
@@ -5161,7 +5175,7 @@ function bind() {
     const d = t.dataset;
     const pick = ev.target.closest('[data-cntpick]');
     if (pick && S.ui.cntPrev && !ev.target.closest('input.inp')) { const key = pick.dataset.cntpick; const x = (S.ui.cntPrev.fresh || []).find(f => f.key === key); if (x) { x.on = !x.on; S.ui.cntSkip = S.ui.cntSkip || {}; S.ui.cntSkip[key] = !x.on; S.ui.cntNoScroll = true; render(); } return; }
-    if (d.role) { const u = S.users.find(x => x.uid === d.role); if (u) setUser(u); render(); return; }
+    if (d.role) { const u = S.users.find(x => x.uid === d.role); if (canPreview() && u && roleRank(u) >= roleRank(S.actor)) { setUser(u, { preview: true }); if (stockFloor()) S.view = 'home'; } render(); return; }
     if (d.install != null) { doInstall(); return; }
     if (d.openext != null) { openExternal(); return; }
     if (d.copylink != null) { copyLink(); return; }
@@ -5617,8 +5631,9 @@ function themeBtn() {
   return `<div class="tone" role="group" aria-label="화면 색"><button type="button" data-tone="light" class="${d ? '' : 'on'}" aria-pressed="${!d}">화이트톤</button><button type="button" data-tone="dark" class="${d ? 'on' : ''}" aria-pressed="${d}">블랙톤</button></div>`;
 }
 function headTools() { return `<div class="htools">${textSizeBox()}${themeBtn()}</div>`; }
-function setUser(u) {
+function setUser(u, opt) {
   S.user = u;
+  if (!opt || !opt.preview) S.actor = u;
   let ord = u && u.storeOrder; try { ord = ord || JSON.parse(localStorage.getItem('smg-store-order:' + (u ? u.uid : '')) || 'null'); } catch (e) { }
   applyStoreOrder(ord || DEFAULT_ORDER);
   const mine = myStores();
