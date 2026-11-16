@@ -50,7 +50,7 @@ const PERM_DEF = [
 ];
 
 const DEFAULT_ORDER = STORES.map(s => s.id);
-const APP_VERSION = '2026-11-16 13:40';   // 앱 화면을 마지막으로 고친 시각 (한국 시간)
+const APP_VERSION = '2026-11-16 14:10';   // 앱 화면을 마지막으로 고친 시각 (한국 시간)
 /* ───────── 작은 도구 ───────── */
 const $ = (s, el = document) => el.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -2240,8 +2240,8 @@ function pullView() {
   return `${head(back ? '창고로 되돌리기' : '매대로 꺼내기', back ? '매대 → 창고' : '창고 → 매대', ready ? '<button class="btn pri" data-act="pullOk">확인</button>' : '<button class="btn" id="pullBack">상품 목록</button>')}
   ${dirPair()}
   <div class="card pullbox">
-    <p class="src">${back ? '팔리지 않은 매대 수량을 창고로 되돌립니다. 지금 매대에 있는 수량보다 많이 되돌릴 수 없습니다. 실재고는 그대로입니다.' : '창고에 있는 수량을 매대로 꺼냅니다. 실재고는 변하지 않습니다.'}</p>
     ${excelZone('pullFile')}
+    <p class="src">${back ? '팔리지 않은 매대 수량을 창고로 되돌립니다. 지금 매대에 있는 수량보다 많이 되돌릴 수 없습니다. 실재고는 그대로입니다.' : '창고에 있는 수량을 매대로 꺼냅니다. 실재고는 변하지 않습니다.'}</p>
     <button type="button" class="btn" id="pullDl">${back ? '되돌리기' : '꺼내기'} 입력용 엑셀 내려받기</button>
     ${p.note ? `<p class="cntwhy">${esc(p.note)}</p>` : ''}
     ${lines.length ? `<div class="glist">${lines.map(l => { const g = S.P[l.pid] || {}; const have = back ? shelfOf('suwon', l.pid) : roomOf('suwon', l.pid); return `<div class="grow${S.ui.scanHit === l.pid ? ' scanflash' : ''}${l.qty > have ? ' bad' : ''}"><b>${esc(g.name || l.name)}</b><div class="code">${esc(g.barcode || '')} · ${back ? '매대' : '창고'} ${fmt(have)}</div><div class="gnums"><label>수량 <input class="inp qty" data-pullq="${esc(l.pid)}" value="${l.qty}" inputmode="numeric" aria-label="${back ? '되돌릴' : '꺼낼'} 수량"></label></div></div>`; }).join('')}</div>` : ''}
@@ -2305,8 +2305,8 @@ function shipoutView() {
   const lines = s.lines || [];
   return `${head('수량 정리 후 출고', '수원에서 내보냅니다', lines.length && s.dest ? '<button class="btn pri" data-act="shipOk">출고 확정</button>' : '')}
   <div class="card pullbox">
-    <p class="src">콜라보·팝업과 상설 상품을 보냅니다. 출고는 창고에서 먼저 빼고, 모자라면 매대에서 뺍니다.</p>
     ${excelZone('shipFile')}
+    <p class="src">콜라보·팝업과 상설 상품을 보냅니다. 출고는 창고에서 먼저 빼고, 모자라면 매대에서 뺍니다.</p>
     <button type="button" class="btn" id="shipDl">출고 입력용 엑셀 내려받기</button>
     <div class="field"><label>받는 곳</label><div class="sgrid">${dests.map(([id, name]) => `<button type="button" class="sbtn ${s.dest === id ? 'on' : ''}" data-shipdest="${id}">${esc(name)}</button>`).join('')}</div></div>
     ${s.dest === 'custom' ? `<label class="lb" for="shipCustom">현장 이름</label><input class="inp" id="shipCustom" value="${esc(s.custom || '')}" placeholder="기타 팝업 현장" aria-label="현장 이름">` : ''}
@@ -2431,9 +2431,14 @@ function ibApplyActual(ib, rows, src) {
   let matched = 0, extra = 0;
   const add = {}; for (const r of rows) { if (!(r.qty >= 0) || r.qty === null) continue; const k = itemKey(r); add[k] = (add[k] || { r, q: 0 }); add[k].q += r.qty; }
   for (const [k, { r, q }] of Object.entries(add)) {
-    let i = byKey[k];
-    if (i == null && r.bc) i = ib.items.findIndex(x => x.bc === r.bc || x.code === r.bc);
-    if (i == null && r.name) i = ib.items.findIndex(x => norm(x.name) === norm(r.name));
+    let i = -1;
+    if (r.idCode) i = ib.items.findIndex(x => x.pid === r.idCode || x.key === 'p:' + r.idCode);
+    else {
+      if (byKey[k] != null) i = byKey[k];
+      if (i < 0 && r.bc) i = ib.items.findIndex(x => x.bc === r.bc || x.code === r.bc);
+      if (i < 0 && r.pid) i = ib.items.findIndex(x => x.pid === r.pid);
+      if (i < 0 && r.name) i = ib.items.findIndex(x => norm(x.name) === norm(r.name));
+    }
     if (i != null && i >= 0) { ib.items[i].actual = q; if (r.note) ib.items[i].note = r.note; matched++; }
     else { ib.extra = (ib.extra || []).filter(x => x.key !== k); ib.extra.push({ key: k, pid: r.pid, name: r.pid ? S.P[r.pid].name : r.name, code: r.bc || r.sku, bc: r.bc, sku: r.sku, ip: r.ip, actual: q, price: r.price }); extra++; }
   }
@@ -4030,7 +4035,7 @@ let dzOn = null;
 document.addEventListener('dragover', e => { const z = fzoneAt(e); if (!z) return; e.preventDefault(); if (dzOn !== z) { dzOn && dzOn.classList.remove('dropok', 'on'); z.classList.add('dropok', 'on'); dzOn = z; } });
 document.addEventListener('dragleave', e => { if (dzOn && !dzOn.contains(e.relatedTarget)) { dzOn.classList.remove('dropok', 'on'); dzOn = null; } });
 document.addEventListener('paste', e => {
-  if (!S.user || !['inbound', 'pull', 'transfer', 'count'].includes(S.view)) return;
+  if (!S.user || !['inbound', 'pull', 'transfer', 'count', 'shipout'].includes(S.view)) return;
   const t = e.target;
   if (t && t.matches && t.matches('input,textarea')) return;
   const text = e.clipboardData && e.clipboardData.getData ? e.clipboardData.getData('text') : '';
