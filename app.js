@@ -50,7 +50,7 @@ const PERM_DEF = [
 ];
 
 const DEFAULT_ORDER = STORES.map(s => s.id);
-const APP_VERSION = '2026-11-18 01:35';   // 앱 화면을 마지막으로 고친 시각 (한국 시간)
+const APP_VERSION = '2026-11-18 01:50';   // 앱 화면을 마지막으로 고친 시각 (한국 시간)
 /* ───────── 작은 도구 ───────── */
 const $ = (s, el = document) => el.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -5536,12 +5536,17 @@ const KR_HOLIDAYS = {
   const kF = new Intl.DateTimeFormat('en-US', { timeZone: 'Asia/Seoul', hourCycle: 'h23', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' });
   const seoul = d => { const o = {}; for (const p of kF.formatToParts(d)) if (p.type !== 'literal') o[p.type] = p.value; return o; };
   const fit = () => {
-    const sp = q('.kt span'); if (!sp) return;
+    const sp = q('.kt span'), box = q('.kt');
+    if (!sp || !box || !box.clientWidth) return;
+    const tw = box.clientWidth;
     const wide = matchMedia('(min-width: 901px)').matches;
-    let size = wide ? 34 : 22;
-    sp.style.fontSize = size + 'px';
-    const box = q('.kt');
-    while (size > 14 && box && sp.scrollWidth > box.clientWidth + 1) { size -= 1; sp.style.fontSize = size + 'px'; }
+    sp.style.maxWidth = 'none';
+    sp.style.fontSize = '100px';
+    const w = sp.getBoundingClientRect().width;
+    const cap = wide ? 56 : 40;
+    const size = w ? Math.max(18, Math.min(cap, 100 * (tw - 2) / w)) : 28;
+    sp.style.fontSize = size.toFixed(1) + 'px';
+    sp.style.maxWidth = '100%';
   };
   const tick = () => {
     const d = new Date(), s = seoul(d);
