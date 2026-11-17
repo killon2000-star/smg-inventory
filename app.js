@@ -50,7 +50,7 @@ const PERM_DEF = [
 ];
 
 const DEFAULT_ORDER = STORES.map(s => s.id);
-const APP_VERSION = '2026-11-18 01:50';   // 앱 화면을 마지막으로 고친 시각 (한국 시간)
+const APP_VERSION = '2026-11-18 02:00';   // 앱 화면을 마지막으로 고친 시각 (한국 시간)
 /* ───────── 작은 도구 ───────── */
 const $ = (s, el = document) => el.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -5535,19 +5535,32 @@ const KR_HOLIDAYS = {
   const q = c => el.querySelector(c), W = ['일요일', '월요일', '화요일', '수요일', '목요일', '금요일', '토요일'], p2 = n => String(n).padStart(2, '0');
   const kF = new Intl.DateTimeFormat('en-US', { timeZone: 'Asia/Seoul', hourCycle: 'h23', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' });
   const seoul = d => { const o = {}; for (const p of kF.formatToParts(d)) if (p.type !== 'literal') o[p.type] = p.value; return o; };
+  const probe = document.createElement('span');
+  probe.textContent = '00:00:00';
+  probe.setAttribute('aria-hidden', 'true');
+  probe.style.cssText = 'position:absolute;left:0;top:0;visibility:hidden;white-space:nowrap;pointer-events:none;font-weight:800;letter-spacing:0;font-variant-numeric:tabular-nums;max-width:none;width:auto;';
   const fit = () => {
     const sp = q('.kt span'), box = q('.kt');
-    if (!sp || !box || !box.clientWidth) return;
-    const tw = box.clientWidth;
-    const wide = matchMedia('(min-width: 901px)').matches;
-    sp.style.maxWidth = 'none';
-    sp.style.fontSize = '100px';
-    const w = sp.getBoundingClientRect().width;
-    const cap = wide ? 56 : 40;
-    const size = w ? Math.max(18, Math.min(cap, 100 * (tw - 2) / w)) : 28;
-    sp.style.fontSize = size.toFixed(1) + 'px';
-    sp.style.maxWidth = '100%';
+    if (!sp || !box) return;
+    if (!probe.parentNode) el.appendChild(probe);
+    const limit = box.clientWidth * 0.96;
+    if (!(limit > 8)) return;
+    const cs = getComputedStyle(sp);
+    probe.style.fontFamily = cs.fontFamily;
+    probe.style.fontSize = '100px';
+    const w = probe.offsetWidth;
+    if (!w) return;
+    let size = 100 * limit / w;
+    probe.style.fontSize = size.toFixed(2) + 'px';
+    let guard = 0;
+    while (probe.offsetWidth > limit && size > 8 && guard < 8) {
+      size = Math.max(8, size * limit / probe.offsetWidth - 0.25);
+      probe.style.fontSize = size.toFixed(2) + 'px';
+      guard++;
+    }
+    sp.style.fontSize = size.toFixed(2) + 'px';
   };
+  window.__smgFitClock = fit;
   const tick = () => {
     const d = new Date(), s = seoul(d);
     const ymd = `${s.year}-${s.month}-${s.day}`;
@@ -5563,7 +5576,13 @@ const KR_HOLIDAYS = {
     q('.kk').textContent = abroad ? `현지 ${localH}:${localM}` : '';
     fit();
   };
-  const start = () => { document.body.appendChild(el); tick(); setInterval(tick, 1000); addEventListener('resize', fit); document.fonts && document.fonts.ready.then(fit); setTimeout(fit, 1500); };
+  const start = () => {
+    document.body.appendChild(el); tick(); setInterval(tick, 1000); fit();
+    addEventListener('resize', fit);
+    if (window.ResizeObserver) { const ro = new ResizeObserver(fit); ro.observe(el); const box = q('.kt'); if (box) ro.observe(box); }
+    document.fonts && document.fonts.ready.then(fit);
+    new MutationObserver(fit).observe(document.documentElement, { attributes: true, attributeFilter: ['style'] });
+  };
   document.body ? start() : document.addEventListener('DOMContentLoaded', start);
 })();
 // 글자 크기·큰 모니터 배율이 걸려도 왼쪽 메뉴가 화면 높이 안에 들어오고 그 안에서 스크롤되게
@@ -5617,7 +5636,7 @@ document.addEventListener('drop', ev => {
 function goTop() { resetZoom(); window.scrollTo(0, 0); }
 const TEXT_SIZES = [['가-', 0.875, '작게'], ['가', 1, '보통'], ['가+', 1.125, '크게'], ['가++', 1.25, '아주 크게']];
 const nearZoom = z => TEXT_SIZES.reduce((a, b) => Math.abs(b[1] - z) < Math.abs(a[1] - z) ? b : a)[1];
-function applyTextSize(z) { S.ui.textZoom = z; document.documentElement.style.zoom = z === 1 ? '' : String(z); try { localStorage.setItem('smg-text-zoom', String(z)); } catch (e) { } }
+function applyTextSize(z) { S.ui.textZoom = z; document.documentElement.style.zoom = z === 1 ? '' : String(z); try { localStorage.setItem('smg-text-zoom', String(z)); } catch (e) { } if (window.__smgFitClock) window.__smgFitClock(); }
 try { const z = nearZoom(parseFloat(localStorage.getItem('smg-text-zoom') || '1') || 1); if (z !== 1) applyTextSize(z); } catch (e) { }
 function textSizeBox() {
   const z = S.ui.textZoom || 1;
