@@ -168,13 +168,14 @@ button{cursor:pointer}
 .tzlist button{background:none;border:0;border-top:1px solid var(--line-2);text-align:left;padding:0 14px;min-height:44px;color:var(--ink,inherit)}
 .tzlist button:first-child{border-top:0}
 .tzlist button.on{color:var(--red);font-weight:700;background:var(--surface-2)}
-.kclock{position:fixed;z-index:56;left:max(10px,env(safe-area-inset-left,0px));bottom:10px;width:min(190px,calc(100vw - 20px));max-width:calc(100vw - 20px);box-sizing:border-box;overflow:hidden;display:flex;flex-direction:column;gap:2px;padding:12px 14px 12px;border-radius:10px;background:var(--black,#111);color:#fff;font-variant-numeric:tabular-nums;box-shadow:0 4px 14px rgba(0,0,0,.18);pointer-events:none;line-height:1.2}
+.kclock{position:fixed;z-index:56;left:0;bottom:0;width:var(--sidew,210px);max-width:var(--sidew,210px);box-sizing:border-box;container-type:inline-size;overflow:hidden;display:flex;flex-direction:column;gap:2px;padding:12px 10px 14px;border-radius:0;background:var(--black,#111);color:#fff;font-variant-numeric:tabular-nums;box-shadow:none;pointer-events:none;line-height:1.2}
 body:not(.in-app) .kclock{display:none!important}
-.kclock .kr1,.kclock .kr2{display:flex;justify-content:space-between;align-items:baseline;gap:6px;min-width:0;flex-wrap:wrap}
-.kclock .kd{font-size:15px;font-weight:600;color:#e6e6ea;min-width:0}
-.kclock .kw{font-size:15px;font-weight:700;color:#fff;min-width:0}
-.kclock .kt{line-height:1.05;min-width:0;max-width:100%}
-.kclock .kt span{display:block;max-width:100%;font-size:32px;font-weight:800;letter-spacing:0;overflow:hidden}
+.kclock .kr1,.kclock .kr2{display:flex;justify-content:space-between;align-items:baseline;gap:6px;min-width:0;overflow:hidden;white-space:nowrap}
+.kclock .kd,.kclock .kw{min-width:0;overflow:hidden;text-overflow:ellipsis}
+.kclock .kd{font-size:15px;font-weight:600;color:#e6e6ea}
+.kclock .kw{font-size:15px;font-weight:700;color:#fff}
+.kclock .kt{line-height:1.05;min-width:0;max-width:100%;overflow:hidden}
+.kclock .kt span{display:block;max-width:100%;font-size:clamp(16px,15cqi,32px);font-weight:800;letter-spacing:0;white-space:nowrap;overflow:hidden}
 .kclock .kr2{display:none;font-size:11px;color:#bdbdc4;border-top:1px solid #2c2c31;padding-top:5px;margin-top:3px;min-width:0}
 .kclock.abroad .kr2{display:flex}
 .kclock .kk{color:#fff;font-weight:700;min-width:0;overflow-wrap:anywhere}
@@ -391,7 +392,7 @@ table.tb tr.click.sel td:first-child{box-shadow:inset 3px 0 0 var(--red)}
 .scrim{position:fixed;inset:0;z-index:65;background:transparent}
 
 /* shell */
-.shell{display:grid;grid-template-columns:210px minmax(0,1fr);min-height:calc(100% - 56px)}
+.shell{display:grid;grid-template-columns:var(--sidew,210px) minmax(0,1fr);min-height:calc(100% - 56px)}
 .store-btn .nm{text-overflow:clip}
 .side{background:var(--surface);border-right:1px solid var(--line);padding:14px 10px;position:sticky;top:calc(env(safe-area-inset-top,0px) + 56px);height:calc(100vh - 56px);overflow:auto}
 .side button{display:flex;align-items:center;gap:10px;width:100%;text-align:left;background:none;border:0;padding:9px 12px;border-radius:7px;color:var(--ink-2);font-weight:500}
@@ -746,7 +747,7 @@ body.mclose-on .page{max-width:none;width:100%}
 }
 
 /* ── 2026.11 리디자인: 머리줄 도구(글자 크기·화면 색), 화이트톤 머리줄, 넓은 화면 폭, 드롭 영역, 정렬 ── */
-.page{max-width:1800px;margin-inline:auto;width:100%}
+.page{max-width:none;margin-inline:0;width:100%}
 .htools{display:flex;align-items:center;gap:8px;flex:none}
 .fsz,.tone{display:inline-flex;border:1px solid #3a3a40;border-radius:8px;overflow:hidden;flex:none}
 .fsz button,.tone button{background:transparent;border:0;color:#d8d8dc;font-weight:700;font-size:13px;min-height:34px;padding:0 10px;min-width:2.6em;line-height:1;white-space:nowrap}
@@ -1159,8 +1160,8 @@ body.sched-on .pha > .chip{border-radius:8px;justify-content:center}
 <script defer src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
 <script defer src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 <script defer src="config.js"></script>
-<script defer src="firebase.js?v=123"></script>
-<script defer src="app.js?v=123"></script>
+<script defer src="firebase.js?v=124"></script>
+<script defer src="app.js?v=124"></script>
 <script>if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});</script>
 
 </body></html>
