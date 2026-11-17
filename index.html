@@ -170,12 +170,12 @@ button{cursor:pointer}
 .tzlist button.on{color:var(--red);font-weight:700;background:var(--surface-2)}
 .kclock{position:fixed;z-index:56;left:0;bottom:0;width:var(--sidew,210px);max-width:var(--sidew,210px);box-sizing:border-box;container-type:inline-size;overflow:hidden;display:flex;flex-direction:column;gap:2px;padding:12px 10px 14px;border-radius:0;background:var(--black,#111);color:#fff;font-variant-numeric:tabular-nums;box-shadow:none;pointer-events:none;line-height:1.2}
 body:not(.in-app) .kclock{display:none!important}
-.kclock .kr1,.kclock .kr2{display:flex;justify-content:space-between;align-items:baseline;gap:6px;white-space:nowrap;min-width:0;overflow:hidden}
+.kclock .kr1,.kclock .kr2{display:flex;justify-content:space-between;align-items:baseline;gap:6px;width:100%;white-space:nowrap;min-width:0;overflow:hidden}
 .kclock .kd,.kclock .kw{min-width:0;overflow:hidden;text-overflow:ellipsis}
 .kclock .kd{font-size:15px;font-weight:600;color:#e6e6ea}
-.kclock .kw{font-size:15px;font-weight:700;color:#fff}
-.kclock .kt{line-height:1.05;min-width:0;max-width:100%;overflow:hidden}
-.kclock .kt span{display:block;max-width:100%;font-size:clamp(16px,15cqi,32px);font-weight:800;letter-spacing:0;white-space:nowrap;overflow:hidden}
+.kclock .kw{font-size:15px;font-weight:700;color:#fff;margin-left:auto}
+.kclock .kt{line-height:1;width:100%;min-width:0;max-width:100%;overflow:hidden;text-align:center}
+.kclock .kt span{display:inline-block;max-width:100%;font-size:32px;font-weight:800;letter-spacing:0;white-space:nowrap;font-variant-numeric:tabular-nums}
 .kclock .kr2{display:none;font-size:11px;color:#bdbdc4;border-top:1px solid #2c2c31;padding-top:5px;margin-top:3px}
 .kclock.abroad .kr2{display:flex}
 .kclock .kk{color:#fff;font-weight:700}
@@ -185,11 +185,12 @@ body:not(.in-app) .kclock{display:none!important}
 .kclock.sat .kw{color:#7DB4FF}
 .side{padding-bottom:calc(var(--kch,90px) + 36px)}
 @media (max-width: 900px){
-  .kclock{left:0;right:0;width:auto;bottom:var(--tabh,64px);border-radius:0;box-shadow:none;flex-direction:row;align-items:center;gap:12px;padding:6px max(16px,env(safe-area-inset-left,0px))}
-  .kclock .kr1{gap:8px}
-  .kclock .kd,.kclock .kw{font-size:15px}
-  .kclock .kt{margin-left:auto}
-  .kclock .kt span{font-size:24px}
+  .kclock{left:0;right:0;width:auto;max-width:none;bottom:var(--tabh,64px);border-radius:0;box-shadow:none;flex-direction:row;align-items:center;gap:8px;padding:4px max(12px,env(safe-area-inset-left,0px)) 4px max(12px,env(safe-area-inset-right,0px))}
+  .kclock .kr1{gap:8px;width:auto;flex:0 0 auto}
+  .kclock .kd,.kclock .kw{font-size:14px}
+  .kclock .kw{margin-left:0}
+  .kclock .kt{margin-left:8px;flex:1 1 auto;width:auto;text-align:right}
+  .kclock .kt span{font-size:22px}
   .kclock .kr2{display:none!important}
   .kclock .kh{font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
   .kclock.abroad .kt::after{content:attr(data-k);font-size:11px;color:#bdbdc4;margin-left:6px;font-weight:600}
@@ -569,7 +570,7 @@ body:has(.cntregbar) .toast{bottom:calc(var(--tabh,64px) + 96px)}
   main{padding-bottom:calc(var(--tabh,64px) + 20px)}
   .tabgrid.two button{min-height:46px;padding:4px 1px 3px}
   .tabbar button{position:relative;background:none;border:0;min-height:52px;justify-content:center;padding:7px 1px 5px;display:flex;flex-direction:column;align-items:center;gap:2px;font-size:11px;font-weight:600;color:var(--muted);white-space:nowrap;min-width:0}
-  .kclock{display:none!important}
+  main{padding-bottom:calc(var(--tabh,64px) + 44px)}
   .moregrid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
   .mbtn{position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;min-height:76px;border:1px solid var(--line);border-radius:10px;background:var(--surface);font-weight:700;font-size:13px;color:var(--ink)}
   .mbtn .tcnt{top:6px;left:auto;right:8px}
@@ -1116,8 +1117,8 @@ body.sched-on .pha > .chip{border-radius:8px;justify-content:center}
 <script defer src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
 <script defer src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 <script defer src="config.js"></script>
-<script defer src="firebase.js?v=114"></script>
-<script defer src="app.js?v=114"></script>
+<script defer src="firebase.js?v=115"></script>
+<script defer src="app.js?v=115"></script>
 <script>if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});</script>
 
 </body></html>

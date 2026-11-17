@@ -50,7 +50,7 @@ const PERM_DEF = [
 ];
 
 const DEFAULT_ORDER = STORES.map(s => s.id);
-const APP_VERSION = '2026-11-18 01:30';   // 앱 화면을 마지막으로 고친 시각 (한국 시간)
+const APP_VERSION = '2026-11-18 01:45';   // 앱 화면을 마지막으로 고친 시각 (한국 시간)
 /* ───────── 작은 도구 ───────── */
 const $ = (s, el = document) => el.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -5090,11 +5090,18 @@ const KR_HOLIDAYS = {
   const kF = new Intl.DateTimeFormat('ko-KR', { timeZone: 'Asia/Seoul', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false });
   const kst2 = d => { const o = Object.fromEntries(kF.formatToParts(d).map(x => [x.type, x.value])); return `${o.year}.${o.month}.${o.day}(${'일월화수목금토'[new Date(`${o.year}-${o.month}-${o.day}T00:00:00Z`).getUTCDay()]}) ${o.hour}:${o.minute}`; };
   let zone = ''; try { zone = Intl.DateTimeFormat().resolvedOptions().timeZone.split('/').pop().replace(/_/g, ' '); } catch (e) { }
-  const fit = () => {   // 컴퓨터: 시간 글씨가 상자 가로를 꽉 채우게
+  const fit = () => {   // 시각 글씨가 시계 칸 가로를 거의 다 채우게. 넘치지는 않음
     const sp = q('.kt span'), box = q('.kt');
-    if (!matchMedia('(min-width: 901px)').matches) { sp.style.fontSize = ''; return; }
-    sp.style.fontSize = '32px'; const w = sp.scrollWidth, tw = box.clientWidth;
-    if (w && tw) sp.style.fontSize = Math.max(16, Math.min(32, 32 * tw / w * 0.98)).toFixed(1) + 'px';
+    if (!sp || !box || !box.clientWidth) return;
+    const tw = box.clientWidth;
+    const wide = matchMedia('(min-width: 901px)').matches;
+    sp.style.maxWidth = 'none';
+    sp.style.fontSize = '100px';
+    const w = sp.getBoundingClientRect().width;
+    const cap = wide ? 56 : 40;
+    const size = w ? Math.max(18, Math.min(cap, 100 * (tw - 2) / w)) : 28;
+    sp.style.fontSize = size.toFixed(1) + 'px';
+    sp.style.maxWidth = '100%';
   };
   const tick = () => {
     const d = new Date(), abroad = d.getTimezoneOffset() !== -540;
@@ -5105,7 +5112,7 @@ const KR_HOLIDAYS = {
     q('.kt span').textContent = `${p2(d.getHours())}:${p2(d.getMinutes())}:${p2(d.getSeconds())}`;
     el.classList.toggle('abroad', abroad); q('.kt').dataset.k = abroad ? '한국 ' + kst2(d).split(' ')[1] : '';
     if (abroad) { q('.kz').textContent = (zone || '현지') + ' 시간'; q('.kk').textContent = '한국 ' + kst2(d); }
-    if (!el._fit && el.offsetWidth) { el._fit = 1; fit(); }
+    fit();
   };
   const start = () => { document.body.appendChild(el); tick(); setInterval(tick, 1000); addEventListener('resize', fit); document.fonts && document.fonts.ready.then(fit); setTimeout(fit, 1500); };
   document.body ? start() : document.addEventListener('DOMContentLoaded', start);
