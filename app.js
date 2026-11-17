@@ -50,7 +50,7 @@ const PERM_DEF = [
 ];
 
 const DEFAULT_ORDER = STORES.map(s => s.id);
-const APP_VERSION = '2026-11-13 19:40';   // 앱 화면을 마지막으로 고친 시각 (한국 시간)
+const APP_VERSION = '2026-11-18 01:30';   // 앱 화면을 마지막으로 고친 시각 (한국 시간)
 /* ───────── 작은 도구 ───────── */
 const $ = (s, el = document) => el.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -5093,8 +5093,8 @@ const KR_HOLIDAYS = {
   const fit = () => {   // 컴퓨터: 시간 글씨가 상자 가로를 꽉 채우게
     const sp = q('.kt span'), box = q('.kt');
     if (!matchMedia('(min-width: 901px)').matches) { sp.style.fontSize = ''; return; }
-    sp.style.fontSize = '40px'; const w = sp.getBoundingClientRect().width, tw = box.clientWidth;
-    if (w && tw) sp.style.fontSize = Math.min(64, 40 * tw / w * 0.99).toFixed(1) + 'px';
+    sp.style.fontSize = '32px'; const w = sp.scrollWidth, tw = box.clientWidth;
+    if (w && tw) sp.style.fontSize = Math.max(16, Math.min(32, 32 * tw / w * 0.98)).toFixed(1) + 'px';
   };
   const tick = () => {
     const d = new Date(), abroad = d.getTimezoneOffset() !== -540;
