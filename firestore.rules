@@ -11,7 +11,14 @@ service cloud.firestore {
     function meDoc() { return get(/databases/$(database)/documents/users/$(request.auth.uid)); }
     function me() { return meDoc().data; }
     // 승인되고 퇴사·정지되지 않은 사람만
-    function active() { return isOwner() || (signed() && exists(/databases/$(database)/documents/users/$(request.auth.uid)) && me().status == 'active'); }
+    function emailOk() { return signed() && request.auth.token.email_verified == true; }
+    function staffPath() { return /databases/$(database)/documents/staff/$(request.auth.token.email); }
+    function staffDoc() { return get(staffPath()).data; }
+    function onStaff() { return exists(staffPath()) && staffDoc().status == 'active' && staffDoc().email == request.auth.token.email; }
+    function floorPos() { return me().get('position', '') == '매니저' || me().get('position', '') == '사원'; }
+    function active() {
+      return isOwner() || (emailOk() && exists(/databases/$(database)/documents/users/$(request.auth.uid)) && me().status == 'active' && (!floorPos() || onStaff()));
+    }
     function limitedUser() { return !isOwner() && me().get('limited', false) == true; }
     function perm(k) { return isOwner() || (active() && !limitedUser() && me().perms.get(k, false) == true); }
     function settleOf(d) { return d.get('perms', null) != null && d.perms.get('settle', false) == true; }
@@ -29,22 +36,62 @@ service cloud.firestore {
     // 토스포스 zip 비밀번호: 매출·승인 권한자만
     match /config/zip { allow read: if !stockFloor() && (perm('sales') || perm('approve')); allow write: if !stockFloor() && (perm('approve') || perm('sales')); }
 
+    // 직원 등록 명단. 문서 이름은 구글 이메일. 매니저·사원은 여기가 active 일 때만 재고를 본다.
+    match /staff/{email} {
+      allow read: if isOwner() || (perm('approve') && !stockFloor());
+      allow get: if signed() && resource.data.email == request.auth.token.email && resource.data.status == 'active';
+      allow create, update: if (isOwner() || (perm('approve') && !stockFloor()))
+        && request.resource.data.email == email
+        && request.resource.data.position in ['매니저', '사원']
+        && request.resource.data.status in ['active', 'revoked']
+        && request.resource.data.get('owner', false) == false
+        && request.resource.data.get('perms', {}).get('approve', false) == false
+        && request.resource.data.get('perms', {}).get('sales', false) == false
+        && request.resource.data.get('perms', {}).get('settle', false) == false;
+      allow delete: if isOwner() || (perm('approve') && !stockFloor());
+    }
+
+    // 올린 기록. 만들 수만 있고 고치거나 지우지 못한다.
+    match /uplogs/{id} {
+      allow read: if isOwner() || (perm('approve') && !stockFloor());
+      allow create: if active()
+        && request.resource.data.email == request.auth.token.email
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.keys().hasOnly(['id', 'at', 'name', 'email', 'uid', 'button', 'file', 'action', 'note']);
+      allow update, delete: if false;
+    }
+
     // 사용자
     match /users/{uid} {
-      allow get: if signed() && (request.auth.uid == uid || perm('approve'));
+      allow get: if isOwner() || (perm('approve') && !stockFloor()) || (signed() && request.auth.uid == uid && resource.data.status == 'active' && resource.data.email == request.auth.token.email && (!(resource.data.get('position','') == '매니저' || resource.data.get('position','') == '사원') || onStaff()));
       allow list: if perm('approve');
-      // 본인 신청: 대기 상태로만, 권한 없이
-      allow create: if signed() && request.auth.uid == uid && (
+      // 등록된 이메일만 자기 문서를 만든다. 직급·권한은 명단과 같고, 승인·매출·대표는 켤 수 없다.
+      allow create: if emailOk() && request.auth.uid == uid && request.resource.data.email == request.auth.token.email && (
         isOwner() ||
-        (request.resource.data.status == 'pending' && request.resource.data.perms == null
-         && request.resource.data.get('owner', false) == false && request.resource.data.get('limited', false) == false
-         && request.resource.data.email == request.auth.token.email));
-      // 승인·권한·퇴사: 승인 권한자만, 대표 계정은 못 바꿈, 기타 소속은 수량 보기만
-      // perms.settle 은 쓰지 않음 (정산은 대표만) — 승인권자가 켜지 못하게만 막아 둠
-      allow update: if perm('approve') && resource.data.get('owner', false) == false
+        (onStaff()
+         && staffDoc().position == request.resource.data.position
+         && request.resource.data.position in ['매니저', '사원']
+         && request.resource.data.status == 'active'
+         && request.resource.data.get('owner', false) == false
+         && request.resource.data.perms.approve == false
+         && request.resource.data.perms.sales == false
+         && request.resource.data.perms.settle == false
+         && request.resource.data.perms.stores.size() == 1
+         && request.resource.data.perms.stores[0] == 'suwon'));
+      // 승인·권한·퇴사·해지: 승인 권한자만, 대표 계정은 못 바꿈
+      // 매니저·사원은 직급을 그 둘 밖으로 올리거나 승인·매출 권한을 켤 수 없다
+      allow update: if perm('approve') && !stockFloor() && resource.data.get('owner', false) == false
         && request.resource.data.get('owner', false) == false
         && (resource.data.company != '기타(직접 입력)' || request.resource.data.get('limited', false) == true)
-        && settleOf(request.resource.data) == settleOf(resource.data);
+        && settleOf(request.resource.data) == settleOf(resource.data)
+        && (
+          !(resource.data.get('position', '') == '매니저' || resource.data.get('position', '') == '사원')
+          || (
+            request.resource.data.position in ['매니저', '사원']
+            && request.resource.data.perms.get('approve', false) == false
+            && request.resource.data.perms.get('sales', false) == false
+          )
+        );
       allow update: if isOwner();
       // 본인: 매장 표시 순서, 내 정보(실명·휴대폰)만 바꿀 수 있음
       allow update: if active() && request.auth.uid == uid

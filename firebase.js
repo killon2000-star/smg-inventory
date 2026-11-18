@@ -14,6 +14,9 @@ window.SMG_FIREBASE = function (S, X) {
   const unsub = [];
   const stopAll = () => { while (unsub.length) { try { unsub.pop()(); } catch (e) { } } };
   let first = true;
+  const staffId = email => String(email || '').trim();
+  const floorDoc = (s, email) => ({ name: s.name, email, company: 'SMG STORE_수원', position: s.position, places: ['SMG STORE_수원'], status: 'active', owner: false, limited: false, perms: { stores: ['suwon'], move: true, count: s.position === '매니저', sales: false, approve: false }, createdAt: ts(), approvedAt: ts() });
+  const denied = err => { if (err && (err.code === 'permission-denied' || err.code === 'unauthenticated')) { if (X.lockOut) X.lockOut('서버에서 접근이 거부되었습니다. 재고를 볼 수 없습니다.'); } };
 
   function msg(html) { document.getElementById('app').innerHTML = `<div style="padding:16px"><div class="login"><div class="brand"><img src="logo-w.png" alt="SMG STORE"><b style="font-size:18px">SMG 재고관리</b></div>${html}</div></div>`; }
 
@@ -31,22 +34,50 @@ window.SMG_FIREBASE = function (S, X) {
       if (!u) { S.user = null; S.ui.authUser = null; S.ui.applied = false; X.render(); return; }
       const ref = db.collection('users').doc(u.uid);
       const owner = u.email === X.OWNER_EMAIL;
-      // 내 계정 상태를 계속 지켜봄 → 퇴사·정지되면 바로 로그아웃
+      const watchStaff = email => {
+        if (!email || owner) return;
+        unsub.push(db.collection('staff').doc(staffId(email)).onSnapshot(ss => {
+          if (!ss.exists) return;
+          const st = ss.data() || {};
+          if (st.status === 'revoked') { if (X.lockOut) X.lockOut('접근이 해지되었습니다. 재고를 볼 수 없습니다.'); }
+        }, denied));
+      };
+      // 내 계정 상태를 계속 지켜봄 → 퇴사·해지·정지되면 바로 로그아웃
       unsub.push(ref.onSnapshot(async snap => {
         if (!snap.exists && snap.metadata.fromCache) return;   // 저장본에 없으면 서버 답을 기다림
         if (!snap.exists && owner) { ref.set({ name: 'Anthony', email: u.email, company: '온인터내셔널', position: '대표', places: ['본사'], status: 'active', owner: true, perms: { stores: X.STORES.map(s => s.id), move: true, count: true, sales: true, approve: true }, createdAt: ts(), approvedAt: ts() }).catch(() => { }); return; }
-        if (!snap.exists) { S.user = null; S.ui.authUser = { uid: u.uid, email: u.email }; S.ui.applied = false; X.render(); return; }
+        if (!snap.exists) {
+          let staffSnap = null;
+          try { staffSnap = await db.collection('staff').doc(staffId(u.email)).get(); } catch (e) { denied(e); return; }
+          const s = staffSnap && staffSnap.exists ? staffSnap.data() : null;
+          if (!s || s.status !== 'active' || String(s.email || '').toLowerCase() !== String(u.email || '').toLowerCase()) {
+            S.user = null; S.ui.applied = false;
+            S.ui.authUser = { uid: u.uid, email: u.email, blocked: s && s.status === 'revoked' ? 'revoked' : 'unlisted' };
+            X.render(); return;
+          }
+          try { await ref.set(floorDoc(s, u.email)); } catch (e) { denied(e); S.user = null; S.ui.authUser = { uid: u.uid, email: u.email, blocked: 'unlisted' }; X.render(); return; }
+          return;
+        }
         const d = { uid: u.uid, ...snap.data() };
         if (d.status === 'pending') { S.user = null; S.ui.applied = true; X.render(); return; }
         if (d.status !== 'active') {
+          const why = d.status === 'resigned' ? '퇴사 처리된 계정입니다.' : d.status === 'revoked' ? '접근이 해지되었습니다. 재고를 볼 수 없습니다.' : '일시 정지된 계정입니다. 관리자에게 문의해 주세요.';
+          if (d.status === 'revoked' && X.lockOut) { X.lockOut(why); return; }
           stopAll(); await auth.signOut();
-          msg(`<div class="card"><h2>🔺 사용할 수 없는 계정입니다</h2><p style="margin:0">${d.status === 'resigned' ? '퇴사 처리된 계정입니다.' : '일시 정지된 계정입니다. 관리자에게 문의해 주세요.'}</p></div>`);
+          msg(`<div class="card"><h2>🔺 사용할 수 없는 계정입니다</h2><p style="margin:0">${why}</p></div>`);
           return;
         }
+        const floor = d.position === '매니저' || d.position === '사원';
+        if (floor) {
+          let staffSnap = null;
+          try { staffSnap = await db.collection('staff').doc(staffId(d.email || u.email)).get(); } catch (e) { denied(e); return; }
+          const s = staffSnap && staffSnap.exists ? staffSnap.data() : null;
+          if (!s || s.status !== 'active') { if (X.lockOut) X.lockOut(s && s.status === 'revoked' ? '접근이 해지되었습니다. 재고를 볼 수 없습니다.' : '등록되지 않은 계정입니다.'); return; }
+        }
         const wasNull = !S.user; S.user = d;
-        if (wasNull) { X.setUser(d); await loadAll(); }
+        if (wasNull) { X.setUser(d); watchStaff(d.email || u.email); await loadAll(); }
         X.render();
-      }, () => { }));
+      }, denied));
     });
   }
 
@@ -59,9 +90,9 @@ window.SMG_FIREBASE = function (S, X) {
     unsub.push(db.collection('config').doc('notice').onSnapshot(d => { S.notice = d.exists ? d.data() : null; R(); }, () => { }));
     unsub.push(db.collection('config').doc('app').onSnapshot(d => { const x = d.exists ? d.data() : {}; if (x.ipPlan) { S.ipPlan = x.ipPlan; S.ipPlanAt = x.ipPlanAt || ''; } R(); }, () => { }));
     db.collection('importMaps').get().then(q => { q.docs.forEach(d => { const x = d.data(); if (x.sig) S.maps[x.sig] = x; }); }).catch(() => { });
-    unsub.push(db.collection('products').onSnapshot(q => { S.products = q.docs.map(d => d.data()); X.indexProducts(); R(); }));
+    unsub.push(db.collection('products').onSnapshot(q => { S.products = q.docs.map(d => d.data()); X.indexProducts(); R(); }, denied));
     for (const st of mine) {
-      unsub.push(db.collection('stores').doc(st).onSnapshot(d => { const x = d.exists ? d.data() : {}; S.stock[st] = x.q || {}; if (st === 'suwon') S.cab = x.cab || {}; R(); }, () => { }));
+      unsub.push(db.collection('stores').doc(st).onSnapshot(d => { const x = d.exists ? d.data() : {}; S.stock[st] = x.q || {}; if (st === 'suwon') S.cab = x.cab || {}; R(); }, denied));
       if (!S.user.limited) {
         unsub.push(db.collection('stores').doc(st).collection('moves').orderBy('at', 'desc').limit(1500).onSnapshot(q => {
           S.moves = S.moves.filter(m => m.store !== st).concat(q.docs.map(d => d.data())).sort((a, b) => (a.at > b.at ? 1 : -1)); R();
@@ -79,7 +110,11 @@ window.SMG_FIREBASE = function (S, X) {
     if (S.user.perms.sales || S.user.perms.approve || S.user.owner) {
       S.zipPw = S.zipPw || {}; db.collection('config').doc('zip').get().then(z => { S.zipPw = (z && z.exists && z.data().pw) || {}; }).catch(() => { });
     }
-    if (S.user.perms.approve || S.user.owner) unsub.push(db.collection('users').onSnapshot(q => { S.users = q.docs.map(d => ({ uid: d.id, ...d.data() })); R(); }));
+    if (S.user.perms.approve || S.user.owner) {
+      unsub.push(db.collection('users').onSnapshot(q => { S.users = q.docs.map(d => ({ uid: d.id, ...d.data() })); R(); }, denied));
+      unsub.push(db.collection('staff').onSnapshot(q => { S.staff = q.docs.map(d => ({ id: d.id, ...d.data() })); R(); }, denied));
+      unsub.push(db.collection('uplogs').onSnapshot(q => { S.uplog = q.docs.map(d => d.data()).sort((a, b) => String(b.at || '').localeCompare(String(a.at || ''))); R(); }, denied));
+    }
     else S.users = [S.user];
     if (S.user.owner) unsub.push(db.collection('settle').onSnapshot(q => { S.settle = q.docs.filter(d => d.id !== '_rules').flatMap(d => d.data().rows || []); const r = q.docs.find(d => d.id === '_rules'); S.settleRules = r ? r.data() : null; R(); }, () => { }));
     if (S.user.owner || (S.user.perms && S.user.perms.approve)) unsub.push(db.collection('popups').onSnapshot(q => { S.popups = q.docs.map(d => ({ id: d.id, ...d.data() })); R(); }, () => { }));
@@ -123,10 +158,27 @@ window.SMG_FIREBASE = function (S, X) {
       return true;
     },
     async saveUser(u) {
-      const { uid, ...d } = u; delete d.sample;
+      const { uid, ...d } = u; delete d.sample; delete d.previewOnly;
+      if (d.email) { const q = await db.collection('users').where('email', '==', d.email).limit(5).get(); if (!q.empty && !uid) { await q.docs[0].ref.set({ status: d.status, position: d.position, perms: d.perms, owner: false, updatedAt: ts(), updatedBy: S.user.name }, { merge: true }); return true; } }
+      if (!uid || String(uid).startsWith('preview-')) { if (d.email) { const q = await db.collection('users').where('email', '==', d.email).limit(1).get(); if (!q.empty) await q.docs[0].ref.set({ status: d.status, position: d.position, perms: d.perms, owner: false, updatedAt: ts(), updatedBy: S.user.name }, { merge: true }); } return true; }
       await db.collection('users').doc(uid).set({ ...d, updatedAt: ts(), updatedBy: S.user.name }, { merge: true });
       return true;
     },
+    async saveStaff(row) {
+      const email = String(row.email || '').trim();
+      await db.collection('staff').doc(email).set({ ...row, email }, { merge: true });
+      if (row.status === 'revoked' || row.status === 'active') {
+        const q = await db.collection('users').where('email', '==', email).get();
+        for (const d of q.docs) {
+          const patch = { status: row.status, updatedAt: ts(), updatedBy: S.user.name };
+          if (row.status === 'active') { patch.position = row.position; patch.perms = row.perms || { stores: ['suwon'], move: true, count: row.position === '매니저', sales: false, approve: false }; patch.owner = false; }
+          await d.ref.set(patch, { merge: true });
+        }
+      }
+      return true;
+    },
+    async deleteStaff(email) { await db.collection('staff').doc(String(email || '').trim()).delete(); return true; },
+    async saveUplog(row) { await db.collection('uplogs').doc(row.id).set(row); return true; },
     async saveInbound(ib) { await db.collection('inbounds').doc(ib.id).set(JSON.parse(JSON.stringify(ib))); },
     async saveSettleRules(r) { await db.collection('settle').doc('_rules').set(r); },
     async savePopup(p) { await db.collection('popups').doc(p.id).set(p); },

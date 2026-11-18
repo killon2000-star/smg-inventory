@@ -185,15 +185,15 @@ body:not(.in-app) .kclock{display:none!important}
 .kclock.sat .kw{color:#7DB4FF}
 .side{padding-bottom:calc(var(--kch,90px) + 36px)}
 @media (max-width: 900px){
-  .kclock{left:0;right:0;width:auto;bottom:var(--tabh,64px);border-radius:0;box-shadow:none;flex-direction:row;flex-wrap:nowrap;align-items:center;gap:8px;padding:6px max(12px,env(safe-area-inset-left,0px));overflow:hidden}
-  .kclock .kr1{gap:6px;flex-wrap:nowrap;flex:0 0 auto;width:auto;min-width:0}
-  .kclock .kd,.kclock .kw{font-size:13px;white-space:nowrap}
+  .kclock{left:0;right:0;width:auto;max-width:none;bottom:var(--tabh,64px);border-radius:0;box-shadow:none;flex-direction:row;flex-wrap:nowrap;align-items:center;gap:8px;padding:4px max(12px,env(safe-area-inset-left,0px)) 4px max(12px,env(safe-area-inset-right,0px));overflow:hidden}
+  .kclock .kr1{gap:8px;flex-wrap:nowrap;flex:0 0 auto;width:auto;min-width:0}
+  .kclock .kd,.kclock .kw{font-size:14px;white-space:nowrap}
   .kclock .kw{margin-left:0}
   .kclock .kt{margin-left:8px;flex:1 1 auto;width:auto;text-align:right}
   .kclock .kt span{font-size:22px;white-space:nowrap}
   .kclock.abroad .kr2{display:flex;flex:0 0 auto;border-top:0;margin:0;padding:0}
   .kclock .kk{white-space:nowrap;font-size:12px}
-  .kclock .kh{font-size:12px;min-width:0;white-space:nowrap}
+  .kclock .kh{font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
   main{padding-bottom:calc(var(--tabh,64px) + 48px)}
 }
 .ipgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px}
@@ -563,9 +563,9 @@ body:has(.cntregbar) .toast{bottom:calc(var(--tabh,64px) + 96px)}
   .top{flex-wrap:wrap}
   .notice{order:9;flex:1 0 100%;margin:0;height:34px;justify-content:flex-start;font-size:13px}
   .tabbar{display:block;position:fixed;left:0;right:0;bottom:0;z-index:55;background:var(--surface);border-top:1px solid var(--line);
-    padding-bottom:env(safe-area-inset-bottom,0px);padding-left:env(safe-area-inset-left,0px);padding-right:env(safe-area-inset-right,0px)}
-  .tabgrid{display:block;width:100%}
-  .trow{display:grid;grid-template-columns:repeat(var(--tcols,1),minmax(0,1fr));width:100%;min-width:0}.trow+.trow{border-top:1px solid var(--line)}
+    padding-bottom:env(safe-area-inset-bottom,0px);padding-left:env(safe-area-inset-left,0px);padding-right:env(safe-area-inset-right,0px);width:100%;max-width:100%;overflow:clip;box-sizing:border-box}
+  .tabgrid{display:block;width:100%;max-width:100%;min-width:0;overflow:hidden}
+  .trow{display:grid;grid-template-columns:repeat(var(--tcols,1),minmax(0,1fr));width:100%;max-width:100%;min-width:0;overflow:hidden}.trow+.trow{border-top:1px solid var(--line)}
   .trow button,.trow .tgap{min-width:0;width:auto;overflow:hidden}
   .tabbar button.gs::before{content:'';position:absolute;left:0;top:22%;bottom:22%;width:1px;background:var(--line)}
   .tabbar{width:auto;max-width:none;overflow:hidden}
@@ -925,6 +925,11 @@ tr.off td{opacity:.45}
 .gunbox.bad .src{color:var(--bad);font-weight:800;font-size:16px}
 .scanflash{animation:scanflash .7s ease}
 @keyframes scanflash{0%{box-shadow:inset 0 0 0 3px #1f8a4c;background:color-mix(in srgb,#1f8a4c 28%,var(--surface))}100%{}}
+.modepair{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:0 0 12px}
+.modecard{display:flex;flex-direction:column;gap:8px;min-width:0}
+.modecard .dirbtn,.modecard .xlbig{width:100%}
+.btn.danger{background:#A8232A;color:#fff;border:0}
+@media(max-width:700px){.modepair{grid-template-columns:1fr}}
 .dirpair{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:0 0 12px}
 #app button.dirbtn{min-height:84px;border:0;border-radius:12px;color:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;padding:10px}
 .dirbtn b{font-size:18px;font-weight:800}
@@ -1161,8 +1166,8 @@ body.sched-on .pha > .chip{border-radius:8px;justify-content:center}
 <script defer src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
 <script defer src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 <script defer src="config.js"></script>
-<script defer src="firebase.js?v=126"></script>
-<script defer src="app.js?v=126"></script>
+<script defer src="firebase.js?v=128"></script>
+<script defer src="app.js?v=128"></script>
 <script>if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});</script>
 
 </body></html>
