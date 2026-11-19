@@ -50,7 +50,7 @@ const PERM_DEF = [
 ];
 
 const DEFAULT_ORDER = STORES.map(s => s.id);
-const APP_VERSION = '2026-11-18 11:20';   // 앱 화면을 마지막으로 고친 시각 (한국 시간)
+const APP_VERSION = '2026-11-20 08:30';   // 앱 화면을 마지막으로 고친 시각 (한국 시간)
 /* ───────── 작은 도구 ───────── */
 const $ = (s, el = document) => el.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -444,11 +444,11 @@ function render() {
     </nav>
     <main><div class="page" id="page">${pageView()}</div></main>
   </div>
-  <nav class="tabbar" aria-label="아래 메뉴">${tabbar(nav)}</nav>
+  <div class="phonedock"><nav class="tabbar" aria-label="아래 메뉴">${tabbar(nav)}</nav></div>
   ${S.ui.drawer ? `<div class="ov" id="ov"><div class="dr${S.ui.drawer.wide ? ' wide' : ''}" role="dialog" aria-modal="true">${S.ui.drawer()}</div></div>` : ''}
   ${S.ui.toast ? `<div class="toast" role="status">${esc(S.ui.toast)}</div>` : ''}`;
   { const tb = document.querySelector('.tabbar'), z = S.ui.textZoom || 1; if (tb) tb.style.zoom = z === 1 ? '' : String(1 / z); }   // 글자 크기를 바꿔도 아래 메뉴는 화면 폭에 딱 맞게
-  bind(); pinTabbar(); fitTabLabels(); fitTabbarBox(); markDropZones();
+  bind(); pinTabbar(); fitTabLabels(); fitTabbarBox(); fitNotice(); markDropZones(); placeClock();
   // 왼쪽 메뉴 아래가 시계에 가려지지 않게: 시계 높이만큼 아래 여백 (글자 크기 목록은 위로 펼침)
   const kc = document.querySelector('.kclock'); if (kc && kc.offsetHeight) document.documentElement.style.setProperty('--kch', kc.offsetHeight + 'px');
   fitSide();
@@ -470,6 +470,13 @@ function staffNav() {
 }
 const TAB_MAIN = ['home', 'products', 'entry', 'transfer', 'sales', 'count'];
 // 아래 메뉴 글씨가 칸 밖으로 나가지 않게: 넘치면 그 칸만 글씨를 줄임 (최소 8px)
+function fitNotice() {
+  const tx = document.querySelector('.notice .nt-tx');
+  if (!tx) return;
+  tx.style.fontSize = '';
+  let f = parseFloat(getComputedStyle(tx).fontSize) || 14, n = 0;
+  while (tx.clientWidth > 0 && tx.scrollWidth > tx.clientWidth && f > 10 && n < 12) { f -= 0.5; tx.style.fontSize = f + 'px'; n++; }
+}
 function fitTabLabels() {
   document.querySelectorAll('.tabbar button span').forEach(s => { s.style.fontSize = ''; let f = parseFloat(getComputedStyle(s).fontSize) || 11; while (s.scrollWidth > s.clientWidth + 0.5 && f > 8) { f -= 0.5; s.style.fontSize = f + 'px'; } });
 }
@@ -5824,9 +5831,23 @@ function resetZoom() {
   setTimeout(() => m.setAttribute('content', orig), 400);   // 다시 손가락 확대 가능하게
 }
 // 손가락으로 확대해도 아래 메뉴는 화면 아래에 같은 크기로 붙어 있게
+function placeClock() {
+  const clock = document.querySelector('.kclock') || window.__smgClock;
+  const dock = document.querySelector('.phonedock');
+  const bar = dock && dock.querySelector('.tabbar');
+  if (!clock) return;
+  const phone = !!(dock && bar && matchMedia('(max-width: 900px)').matches && getComputedStyle(bar).display !== 'none');
+  if (phone) {
+    if (clock.parentElement !== dock) dock.insertBefore(clock, bar);
+    document.documentElement.style.setProperty('--tabh', bar.offsetHeight + 'px');
+    document.documentElement.style.setProperty('--kch', clock.offsetHeight + 'px');
+    document.documentElement.style.setProperty('--dockh', dock.offsetHeight + 'px');
+  } else if (clock.parentElement !== document.body) document.body.appendChild(clock);
+}
 function pinTabbar() {
   const vv = window.visualViewport, bar = document.querySelector('.tabbar');
   if (bar && bar.offsetHeight) document.documentElement.style.setProperty('--tabh', bar.offsetHeight + 'px');
+  placeClock();
   if (!vv || !bar) return;
   if (vv.scale <= 1.01) { bar.style.transform = ''; return; }
   const layoutH = document.documentElement.clientHeight;
@@ -5849,7 +5870,7 @@ const KR_HOLIDAYS = {
 };
 // 왼쪽 아래 시계 — 큰 글씨는 항상 한국 시간. 기기 시각이 한국과 다를 때만 현지를 작게.
 (function kclock() {
-  const el = document.createElement('div'); el.className = 'kclock'; el.setAttribute('aria-label', '한국 시간');
+  const el = document.createElement('div'); el.className = 'kclock'; el.setAttribute('aria-label', '한국 시간'); window.__smgClock = el;
   el.innerHTML = '<div class="kr1"><span class="kd"></span><b class="kw"></b></div><div class="kh"></div><div class="kt"><span></span></div><div class="kr2"><span class="kk"></span></div>';
   const q = c => el.querySelector(c), W = ['일요일', '월요일', '화요일', '수요일', '목요일', '금요일', '토요일'], p2 = n => String(n).padStart(2, '0');
   const kF = new Intl.DateTimeFormat('en-US', { timeZone: 'Asia/Seoul', hourCycle: 'h23', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' });
@@ -5858,11 +5879,12 @@ const KR_HOLIDAYS = {
   probe.textContent = '00:00:00';
   probe.setAttribute('aria-hidden', 'true');
   probe.style.cssText = 'position:fixed;left:-2000px;top:0;visibility:hidden;white-space:nowrap;pointer-events:none;font-weight:800;letter-spacing:0;font-variant-numeric:tabular-nums;max-width:none;width:auto;';
-  const fit = () => {   // 칸의 실제 안쪽 폭에 '00:00:00'이 96%를 넘지 않게
+  const fit = () => {   // 칸의 실제 안쪽 폭에 '00:00:00'이 96%를 넘지 않게. 폰에서는 한 줄로만 두고 메뉴를 가리지 않게 키우지 않는다
     const sp = q('.kt span'), box = q('.kt');
     if (!sp || !box) return;
     if (!probe.parentNode) (document.body || el).appendChild(probe);
-    const limit = box.clientWidth * 0.96;
+    const phone = matchMedia('(max-width: 900px)').matches;
+    const limit = box.clientWidth * (phone ? 0.98 : 0.96);
     if (!(limit > 8)) return;
     const cs = getComputedStyle(sp);
     probe.style.fontFamily = cs.fontFamily;
@@ -5877,7 +5899,15 @@ const KR_HOLIDAYS = {
       probe.style.fontSize = size.toFixed(2) + 'px';
       guard++;
     }
+    if (phone) size = Math.min(size, 22);
     sp.style.fontSize = size.toFixed(2) + 'px';
+    if (phone) {
+      let n = 0;
+      while (el.clientWidth > 0 && el.scrollWidth > el.clientWidth && size > 12 && n < 10) {
+        size -= 1; sp.style.fontSize = size + 'px'; n++;
+      }
+    }
+    if (typeof placeClock === 'function') placeClock();
   };
   window.__smgFitClock = fit;
   const tick = () => {

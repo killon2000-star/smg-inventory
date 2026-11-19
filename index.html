@@ -184,17 +184,18 @@ body:not(.in-app) .kclock{display:none!important}
 .kclock.hol .kw,.kclock.sun .kw{color:#FF5A5F}
 .kclock.sat .kw{color:#7DB4FF}
 .side{padding-bottom:calc(var(--kch,90px) + 36px)}
+.phonedock{display:contents}
 @media (max-width: 900px){
-  .kclock{left:0;right:0;width:auto;max-width:none;bottom:var(--tabh,64px);border-radius:0;box-shadow:none;flex-direction:row;flex-wrap:nowrap;align-items:center;gap:8px;padding:4px max(12px,env(safe-area-inset-left,0px)) 4px max(12px,env(safe-area-inset-right,0px));overflow:hidden}
+  .kclock{left:0;right:0;width:auto;max-width:none;bottom:auto;border-radius:0;box-shadow:none;flex-direction:row;flex-wrap:nowrap;align-items:center;gap:8px;padding:6px max(12px,env(safe-area-inset-left,0px)) 6px max(12px,env(safe-area-inset-right,0px));overflow:hidden;max-height:52px}
   .kclock .kr1{gap:8px;flex-wrap:nowrap;flex:0 0 auto;width:auto;min-width:0}
   .kclock .kd,.kclock .kw{font-size:14px;white-space:nowrap}
   .kclock .kw{margin-left:0}
   .kclock .kt{margin-left:8px;flex:1 1 auto;width:auto;text-align:right}
-  .kclock .kt span{font-size:22px;white-space:nowrap}
+  .kclock .kt span{font-size:20px;white-space:nowrap;max-width:100%}
   .kclock.abroad .kr2{display:flex;flex:0 0 auto;border-top:0;margin:0;padding:0}
   .kclock .kk{white-space:nowrap;font-size:12px}
   .kclock .kh{font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
-  main{padding-bottom:calc(var(--tabh,64px) + 48px)}
+  main{padding-bottom:calc(var(--dockh, var(--tabh, 64px)) + 16px)}
 }
 .ipgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px}
 .ipcard{display:flex;flex-direction:column;gap:10px;border-top:4px solid var(--c)}
@@ -237,7 +238,7 @@ body:not(.in-app) .kclock{display:none!important}
 .notice{flex:1;min-width:0;display:flex;align-items:center;justify-content:center;gap:10px;margin:0 16px;height:38px;padding:0 14px;border-radius:19px;background:#1b1b1f;border:1px solid #2e2e34;color:#fff;font-size:14px;font-weight:600}
 .notice:hover{background:#232328}
 .notice .nt-ic{flex:none;background:var(--red);color:#fff;font-size:11.5px;font-weight:800;padding:2px 8px;border-radius:10px}
-.notice .nt-tx{min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.notice .nt-tx{flex:1;min-width:0;white-space:normal;overflow-wrap:anywhere;overflow:hidden;text-overflow:ellipsis;max-height:1.3em}
 .notice .nt-more{flex:none;font-size:12px;color:#a9a9b1;font-weight:500}
 .notice.empty{background:none;border-style:dashed;color:#8c8c95;font-weight:500}
 .notice.empty .nt-ic{background:#3a3a40}
@@ -451,13 +452,17 @@ main{min-width:0;padding-block:18px 96px;padding-left:max(16px,env(safe-area-ins
 .p-info{background:var(--surface-2);color:var(--info);box-shadow:inset 0 0 0 1px var(--line)}
 
 /* tables */
-.tw{overflow-x:auto;margin:0 -4px}
+.tw{overflow-x:hidden;margin:0;max-width:100%}
+.tw table{table-layout:fixed}
+.tw td,.tw th,.tw .nowrap,.tw td.code{min-width:0;overflow:hidden;white-space:normal;overflow-wrap:anywhere}
+.tw .pill{max-width:100%;min-width:0;white-space:normal;overflow-wrap:anywhere}
 td.ac,th.ac{white-space:nowrap;width:1%}
 td.ac .btn{min-width:64px}
 table{width:100%;border-collapse:collapse}
 th,td{padding:8px 8px;border-bottom:1px solid var(--line-2);text-align:left;vertical-align:baseline}
 th{font-size:12px;color:var(--muted);font-weight:600;white-space:nowrap;background:var(--surface)}
 td.nm{word-break:keep-all;min-width:180px}
+.tw td.nm{min-width:0}
 td.code{font-size:12px;color:var(--muted);white-space:nowrap;font-variant-numeric:tabular-nums}
 tr.click{cursor:pointer}
 tr.click:hover td{background:var(--surface-2)}
@@ -544,7 +549,7 @@ tr.flag td{background:var(--warn-bg)}
 .posun select.inp{min-width:200px;font-size:13px}
 .x{margin-left:auto;background:none;border:1px solid var(--line);border-radius:7px;width:36px;height:36px;font-size:18px;flex:none}
 @media (pointer:coarse){.x{width:44px;height:44px}}
-.toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(var(--tabh,0px) + 16px + env(safe-area-inset-bottom,0px));z-index:90;background:var(--ink);color:var(--surface);padding:10px 16px;border-radius:8px;font-weight:600;box-shadow:var(--shadow);max-width:calc(100vw - 32px)}
+.toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(var(--dockh, var(--tabh, 0px)) + 16px);z-index:90;background:var(--ink);color:var(--surface);padding:10px 16px;border-radius:8px;font-weight:600;box-shadow:var(--shadow);max-width:calc(100vw - 32px)}
 body:has(.cntregbar) .toast{bottom:calc(var(--tabh,64px) + 96px)}
 .kv{display:grid;grid-template-columns:auto 1fr;gap:4px 14px;font-size:13px}
 .kv dt{color:var(--muted);white-space:nowrap}
@@ -562,23 +567,33 @@ body:has(.cntregbar) .toast{bottom:calc(var(--tabh,64px) + 96px)}
   .side{display:none}
   .top{flex-wrap:wrap}
   .notice{order:9;flex:1 0 100%;margin:0;height:34px;justify-content:flex-start;font-size:13px}
-  .tabbar{display:block;position:fixed;left:0;right:0;bottom:0;z-index:55;background:var(--surface);border-top:1px solid var(--line);
+  .phonedock{display:flex;flex-direction:column;position:fixed;left:0;right:0;bottom:0;z-index:55;width:100%;max-width:100%;background:var(--surface)}
+  .phonedock .kclock{position:relative;left:auto;right:auto;bottom:auto;width:100%;max-width:none;flex:0 0 auto;z-index:1}
+  .phonedock .tabbar{position:relative;left:auto;right:auto;bottom:auto;flex:0 0 auto;z-index:2}
+  .tabbar{display:block;position:relative;left:0;right:0;bottom:0;z-index:55;background:var(--surface);border-top:1px solid var(--line);
     padding-bottom:env(safe-area-inset-bottom,0px);padding-left:env(safe-area-inset-left,0px);padding-right:env(safe-area-inset-right,0px);width:100%;max-width:100%;overflow:clip;box-sizing:border-box}
   .tabgrid{display:block;width:100%;max-width:100%;min-width:0;overflow:hidden}
   .trow{display:grid;grid-template-columns:repeat(var(--tcols,1),minmax(0,1fr));width:100%;max-width:100%;min-width:0;overflow:hidden}.trow+.trow{border-top:1px solid var(--line)}
   .trow button,.trow .tgap{min-width:0;width:auto;overflow:hidden}
   .tabbar button.gs::before{content:'';position:absolute;left:0;top:22%;bottom:22%;width:1px;background:var(--line)}
   .tabbar{width:auto;max-width:none;overflow:hidden}
-  main{padding-bottom:calc(var(--tabh,64px) + 20px)}
+  main{padding-bottom:calc(var(--dockh, 140px) + 16px)}
+  .tw{margin:0;max-width:100%}
+  .tw table{width:100%;table-layout:fixed}
+  .tw td,.tw th{overflow:hidden;text-overflow:ellipsis;overflow-wrap:anywhere;white-space:normal}
+  .tw .nowrap{white-space:normal}
+  .hide-s{display:none}
   .tabgrid.two button{min-height:46px;padding:4px 1px 3px}
+  #app .tabbar button{min-width:0}
   .tabbar button{position:relative;background:none;border:0;min-height:52px;justify-content:center;padding:7px 1px 5px;display:flex;flex-direction:column;align-items:center;gap:2px;font-size:11px;font-weight:600;color:var(--muted);white-space:nowrap;min-width:0}
+  .bin-sub{white-space:normal;max-width:100%}
   .moregrid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
   .mbtn{position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;min-height:76px;border:1px solid var(--line);border-radius:10px;background:var(--surface);font-weight:700;font-size:13px;color:var(--ink)}
   .mbtn .tcnt{top:6px;left:auto;right:8px}
   .tabbar button span{display:block;overflow:hidden;text-overflow:clip;white-space:nowrap;max-width:100%;text-align:center}
   .tabbar button.on{color:var(--red)}
   .tabbar svg{width:20px;height:20px}
-  .tcnt{position:absolute;top:3px;left:calc(50% + 6px);background:var(--red);color:#fff;font-size:10px;line-height:15px;min-width:15px;padding:0 4px;border-radius:8px}
+  .tcnt{position:absolute;top:2px;right:1px;left:auto;background:var(--red);color:#fff;font-size:10px;line-height:15px;min-width:15px;max-width:18px;padding:0 3px;border-radius:8px;overflow:hidden}
   .grid2{grid-template-columns:1fr}
   .who .nmx{display:none}
   .me2{display:none}.me1{font-size:12px}.me1 b{font-size:12.5px}.me-btn{padding:4px 6px;max-width:120px}.me1{overflow:hidden;text-overflow:ellipsis;max-width:100%}
@@ -593,10 +608,10 @@ body:has(.cntregbar) .toast{bottom:calc(var(--tabh,64px) + 96px)}
   .tile .v small{font-size:11px}
   .tile .v.long{font-size:clamp(15px,4.4vw,20px)}
   .hide-s{display:none}.show-s{display:revert!important}
-  .bin-wide{display:none}.bin-sub{display:block;margin-top:2px;font-size:11px;font-weight:650;color:var(--muted);white-space:nowrap}
+  .bin-wide{display:none}.bin-sub{display:block;margin-top:2px;font-size:11px;font-weight:650;color:var(--muted);white-space:normal;overflow-wrap:anywhere}
   .formgrid{grid-template-columns:1fr}
   .formgrid .field{grid-column:auto!important}
-  td.nm{min-width:140px}
+  td.nm{min-width:0}
   .store-btn .nm{font-size:14px}
   .who select{max-width:118px}
 }
@@ -891,7 +906,7 @@ tr.off td{opacity:.45}
 .cntwhy.bad{color:var(--bad)}
 .cntregbar{display:none}
 @media (max-width:900px){
-  .cntregbar{display:flex;flex-direction:column;align-items:stretch;position:fixed;z-index:57;left:0;right:0;bottom:calc(var(--tabh,64px) + var(--kch,40px));gap:6px;padding:8px 12px;background:var(--surface);border-top:1px solid var(--line);box-shadow:0 -2px 8px rgba(0,0,0,.12)}
+  .cntregbar{display:flex;flex-direction:column;align-items:stretch;position:fixed;z-index:57;left:0;right:0;bottom:var(--dockh, calc(var(--tabh,64px) + var(--kch,40px)));gap:6px;padding:8px 12px;background:var(--surface);border-top:1px solid var(--line);box-shadow:0 -2px 8px rgba(0,0,0,.12)}
   .cntregbar .cntwhy{flex:1;min-width:0;font-size:15px;margin:0}
   .cntregbar .btn{min-height:48px;width:100%;height:auto;white-space:normal}
   body:has(.cntregbar) main{padding-bottom:calc(var(--tabh,64px) + var(--kch,40px) + 76px)}
@@ -1166,8 +1181,8 @@ body.sched-on .pha > .chip{border-radius:8px;justify-content:center}
 <script defer src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
 <script defer src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 <script defer src="config.js"></script>
-<script defer src="firebase.js?v=128"></script>
-<script defer src="app.js?v=128"></script>
+<script defer src="firebase.js?v=129"></script>
+<script defer src="app.js?v=129"></script>
 <script>if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});</script>
 
 </body></html>
