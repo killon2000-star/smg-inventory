@@ -50,7 +50,7 @@ const PERM_DEF = [
 ];
 
 const DEFAULT_ORDER = STORES.map(s => s.id);
-const APP_VERSION = '2026-11-23 14:25';   // 앱 화면을 마지막으로 고친 시각 (한국 시간)
+const APP_VERSION = '2026-11-23 17:42';   // 앱 화면을 마지막으로 고친 시각 (한국 시간)
 /* ───────── 작은 도구 ───────── */
 const $ = (s, el = document) => el.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -422,6 +422,7 @@ function render() {
   if (S.view !== 'more' && S.view !== 'mclose' && S.view !== 'pull' && S.view !== 'shipout' && !nav.find(n => n.id === S.view) && S.view !== 'home') S.view = stockFloor() ? 'home' : 'home';
   document.body.classList.toggle('mclose-on', S.view === 'mclose');
   document.body.classList.toggle('sched-on', S.view === 'sched');
+  document.body.classList.toggle('popzoom-on', !!S.ui.popZoom);
   trackNav();
   const pendingN = S.users.filter(u => u.status === 'pending').length;
   const sv = S.view === 'biz' && S.ui.bizF && S.ui.bizF !== 'all' && S.ui.bizF !== 'offline' ? (BIZ.find(b => b.id === S.ui.bizF) || {}).name || '사업부' : S.stores.length === 1 ? (S.stores[0] === 'suwon' ? '오프라인 매장 · 수원 SMG STORE' : storeName(S.stores[0])) : `${S.stores.length}개 매장 함께 보기`;
@@ -447,6 +448,7 @@ function render() {
   </div>
   <div class="phonedock"><nav class="tabbar" aria-label="아래 메뉴">${tabbar(nav)}</nav></div>
   ${S.ui.drawer ? `<div class="ov" id="ov"><div class="dr${S.ui.drawer.wide ? ' wide' : ''}" role="dialog" aria-modal="true">${S.ui.drawer()}</div></div>` : ''}
+  ${popZoomLayer()}
   ${S.ui.toast ? `<div class="toast" role="status">${esc(S.ui.toast)}</div>` : ''}`;
   { const tb = document.querySelector('.tabbar'), z = S.ui.textZoom || 1; if (tb) tb.style.zoom = z === 1 ? '' : String(1 / z); }   // 글자 크기를 바꿔도 아래 메뉴는 화면 폭에 딱 맞게
   bind(); pinTabbar(); fitTabLabels(); fitTabbarBox(); fitNotice(); markDropZones(); placeClock();
@@ -4359,7 +4361,8 @@ function popupDetail() {
       if (admin && S.ui.popEdit === key) return `<div><span class="lb">${label}</span><input class="inp" data-popin="${esc(key)}" value="${esc(it[field] ?? '')}" aria-label="${label}"></div>`;
       return `<div><span class="lb">${label}</span>${admin ? `<button type="button" class="cellbtn" data-pfield="${esc(key)}">${html}</button>` : `<b class="${it.limitNote && field === 'limit' ? 'pending' : ''}">${html}</b>`}</div>`;
     };
-    return `<article class="pcard"><div class="pc-img">${it.image ? `<img src="${esc(it.image)}" alt="">` : '<span class="muted">이미지 없음</span>'}</div><div class="pc-body"><div class="pc-name">${esc(it.name)} ${kindBadge} ${badge}</div><div class="pc-price">${price} <span class="muted" style="font-weight:500;font-size:12px">VAT 포함</span></div><div class="pc-meta">${cell('limit', '구매제한', `${esc(it.limit || '미정')}${it.limitNote ? `<div class="pc-note">${esc(it.limitNote)}</div>` : ''}`)}${cell('qty', '확정수량', fmt(it.qty) + '개')}${cell('dp', 'DP', fmt(it.dp) + '개')}</div>${it.memo ? `<div class="pc-note">${esc(it.memo)}</div>` : ''}</div></article>`;
+    const shot = popImageBlank(it.image) ? '<span class="muted">이미지 없음</span>' : `<button type="button" class="pc-zoom" data-popimg="${esc(it.id)}" aria-label="${esc(it.name)} 크게 보기"><img src="${esc(it.image)}" alt=""></button>`;
+    return `<article class="pcard"><div class="pc-img">${shot}</div><div class="pc-body"><div class="pc-name">${esc(it.name)} ${kindBadge} ${badge}</div><div class="pc-price">${price} <span class="muted" style="font-weight:500;font-size:12px">VAT 포함</span></div><div class="pc-meta">${cell('limit', '구매제한', `${esc(it.limit || '미정')}${it.limitNote ? `<div class="pc-note">${esc(it.limitNote)}</div>` : ''}`)}${cell('qty', '확정수량', fmt(it.qty) + '개')}${cell('dp', 'DP', fmt(it.dp) + '개')}</div>${it.memo ? `<div class="pc-note">${esc(it.memo)}</div>` : ''}</div></article>`;
   };
   return `${head(p.name, `${esc(p.start || '')} ~ ${esc(p.end || '')} · ${esc(p.stores || '')} · 실입고 전 확정 수량`, '<button type="button" class="btn" id="popBack">목록으로</button>')}
   <div class="note-strip"><b>${popDday(p.start)}</b> · ${esc(today())} 기준${p.note ? ' · ' + esc(p.note) : ''}</div>
@@ -4368,6 +4371,21 @@ function popupDetail() {
   <div class="pgrid">${items.map(card).join('')}</div>
   ${admin ? `<div class="card"><h2>시트에서 다시 불러오기</h2><p class="src">구글 시트는 링크가 있는 사람 보기, 또는 CSV 주소여야 합니다.</p><input class="inp" id="popSheet" value="${esc(p.sheetUrl || '')}" placeholder="시트 주소" aria-label="시트 주소"><button type="button" class="btn pri" id="popReload" style="margin-top:8px">시트에서 다시 불러오기</button></div>` : ''}
   <div class="card"><h2>변경 기록</h2>${(p.log || []).length ? `<ul class="hub-sum">${p.log.slice(0, 30).map(l => `<li>${esc(l.at)} · ${esc(l.by || '')}${l.email ? ' · ' + esc(l.email) : ''} · ${esc(l.what || '')}</li>`).join('')}</ul>` : '<p class="src">아직 없습니다.</p>'}</div>`;
+}
+function popZoomLayer() {
+  const id = S.ui.popZoom;
+  if (!id) return '';
+  const p = popById(S.ui.popId);
+  const it = p && (p.items || []).find(x => x.id === id);
+  if (!it || popImageBlank(it.image)) return '';
+  const price = +it.price > 0 ? '₩' + fmt(it.price) : (it.kind === '특전' ? '증정 (판매가 없음)' : '₩0');
+  return `<div class="popzoom" id="popZoom" role="dialog" aria-modal="true" aria-label="${esc(it.name)} 크게 보기"><button type="button" class="popzoom-x" id="popZoomX" aria-label="닫기">×</button><img src="${esc(it.image)}" alt=""><div class="popzoom-cap"><b>${esc(it.name)}</b><div class="popzoom-price">${price} <span>VAT 포함</span></div><div>확정수량 ${fmt(it.qty)}개</div></div></div>`;
+}
+function closePopZoom() {
+  if (!S.ui.popZoom) return;
+  S.ui.popZoom = '';
+  render();
+  resetZoom();
 }
 const POP_COLS = { name: ['팝업명', '팝업', '행사명'], start: ['시작일', '시작', '오픈일'], end: ['종료일', '종료', '마감일'], store: ['매장', '장소', '진행매장'], kind: ['구분', '종류'], item: ['상품명', '상품', '품명'], image: ['이미지', '이미지url', '사진'], price: ['가격', '판매가', '소비자가'], random: ['랜덤여부', '랜덤'], limit: ['구매제한', '제한'], qty: ['확정수량', '수원수량', '수량'], dp: ['dp수량', 'dp'], memo: ['비고', '메모'] };
 function popHeadMap(headers) {
@@ -5666,6 +5684,7 @@ function bind() {
   if (gw) gw.addEventListener('input', () => { const ok = document.getElementById('cntGuardOk'); if (ok) ok.disabled = gw.value.trim() !== '실사'; });
   const app = $('#app');
   app.onclick = async ev => {
+    if (S.ui.popZoom && ev.target.closest && ev.target.closest('#popZoom')) { closePopZoom(); return; }
     const t = ev.target.closest('button,[data-pid],[data-cmpk],[data-hdip],label,input'); if (!t) return;
     const d = t.dataset;
     const pick = ev.target.closest('[data-cntpick]');
@@ -5715,9 +5734,15 @@ function bind() {
     if (t.id === 'smOrderDone') { await saveStoreOrder(); S.ui.storeEdit = false; toast('매장 순서를 저장했습니다'); return; }
     if (t.id === 'smAll') { S.stores = [...myStores()]; S.sumStores = null; S.ui.range = null; S.ui.storeMenu = false; render(); return; }
     if (d.sg) { S.stores = [d.sg]; S.sumStores = null; S.ui.storeMenu = false; S.ui.range = null; render(); goTop(); return; }
-    if (d.nav) { if (d.nav === 'more' && S.view === 'more') return; S.view = d.nav; if (d.nav !== 'plist') S.ui.popId = ''; S.ui.drawer = null; render(); goTop(); return; }
-    if (d.pop) { S.view = 'plist'; S.ui.popId = d.pop; S.ui.popFilter = 'all'; S.ui.popEdit = ''; render(); goTop(); return; }
-    if (t.id === 'popBack') { S.ui.popId = ''; S.ui.popEdit = ''; render(); return; }
+    if (d.nav) { if (d.nav === 'more' && S.view === 'more') return; S.view = d.nav; if (d.nav !== 'plist') S.ui.popId = ''; S.ui.popZoom = ''; S.ui.drawer = null; render(); goTop(); return; }
+    if (d.pop) { S.view = 'plist'; S.ui.popId = d.pop; S.ui.popFilter = 'all'; S.ui.popEdit = ''; S.ui.popZoom = ''; render(); goTop(); return; }
+    if (t.id === 'popBack') { S.ui.popId = ''; S.ui.popEdit = ''; S.ui.popZoom = ''; render(); return; }
+    if (d.popimg) {
+      const pop = popById(S.ui.popId);
+      const it = pop && (pop.items || []).find(x => x.id === d.popimg);
+      if (it && !popImageBlank(it.image)) { S.ui.popZoom = it.id; render(); }
+      return;
+    }
     if (d.popf) { S.ui.popFilter = d.popf; render(); return; }
     if (d.pfield && popAdmin()) { S.ui.popEdit = d.pfield; render(); return; }
     if (t.id === 'popFile' && popAdmin()) { pickFile('.xlsx,.xls,.csv', f => popReadFile(f)); return; }
@@ -6015,7 +6040,10 @@ function bind() {
   const drop = $('#drop');
 
   const ov = $('#ov'); if (ov) ov.onclick = e => { if (e.target === ov) { if (S.ui.stopScan) S.ui.stopScan(); S.ui.drawer = null; render(); } };
-  document.onkeydown = e => { if (e.key === 'Escape' && (S.ui.drawer || S.ui.storeMenu)) { S.ui.drawer = null; S.ui.storeMenu = false; render(); } };
+  document.onkeydown = e => {
+    if (e.key === 'Escape' && S.ui.popZoom) { closePopZoom(); return; }
+    if (e.key === 'Escape' && (S.ui.drawer || S.ui.storeMenu)) { S.ui.drawer = null; S.ui.storeMenu = false; render(); }
+  };
 }
 function debounce(fn, ms = 180) { let t; return () => { clearTimeout(t); t = setTimeout(fn, ms); }; }
 function rerenderKeep(sel) { const el = $(sel); const pos = el ? el.selectionStart : null; render(); const n = $(sel); if (n) { n.focus(); try { n.setSelectionRange(pos, pos); } catch (e) { } } }
