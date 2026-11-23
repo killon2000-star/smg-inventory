@@ -50,7 +50,7 @@ const PERM_DEF = [
 ];
 
 const DEFAULT_ORDER = STORES.map(s => s.id);
-const APP_VERSION = '2026-11-23 14:20';   // 앱 화면을 마지막으로 고친 시각 (한국 시간)
+const APP_VERSION = '2026-11-23 14:25';   // 앱 화면을 마지막으로 고친 시각 (한국 시간)
 /* ───────── 작은 도구 ───────── */
 const $ = (s, el = document) => el.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -4284,9 +4284,30 @@ function productTop(per, sum) {
     </div>
   </div>`;
 }
+function popImageBlank(v) { return v == null || String(v).trim() === ''; }
+// 서버·기기에 저장된 문서의 이미지가 비어 있으면 앱에 넣어 둔 그림 경로를 쓴다.
+function popFillImages(live, seed) {
+  if (!seed) return live;
+  const merged = JSON.parse(JSON.stringify(live));
+  const seedItems = seed.items || [];
+  const byId = new Map(seedItems.filter(it => it && it.id).map(it => [it.id, it]));
+  const byName = new Map(seedItems.filter(it => it && it.name).map(it => [it.name, it]));
+  merged.items = (merged.items || []).map(it => {
+    const src = (it.id && byId.get(it.id)) || byName.get(it.name);
+    if (src && popImageBlank(it.image)) it.image = src.image || '';
+    return it;
+  });
+  return merged;
+}
 function popupDocs() {
-  const map = new Map((S.popSeed || []).map(p => [p.id, JSON.parse(JSON.stringify(p))]));
-  for (const p of S.popLive || []) if (p && p.id) map.set(p.id, p);
+  const seeds = (S.popSeed || []).map(p => JSON.parse(JSON.stringify(p)));
+  const byId = new Map(seeds.filter(p => p && p.id).map(p => [p.id, p]));
+  const byName = new Map(seeds.filter(p => p && p.name).map(p => [p.name, p]));
+  const map = new Map(seeds.filter(p => p && p.id).map(p => [p.id, p]));
+  for (const p of S.popLive || []) {
+    if (!p || !p.id) continue;
+    map.set(p.id, popFillImages(p, byId.get(p.id) || byName.get(p.name)));
+  }
   return [...map.values()].sort((a, b) => String(a.start || '').localeCompare(String(b.start || '')));
 }
 function popAdmin() { return isOwner() || can('approve'); }
@@ -6364,7 +6385,7 @@ function salesPeriodRollover() {
 }
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') salesPeriodRollover(); });
 setInterval(salesPeriodRollover, 30000);
-window.SMGApp = { S, render, indexProducts, setUser, salesPresetRange, resolveSalesPeriod, salesPeriodRollover, parseSchedText, parseSchedJson, schedDocs, countFromPaste, countParseRows, parsePasteTable, ibApplyCountRows, moveFromRows, ibActLoaded, chooseSheet, sheetScore, readLineText, stampList, applyStock, shelfOf, roomOf, stockOf, applyPagePaste, logUp, exactHit, collabKeyOf, staffAdd, staffRevoke, staffAllow, actorRevoked, lockNow, floorPerms, canPreview, previewRoles, roleRank, popImagesByRow, popRowsFromTable, popPickSheet, popReadFile };
+window.SMGApp = { S, render, indexProducts, setUser, salesPresetRange, resolveSalesPeriod, salesPeriodRollover, parseSchedText, parseSchedJson, schedDocs, countFromPaste, countParseRows, parsePasteTable, ibApplyCountRows, moveFromRows, ibActLoaded, chooseSheet, sheetScore, readLineText, stampList, applyStock, shelfOf, roomOf, stockOf, applyPagePaste, logUp, exactHit, collabKeyOf, staffAdd, staffRevoke, staffAllow, actorRevoked, lockNow, floorPerms, canPreview, previewRoles, roleRank, popImagesByRow, popRowsFromTable, popPickSheet, popReadFile, popupDocs };
 addEventListener('storage', e => {
   if (e.key !== 'smg-staff-reg' || !S.ready) return;
   try { S.staff = JSON.parse(e.newValue || '[]'); } catch (err) { return; }
