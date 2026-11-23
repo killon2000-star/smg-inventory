@@ -50,7 +50,7 @@ const PERM_DEF = [
 ];
 
 const DEFAULT_ORDER = STORES.map(s => s.id);
-const APP_VERSION = '2026-11-23 13:50';   // 앱 화면을 마지막으로 고친 시각 (한국 시간)
+const APP_VERSION = '2026-11-23 14:20';   // 앱 화면을 마지막으로 고친 시각 (한국 시간)
 /* ───────── 작은 도구 ───────── */
 const $ = (s, el = document) => el.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -4363,16 +4363,17 @@ function popRowsFromTable(rows) {
   const map = popHeadMap(rows[header]);
   if (map.item == null) return { err: '상품명 열을 찾지 못했습니다.' };
   const out = [];
-  for (const r of rows.slice(header + 1)) {
-    const g = i => i == null ? '' : String(r[i] ?? '').trim();
+  for (let i = header + 1; i < rows.length; i++) {
+    const r = rows[i];
+    const g = ci => ci == null ? '' : String(r[ci] ?? '').trim();
     const item = g(map.item);
     if (!item) continue;
     const rnd = /^(y|yes|랜덤|true|1)$/i.test(g(map.random));
-    out.push({ pop: g(map.name), start: g(map.start).slice(0, 10), end: g(map.end).slice(0, 10), store: g(map.store), kind: /특전/.test(g(map.kind)) ? '특전' : '판매', name: item, image: g(map.image), price: parseInt(g(map.price).replace(/[^\d]/g, ''), 10) || 0, random: rnd || /랜덤/.test(item), randomN: 0, limit: g(map.limit), limitNote: '', qty: parseInt(g(map.qty).replace(/[^\d]/g, ''), 10) || 0, dp: parseInt(g(map.dp).replace(/[^\d]/g, ''), 10) || 0, memo: g(map.memo) });
+    out.push({ excelRow: i + 1, pop: g(map.name), start: g(map.start).slice(0, 10), end: g(map.end).slice(0, 10), store: g(map.store), kind: /특전/.test(g(map.kind)) ? '특전' : '판매', name: item, image: g(map.image), price: parseInt(g(map.price).replace(/[^\d]/g, ''), 10) || 0, random: rnd || /랜덤/.test(item), randomN: 0, limit: g(map.limit), limitNote: '', qty: parseInt(g(map.qty).replace(/[^\d]/g, ''), 10) || 0, dp: parseInt(g(map.dp).replace(/[^\d]/g, ''), 10) || 0, memo: g(map.memo) });
   }
   return { rows: out };
 }
-async function popApplyRows(rows, src) {
+async function popApplyRows(rows, src, ambRows) {
   const groups = new Map();
   for (const r of rows) {
     const key = r.pop || '이름 없는 팝업';
@@ -4398,12 +4399,16 @@ async function popApplyRows(rows, src) {
       n++;
     }
     copy.items = items;
-    popLog(copy, `${src}에서 ${list.length}줄을 맞췄습니다`);
+    const pics = list.filter(r => r.embedded).length;
+    const amb = ambRows && ambRows.length ? ` · 그림이 겹친 행 ${ambRows.join(', ')}은 빼 둠` : '';
+    popLog(copy, `${src}에서 ${list.length}줄을 맞췄습니다${pics ? ` · 그림 ${pics}개` : ''}${amb}`);
     S.popLive = [copy, ...(S.popLive || []).filter(x => x.id !== copy.id)];
   }
   try { localStorage.setItem('smg-popup-live', JSON.stringify(S.popLive)); } catch (e) {}
   if (DB.savePopupProduct) for (const p of S.popLive) { try { await DB.savePopupProduct(p); } catch (e) { toast('서버에 저장하지 못했습니다'); break; } }
-  toast(`${n}줄을 반영했습니다`);
+  const pics = rows.filter(r => r.embedded).length;
+  const amb = ambRows && ambRows.length ? ` · 그림이 겹쳐 빼 둔 행 ${ambRows.join(', ')}` : '';
+  toast(`${n}줄을 반영했습니다${pics ? ` · 그림 ${pics}개` : ''}${amb}`);
   render();
 }
 
@@ -6190,15 +6195,129 @@ function setUser(u, opt) {
 const FB = window.SMG_FIREBASE ? window.SMG_FIREBASE(S, { render, setUser, indexProducts, STORES, OWNER_EMAIL, lockOut: lockNow }) : null;
 
 /* ───────── 시작 ───────── */
+function popJoinRel(fromPart, target) {
+  if (!target) return '';
+  if (target.startsWith('/')) return target.replace(/^\/+/, '');
+  const dir = fromPart.split('/').slice(0, -1);
+  for (const p of target.split('/')) {
+    if (p === '..') dir.pop();
+    else if (p && p !== '.') dir.push(p);
+  }
+  return dir.join('/');
+}
+function popXmlTags(el, name) {
+  return [...el.getElementsByTagName('*')].filter(n => n.localName === name);
+}
+function popMime(path) {
+  const e = String(path || '').split('.').pop().toLowerCase();
+  if (e === 'jpg' || e === 'jpeg') return 'image/jpeg';
+  if (e === 'gif') return 'image/gif';
+  if (e === 'webp') return 'image/webp';
+  return 'image/png';
+}
+async function popShrink(bytes, mime) {
+  const blob = new Blob([bytes], { type: mime || 'image/png' });
+  const bmp = await createImageBitmap(blob);
+  const w = bmp.width, h = bmp.height;
+  if (w <= 600 && bytes.length < 180000) {
+    const u8 = new Uint8Array(await blob.arrayBuffer());
+    let bin = '';
+    for (let i = 0; i < u8.length; i += 0x8000) bin += String.fromCharCode.apply(null, u8.subarray(i, i + 0x8000));
+    return `data:${mime || 'image/png'};base64,${btoa(bin)}`;
+  }
+  const nw = Math.min(600, w);
+  const nh = Math.max(1, Math.round(h * (nw / w)));
+  const c = document.createElement('canvas');
+  c.width = nw; c.height = nh;
+  c.getContext('2d').drawImage(bmp, 0, 0, nw, nh);
+  return c.toDataURL('image/jpeg', 0.72);
+}
+// 시트에 박힌 그림은 그 시트의 drawing 앵커 행이 상품 행과 같을 때만 연결한다.
+// 한 행에 그림이 둘 이상이거나 여러 행에 걸치면 추측하지 않고 비운다.
+async function popImagesByRow(buf, onlyName) {
+  if (!window.zip) await loadScript('https://cdn.jsdelivr.net/npm/@zip.js/zip.js@2.7.45/dist/zip.min.js');
+  const bytes = buf instanceof Uint8Array ? buf : new Uint8Array(buf);
+  const rd = new zip.ZipReader(new zip.BlobReader(new Blob([bytes])));
+  const bySheet = {}, ambiguous = [];
+  try {
+    const ents = await rd.getEntries();
+    const grab = async (name) => {
+      const e = ents.find(x => x.filename === name);
+      if (!e) return null;
+      return new Uint8Array(await e.getData(new zip.Uint8ArrayWriter()));
+    };
+    const text = async (name) => { const b = await grab(name); return b ? new TextDecoder().decode(b) : ''; };
+    const xml = (s) => new DOMParser().parseFromString(s, 'application/xml');
+    const wb = xml(await text('xl/workbook.xml'));
+    const wrels = xml(await text('xl/_rels/workbook.xml.rels'));
+    const relTarget = {};
+    popXmlTags(wrels, 'Relationship').forEach(r => { relTarget[r.getAttribute('Id')] = r.getAttribute('Target'); });
+    for (const sheet of popXmlTags(wb, 'sheet')) {
+      const name = sheet.getAttribute('name');
+      if (onlyName && name !== onlyName) continue;
+      const rid = sheet.getAttribute('r:id') || sheet.getAttributeNS('http://schemas.openxmlformats.org/officeDocument/2006/relationships', 'id');
+      const part = popJoinRel('xl/workbook.xml', relTarget[rid] || '');
+      if (!part) continue;
+      const srels = xml(await text(part.replace(/([^/]+)$/, '_rels/$1') + '.rels'));
+      const drawingRel = popXmlTags(srels, 'Relationship').find(r => /drawing/i.test(r.getAttribute('Type') || ''));
+      if (!drawingRel) continue;
+      const drawing = popJoinRel(part, drawingRel.getAttribute('Target'));
+      const drels = xml(await text(drawing.replace(/([^/]+)$/, '_rels/$1') + '.rels'));
+      const media = {};
+      popXmlTags(drels, 'Relationship').forEach(r => { media[r.getAttribute('Id')] = popJoinRel(drawing, r.getAttribute('Target')); });
+      const grouped = {};
+      const doc = xml(await text(drawing));
+      for (const anchor of [...popXmlTags(doc, 'twoCellAnchor'), ...popXmlTags(doc, 'oneCellAnchor')]) {
+        const from = popXmlTags(anchor, 'from')[0];
+        const rowEl = from && popXmlTags(from, 'row')[0];
+        if (!rowEl) continue;
+        const row = Number(rowEl.textContent) + 1;
+        const to = popXmlTags(anchor, 'to')[0];
+        const toRow = to && popXmlTags(to, 'row')[0] ? Number(popXmlTags(to, 'row')[0].textContent) + 1 : row;
+        const blip = popXmlTags(anchor, 'blip')[0];
+        const rid = blip && (blip.getAttribute('r:embed') || blip.getAttributeNS('http://schemas.openxmlformats.org/officeDocument/2006/relationships', 'embed'));
+        if (!media[rid]) continue;
+        if (toRow !== row) { ambiguous.push({ sheet: name, row, n: 0 }); continue; }
+        (grouped[row] ||= []).push(media[rid]);
+      }
+      bySheet[name] = {};
+      for (const [row, files] of Object.entries(grouped)) {
+        const uniq = [...new Set(files)];
+        if (uniq.length !== 1) { ambiguous.push({ sheet: name, row: Number(row), n: uniq.length }); continue; }
+        const bytes = await grab(uniq[0]);
+        if (!bytes) continue;
+        bySheet[name][row] = await popShrink(bytes, popMime(uniq[0]));
+      }
+    }
+  } finally { try { await rd.close(); } catch (e) {} }
+  return { bySheet, ambiguous };
+}
+function popPickSheet(wb) {
+  let best = null;
+  for (const name of wb.SheetNames) {
+    const rows = XLSX.utils.sheet_to_json(wb.Sheets[name], { header: 1, defval: '' });
+    const parsed = popRowsFromTable(rows);
+    if (parsed.err || !parsed.rows.length) continue;
+    const score = parsed.rows.length + (/팝업\s*수량|상품리스트/.test(name) ? 1000 : 0);
+    if (!best || score > best.score) best = { name, parsed, score };
+  }
+  return best;
+}
 async function popReadFile(f) {
   await needX();
   const buf = await f.arrayBuffer();
   const wb = XLSX.read(buf, { type: 'array' });
-  const ws = wb.Sheets[wb.SheetNames[0]];
-  const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
-  const parsed = popRowsFromTable(rows);
-  if (parsed.err) { toast(parsed.err); return; }
-  await popApplyRows(parsed.rows, f.name);
+  const best = popPickSheet(wb);
+  if (!best) { toast('상품명 열을 찾지 못했습니다.'); return; }
+  let imgs = { bySheet: {}, ambiguous: [] };
+  try { imgs = await popImagesByRow(buf, best.name); } catch (e) { imgs = { bySheet: {}, ambiguous: [], err: true }; }
+  const mine = imgs.bySheet[best.name] || {};
+  for (const row of best.parsed.rows) {
+    const pic = mine[row.excelRow] || mine[String(row.excelRow)];
+    if (pic && !row.image) { row.image = pic; row.embedded = true; }
+  }
+  const ambRows = (imgs.ambiguous || []).filter(a => a.sheet === best.name).map(a => a.row);
+  await popApplyRows(best.parsed.rows, f.name, ambRows);
 }
 async function popReloadSheet() {
   const p = popById(S.ui.popId); if (!p) return;
@@ -6245,7 +6364,7 @@ function salesPeriodRollover() {
 }
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') salesPeriodRollover(); });
 setInterval(salesPeriodRollover, 30000);
-window.SMGApp = { S, render, indexProducts, setUser, salesPresetRange, resolveSalesPeriod, salesPeriodRollover, parseSchedText, parseSchedJson, schedDocs, countFromPaste, countParseRows, parsePasteTable, ibApplyCountRows, moveFromRows, ibActLoaded, chooseSheet, sheetScore, readLineText, stampList, applyStock, shelfOf, roomOf, stockOf, applyPagePaste, logUp, exactHit, collabKeyOf, staffAdd, staffRevoke, staffAllow, actorRevoked, lockNow, floorPerms, canPreview, previewRoles, roleRank };
+window.SMGApp = { S, render, indexProducts, setUser, salesPresetRange, resolveSalesPeriod, salesPeriodRollover, parseSchedText, parseSchedJson, schedDocs, countFromPaste, countParseRows, parsePasteTable, ibApplyCountRows, moveFromRows, ibActLoaded, chooseSheet, sheetScore, readLineText, stampList, applyStock, shelfOf, roomOf, stockOf, applyPagePaste, logUp, exactHit, collabKeyOf, staffAdd, staffRevoke, staffAllow, actorRevoked, lockNow, floorPerms, canPreview, previewRoles, roleRank, popImagesByRow, popRowsFromTable, popPickSheet, popReadFile };
 addEventListener('storage', e => {
   if (e.key !== 'smg-staff-reg' || !S.ready) return;
   try { S.staff = JSON.parse(e.newValue || '[]'); } catch (err) { return; }
