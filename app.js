@@ -50,7 +50,7 @@ const PERM_DEF = [
 ];
 
 const DEFAULT_ORDER = STORES.map(s => s.id);
-const APP_VERSION = '2026-11-23 17:49';   // 앱 화면을 마지막으로 고친 시각 (한국 시간)
+const APP_VERSION = '2026-11-23 22:07';   // 앱 화면을 마지막으로 고친 시각 (한국 시간)
 /* ───────── 작은 도구 ───────── */
 const $ = (s, el = document) => el.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -4389,11 +4389,26 @@ function fitPopZoom() {
   const bar = z.querySelector('.popzoom-bar');
   if (!img || !cap || !bar) return;
   const cs = getComputedStyle(z);
-  const pad = (parseFloat(cs.paddingTop) || 0) + (parseFloat(cs.paddingBottom) || 0);
-  const room = z.clientHeight - pad - bar.offsetHeight - cap.offsetHeight;
-  const next = Math.max(1, Math.floor(room)) + 'px';
-  if (img.style.maxHeight !== next) img.style.maxHeight = next;
-  if (!img.complete && !img.dataset.fit) { img.dataset.fit = '1'; img.addEventListener('load', fitPopZoom, { once: true }); }
+  const padX = (parseFloat(cs.paddingLeft) || 0) + (parseFloat(cs.paddingRight) || 0);
+  const padY = (parseFloat(cs.paddingTop) || 0) + (parseFloat(cs.paddingBottom) || 0);
+  const availW = Math.max(1, z.clientWidth - padX);
+  const availH = Math.max(1, z.clientHeight - padY - bar.offsetHeight - cap.offsetHeight);
+  const nw = img.naturalWidth, nh = img.naturalHeight;
+  const pageZoom = parseFloat(getComputedStyle(document.body).zoom);
+  const zoom = pageZoom > 1 ? pageZoom : 1;
+  if (!nw || !nh) {
+    img.style.width = 'auto';
+    img.style.height = 'auto';
+    img.style.maxWidth = availW + 'px';
+    img.style.maxHeight = availH + 'px';
+    if (!img.dataset.fit) { img.dataset.fit = '1'; img.addEventListener('load', fitPopZoom, { once: true }); }
+    return;
+  }
+  const scale = Math.min(1.5 / zoom, availW / nw, availH / nh);
+  img.style.width = Math.max(1, Math.floor(nw * scale)) + 'px';
+  img.style.height = Math.max(1, Math.floor(nh * scale)) + 'px';
+  img.style.maxWidth = 'none';
+  img.style.maxHeight = 'none';
 }
 function closePopZoom() {
   if (!S.ui.popZoom) return;

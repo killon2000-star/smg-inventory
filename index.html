@@ -490,9 +490,9 @@ main{min-width:0;padding-block:18px 96px;padding-left:max(16px,env(safe-area-ins
 .hubcard h2,.hub-meta,.pc-name,.pc-note,.popzoom-cap{overflow-wrap:anywhere}
 .popzoom{position:fixed;inset:0;z-index:90;background:#000;color:#fff;display:flex;flex-direction:column;align-items:stretch;overflow:hidden;box-sizing:border-box;padding:0 0 env(safe-area-inset-bottom,0px)}
 .popzoom-bar{flex:none;display:flex;justify-content:flex-end;align-items:flex-end;box-sizing:border-box;width:100%;height:calc(48px + 8px + env(safe-area-inset-top,0px));padding:env(safe-area-inset-top,0px) max(8px,env(safe-area-inset-right,0px)) 8px 8px}
-.popzoom img{flex:none;align-self:center;display:block;width:auto;height:auto;max-width:100%;min-width:0;min-height:0;object-fit:contain;background:#000}
-.popzoom-cap{flex:none;box-sizing:border-box;width:100%;min-width:0;padding:12px 16px 4px;display:flex;flex-direction:column;gap:4px;font-size:16px;line-height:1.4}
-.popzoom-cap b{font-size:18px}
+.popzoom img{flex:none;align-self:center;display:block;width:auto;height:auto;max-width:none;max-height:none;min-width:0;min-height:0;object-fit:contain;background:#000}
+.popzoom-cap{flex:none;box-sizing:border-box;width:100%;min-width:0;padding:12px 16px 8px;display:flex;flex-direction:column;align-items:center;text-align:center;gap:4px;font-size:clamp(16px,1.35vw,20px);line-height:1.35}
+.popzoom-cap b{font-size:clamp(18px,1.7vw,26px);max-width:100%}
 .popzoom-price{font-variant-numeric:tabular-nums;font-weight:700}
 .popzoom-price span{font-weight:500;font-size:12px;opacity:.75}
 .popzoom-x{position:static;flex:none;width:48px;height:48px;border-radius:10px;border:1px solid rgba(255,255,255,.5);background:rgba(0,0,0,.62);color:#fff;font-size:28px;line-height:1}
@@ -1245,8 +1245,8 @@ body.sched-on .pha > .chip{border-radius:8px;justify-content:center}
 <script defer src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
 <script defer src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 <script defer src="config.js"></script>
-<script defer src="firebase.js?v=134"></script>
-<script defer src="app.js?v=134"></script>
+<script defer src="firebase.js?v=135"></script>
+<script defer src="app.js?v=135"></script>
 <script>if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});</script>
 
 </body></html>
