@@ -50,7 +50,7 @@ const PERM_DEF = [
 ];
 
 const DEFAULT_ORDER = STORES.map(s => s.id);
-const APP_VERSION = '2026-11-23 17:42';   // 앱 화면을 마지막으로 고친 시각 (한국 시간)
+const APP_VERSION = '2026-11-23 17:49';   // 앱 화면을 마지막으로 고친 시각 (한국 시간)
 /* ───────── 작은 도구 ───────── */
 const $ = (s, el = document) => el.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -451,7 +451,7 @@ function render() {
   ${popZoomLayer()}
   ${S.ui.toast ? `<div class="toast" role="status">${esc(S.ui.toast)}</div>` : ''}`;
   { const tb = document.querySelector('.tabbar'), z = S.ui.textZoom || 1; if (tb) tb.style.zoom = z === 1 ? '' : String(1 / z); }   // 글자 크기를 바꿔도 아래 메뉴는 화면 폭에 딱 맞게
-  bind(); pinTabbar(); fitTabLabels(); fitTabbarBox(); fitNotice(); markDropZones(); placeClock();
+  bind(); pinTabbar(); fitPopZoom(); fitTabLabels(); fitTabbarBox(); fitNotice(); markDropZones(); placeClock();
   document.querySelectorAll('[data-popin]').forEach(el => { el.focus(); el.addEventListener('keydown', e => { if (e.key === 'Enter') el.blur(); }); el.addEventListener('blur', () => setTimeout(() => { if (S.ui.popEdit === el.dataset.popin) { S.ui.popEdit = ''; render(); } }, 0)); });
   // 왼쪽 메뉴 아래가 시계에 가려지지 않게: 시계 높이만큼 아래 여백 (글자 크기 목록은 위로 펼침)
   const kc = document.querySelector('.kclock'); if (kc && kc.offsetHeight) document.documentElement.style.setProperty('--kch', kc.offsetHeight + 'px');
@@ -4379,7 +4379,21 @@ function popZoomLayer() {
   const it = p && (p.items || []).find(x => x.id === id);
   if (!it || popImageBlank(it.image)) return '';
   const price = +it.price > 0 ? '₩' + fmt(it.price) : (it.kind === '특전' ? '증정 (판매가 없음)' : '₩0');
-  return `<div class="popzoom" id="popZoom" role="dialog" aria-modal="true" aria-label="${esc(it.name)} 크게 보기"><button type="button" class="popzoom-x" id="popZoomX" aria-label="닫기">×</button><img src="${esc(it.image)}" alt=""><div class="popzoom-cap"><b>${esc(it.name)}</b><div class="popzoom-price">${price} <span>VAT 포함</span></div><div>확정수량 ${fmt(it.qty)}개</div></div></div>`;
+  return `<div class="popzoom" id="popZoom" role="dialog" aria-modal="true" aria-label="${esc(it.name)} 크게 보기"><div class="popzoom-bar"><button type="button" class="popzoom-x" id="popZoomX" aria-label="닫기">×</button></div><img src="${esc(it.image)}" alt=""><div class="popzoom-cap"><b>${esc(it.name)}</b><div class="popzoom-price">${price} <span>VAT 포함</span></div><div>확정수량 ${fmt(it.qty)}개</div></div></div>`;
+}
+function fitPopZoom() {
+  const z = document.getElementById('popZoom');
+  if (!z) return;
+  const img = z.querySelector('img');
+  const cap = z.querySelector('.popzoom-cap');
+  const bar = z.querySelector('.popzoom-bar');
+  if (!img || !cap || !bar) return;
+  const cs = getComputedStyle(z);
+  const pad = (parseFloat(cs.paddingTop) || 0) + (parseFloat(cs.paddingBottom) || 0);
+  const room = z.clientHeight - pad - bar.offsetHeight - cap.offsetHeight;
+  const next = Math.max(1, Math.floor(room)) + 'px';
+  if (img.style.maxHeight !== next) img.style.maxHeight = next;
+  if (!img.complete && !img.dataset.fit) { img.dataset.fit = '1'; img.addEventListener('load', fitPopZoom, { once: true }); }
 }
 function closePopZoom() {
   if (!S.ui.popZoom) return;
@@ -6074,6 +6088,7 @@ function pinTabbar() {
   const vv = window.visualViewport, bar = document.querySelector('.tabbar');
   if (bar && bar.offsetHeight) document.documentElement.style.setProperty('--tabh', bar.offsetHeight + 'px');
   placeClock();
+  fitPopZoom();
   if (!vv || !bar) return;
   if (vv.scale <= 1.01) { bar.style.transform = ''; return; }
   const layoutH = document.documentElement.clientHeight;
