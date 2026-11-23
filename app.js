@@ -50,7 +50,7 @@ const PERM_DEF = [
 ];
 
 const DEFAULT_ORDER = STORES.map(s => s.id);
-const APP_VERSION = '2026-11-20 08:30';   // 앱 화면을 마지막으로 고친 시각 (한국 시간)
+const APP_VERSION = '2026-11-23 13:50';   // 앱 화면을 마지막으로 고친 시각 (한국 시간)
 /* ───────── 작은 도구 ───────── */
 const $ = (s, el = document) => el.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -365,6 +365,7 @@ const NAV = [   // 관련 메뉴끼리 묶음(g): 요약 → 매출 분석 → �
   { id: 'popup', t: '팝업 비용', g: 2, show: () => (canSettle() || can('approve')) && !stockFloor() },
   { id: 'sched', t: '월간 일정', g: 2, show: () => isOwner() },
   { id: 'products', t: '상품·재고', i: 'box', grp: '재고', g: 3, show: () => true },
+  { id: 'plist', t: '팝업 상품리스트', g: 3, show: () => !stockFloor() },
   { id: 'entry', t: '입출고 등록', i: 'plus', g: 3, show: () => can('move') && !stockFloor() },
   { id: 'inbound', t: '입고 확인', g: 3, show: () => can('move') },
   { id: 'transfer', t: '상품 이동', g: 3, show: () => can('move') },
@@ -449,6 +450,7 @@ function render() {
   ${S.ui.toast ? `<div class="toast" role="status">${esc(S.ui.toast)}</div>` : ''}`;
   { const tb = document.querySelector('.tabbar'), z = S.ui.textZoom || 1; if (tb) tb.style.zoom = z === 1 ? '' : String(1 / z); }   // 글자 크기를 바꿔도 아래 메뉴는 화면 폭에 딱 맞게
   bind(); pinTabbar(); fitTabLabels(); fitTabbarBox(); fitNotice(); markDropZones(); placeClock();
+  document.querySelectorAll('[data-popin]').forEach(el => { el.focus(); el.addEventListener('keydown', e => { if (e.key === 'Enter') el.blur(); }); el.addEventListener('blur', () => setTimeout(() => { if (S.ui.popEdit === el.dataset.popin) { S.ui.popEdit = ''; render(); } }, 0)); });
   // 왼쪽 메뉴 아래가 시계에 가려지지 않게: 시계 높이만큼 아래 여백 (글자 크기 목록은 위로 펼침)
   const kc = document.querySelector('.kclock'); if (kc && kc.offsetHeight) document.documentElement.style.setProperty('--kch', kc.offsetHeight + 'px');
   fitSide();
@@ -459,7 +461,7 @@ function render() {
   if (tw && tt && tw.scrollWidth > tw.clientWidth && !tw.dataset.sc) { tw.scrollLeft = Math.max(0, tt.offsetLeft - 108 - tw.clientWidth * 0.2); tw.dataset.sc = 1; }
 }
 // 아래 메뉴: 권한 있는 메뉴를 모두 보여 줌 (6개 넘으면 두 줄)
-const TAB = { home: ['홈', 'home'], ipnow: ['IP현황', 'star'], products: ['상품', 'box'], entry: ['입출고', 'plus'], count: ['실사', 'check'], inbound: ['입고확인', 'truck'], shipout: ['출고', 'swap'], pull: ['매대', 'box'], transfer: ['상품이동', 'swap'], records: ['기록', 'list'], files: ['파일', 'list'], sales: ['매출', 'chart'], biz: ['사업부', 'chart'], collab: ['콜라보', 'star'], settle: ['정산', 'won'], popup: ['팝업비용', 'won'], sched: ['월간일정', 'star'], admin: ['관리', 'user'], more: ['설정', 'gear'] };
+const TAB = { home: ['홈', 'home'], ipnow: ['IP현황', 'star'], products: ['상품', 'box'], plist: ['팝업상품', 'box'], entry: ['입출고', 'plus'], count: ['실사', 'check'], inbound: ['입고확인', 'truck'], shipout: ['출고', 'swap'], pull: ['매대', 'box'], transfer: ['상품이동', 'swap'], records: ['기록', 'list'], files: ['파일', 'list'], sales: ['매출', 'chart'], biz: ['사업부', 'chart'], collab: ['콜라보', 'star'], settle: ['정산', 'won'], popup: ['팝업비용', 'won'], sched: ['월간일정', 'star'], admin: ['관리', 'user'], more: ['설정', 'gear'] };
 function staffNav() {
   return [
     { id: 'inbound', t: '입고', g: 3 },
@@ -1231,6 +1233,7 @@ function pageView() {
     case 'collab': return collabView();
     case 'settle': return settleView();
     case 'popup': return popupView();
+    case 'plist': return S.ui.popId ? popupDetail() : popupHub();
     case 'sched': return schedView();
     case 'mclose': return mcloseView();
     case 'admin': return adminView();
@@ -4247,11 +4250,161 @@ function ipBlock(per, sum, top) {
     ${top && n > top ? `<div style="margin-top:10px"><button class="btn sm" data-su="ip">IP ${n}개 전체 보기</button></div>` : ''}</div>`;
 }
 function productTop(per, sum) {
-  const pr = {}; for (const s of sum) for (const [k, [q, v, ip]] of Object.entries(per[s].pr)) { const x = pr[k] ||= { q: 0, s: 0, ip }; x.q += q; x.s += v; }
-  const rows = Object.entries(pr).sort((a, b) => b[1].s - a[1].s).slice(0, 15);
+  const pr = {}; for (const s of sum) for (const [k, [q, v, ip]] of Object.entries(per[s].pr || {})) { const x = pr[k] ||= { q: 0, s: 0, ip: ip || '' }; x.q += q; x.s += v; if (!x.ip && ip) x.ip = ip; }
+  const all = Object.entries(pr).sort((a, b) => b[1].s - a[1].s);
+  const rows = all.slice(0, 15);
   if (!rows.length) return '';
-  return `<div class="card"><h2>상품별 매출 TOP 15</h2><div class="tw"><table><thead><tr><th class="n">순위</th><th>상품명</th><th class="hide-s">IP</th><th class="n">수량</th><th class="n">매출</th></tr></thead><tbody>
-    ${rows.map(([k, x], i) => `<tr><td class="n muted">${i + 1}</td><td class="nm">${esc(k.replace(/^에바30주년팝업_/, ''))}</td><td class="hide-s nowrap">${esc(x.ip)}</td><td class="n">${fmt(x.q)}</td><td class="n" style="font-weight:700">${fmt(x.s)}</td></tr>`).join('')}</tbody></table></div></div>`;
+  const ip = {}; for (const s of sum) for (const [k, pair] of Object.entries(per[s].ip || {})) { const q = pair[0] || 0, v = pair[1] || 0; const x = ip[k] ||= { q: 0, s: 0 }; x.q += q; x.s += v; }
+  const ips = Object.entries(ip).sort((a, b) => b[1].s - a[1].s);
+  const ipTot = ips.reduce((a, b) => a + b[1].s, 0) || 1;
+  const byQty = Object.entries(pr).sort((a, b) => b[1].q - a[1].q).slice(0, 8);
+  const qtyMax = (byQty[0] && byQty[0][1].q) || 1;
+  const qAll = all.reduce((a, b) => a + b[1].q, 0), sAll = all.reduce((a, b) => a + b[1].s, 0);
+  const avgRows = all.filter(([, x]) => x.q >= 5).map(([k, x]) => [k, x, x.q ? x.s / x.q : 0]).sort((a, b) => b[2] - a[2]).slice(0, 6);
+  const avgMax = (avgRows[0] && avgRows[0][2]) || 1;
+  const bars = (list, val, label, color) => list.map((row, i) => {
+    const v = val(row), mx = list.length ? val(list[0]) || 1 : 1;
+    return `<span class="k wrap">${esc(label(row))}</span><span class="tr"><i style="width:${Math.max(2, v / mx * 100)}%;background:${color(row, i)}"></i></span><span class="v">${esc(row.right)}</span>`;
+  }).join('');
+  const ipBars = ips.slice(0, 7).map(([k, x], i) => ({ right: `${fmt(x.s)}원 · ${(x.s / ipTot * 100).toFixed(1)}%`, k, x, i }));
+  const qtyBars = byQty.map(([k, x]) => ({ right: `${fmt(x.q)}개 · ${fmt(x.s)}원`, k, x }));
+  const avgBars = avgRows.map(([k, x, a]) => ({ right: `${fmt(a)}원 · ${fmt(x.q)}개`, k, a }));
+  const storeLabel = sum.length === 1 ? shortName(sum[0]) : `${sum.length}개 매장`;
+  const red = 'var(--red)', ink = 'var(--ink-2)';
+  return `<div class="card top15"><h2>상품별 매출 TOP 15 <span class="r">${esc(storeLabel)}</span></h2>
+    <div class="top15-wrap">
+      <div class="top15-table"><table><thead><tr><th class="n">순위</th><th>상품명</th><th class="ipcol">IP</th><th class="n">수량</th><th class="n">매출</th></tr></thead><tbody>
+        ${rows.map(([k, x], i) => `<tr><td class="n muted">${i + 1}</td><td class="nm">${esc(k.replace(/^에바30주년팝업_/, ''))}</td><td class="ipcol">${esc(x.ip || '')}</td><td class="n">${fmt(x.q)}</td><td class="n">${fmt(x.s)}원</td></tr>`).join('')}
+      </tbody></table></div>
+      <div class="top15-side">
+        <div class="sidebox"><h3>IP별 매출 비중</h3><div class="hb">${ipBars.map((r, i) => `<span class="k wrap">${esc(r.k)}</span><span class="tr"><i style="width:${Math.max(2, r.x.s / (ipBars[0].x.s || 1) * 100)}%;background:${i === 0 || r.x.s / ipTot >= 0.1 ? red : ink}"></i></span><span class="v">${fmt(r.x.s)}원<span class="muted" style="font-weight:500"> · ${(r.x.s / ipTot * 100).toFixed(1)}%</span></span>`).join('')}</div></div>
+        <div class="sidebox"><h3>수량 TOP</h3><div class="hb">${qtyBars.map((r, i) => `<span class="k wrap">${esc(r.k.replace(/^에바30주년팝업_/, ''))}</span><span class="tr"><i style="width:${Math.max(2, r.x.q / qtyMax * 100)}%;background:${red}"></i></span><span class="v">${fmt(r.x.q)}개<span class="muted" style="font-weight:500"> · ${fmt(r.x.s)}원</span></span>`).join('')}</div></div>
+        <div class="sidebox"><h3>평균 판매가</h3><p class="avg-all">기간 전체 <b class="num">${fmt(qAll ? sAll / qAll : 0)}원</b> <span class="muted">매출 ÷ 수량 · ${fmt(qAll)}개 · ${fmt(sAll)}원</span></p><p class="muted" style="margin:0 0 6px;font-size:12px">수량 5개 이상 상품 중 평균이 높은 순</p><div class="hb">${avgBars.map(r => `<span class="k wrap">${esc(r.k.replace(/^에바30주년팝업_/, ''))}</span><span class="tr"><i style="width:${Math.max(2, r.a / avgMax * 100)}%;background:${red}"></i></span><span class="v">${fmt(r.a)}원<span class="muted" style="font-weight:500"> · ${fmt(all.find(z => z[0] === r.k)[1].q)}개</span></span>`).join('')}</div></div>
+      </div>
+    </div>
+  </div>`;
+}
+function popupDocs() {
+  const map = new Map((S.popSeed || []).map(p => [p.id, JSON.parse(JSON.stringify(p))]));
+  for (const p of S.popLive || []) if (p && p.id) map.set(p.id, p);
+  return [...map.values()].sort((a, b) => String(a.start || '').localeCompare(String(b.start || '')));
+}
+function popAdmin() { return isOwner() || can('approve'); }
+function popById(id) { return popupDocs().find(p => p.id === id); }
+function popStamp() { const t = new Date(Date.now() + 9 * 3600e3).toISOString(); return t.slice(0, 10) + ' ' + t.slice(11, 16); }
+function popLog(p, what) {
+  const who = S.actor || S.user || {};
+  p.log = [{ at: popStamp(), by: who.name || '', email: who.email || '', what: String(what || '') }, ...(p.log || [])].slice(0, 80);
+}
+async function persistPopup(p) {
+  S.popLive = [JSON.parse(JSON.stringify(p)), ...(S.popLive || []).filter(x => x.id !== p.id)];
+  try { localStorage.setItem('smg-popup-live', JSON.stringify(S.popLive)); } catch (e) {}
+  if (DB.savePopupProduct) { try { await DB.savePopupProduct(p); } catch (e) { toast('서버에 저장하지 못했습니다: ' + (e.message || e)); } }
+  render();
+}
+function popSums(p) {
+  const sale = (p.items || []).filter(x => x.kind !== '특전');
+  const tok = (p.items || []).filter(x => x.kind === '특전');
+  const q = a => a.reduce((n, x) => n + (+x.qty || 0), 0);
+  const d = a => a.reduce((n, x) => n + (+x.dp || 0), 0);
+  return { saleN: sale.length, saleQ: q(sale), saleD: d(sale), tokN: tok.length, tokQ: q(tok), tokD: d(tok), allQ: q(p.items || []), allD: d(p.items || []) };
+}
+function popDday(start) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(start || '')) return '';
+  const n = daysBetween(today(), start);
+  return n > 0 ? 'D-' + n : n === 0 ? 'D-Day' : 'D+' + (-n);
+}
+function popupHub() {
+  const list = popupDocs();
+  const admin = popAdmin();
+  return `${head('팝업 상품리스트', '팝업 시작 전에 상품·가격·구매제한·확정수량을 미리 봅니다')}
+  <div class="hubgrid">${list.map(p => { const s = popSums(p); return `<article class="hubcard"><div class="hub-kicker">${esc(p.stores || '')}</div><h2>${esc(p.name)}</h2><p class="hub-meta">${esc(p.start || '')} ~ ${esc(p.end || '')}</p><ul class="hub-sum"><li>판매 ${s.saleN}종 · ${fmt(s.saleQ)}개 · DP ${fmt(s.saleD)}개</li>${s.tokN ? `<li>특전 ${s.tokN}종 · ${fmt(s.tokQ)}개 · DP ${fmt(s.tokD)}개</li>` : ''}</ul><button type="button" class="btn pri" data-pop="${esc(p.id)}">상품 보기</button></article>`; }).join('') || '<p class="src">등록된 팝업이 없습니다.</p>'}</div>
+  ${admin ? `<div class="card"><h2>엑셀로 넣기</h2><p class="src">열 이름: 팝업명, 시작일, 종료일, 매장, 구분, 상품명, 이미지, 가격, 랜덤여부, 구매제한, 확정수량, DP수량, 비고. 이름이 조금 달라도 찾습니다. 팝업명과 상품명이 같으면 그 줄을 고칩니다.</p><button type="button" class="btn pri" id="popFile">엑셀 올리기</button></div>` : ''}`;
+}
+function popupDetail() {
+  const p = popById(S.ui.popId);
+  if (!p) return `${head('팝업 상품리스트', '')}<p class="src">이 팝업을 찾지 못했습니다.</p><button class="btn" id="popBack">목록으로</button>`;
+  const s = popSums(p);
+  const f = S.ui.popFilter || 'all';
+  const items = (p.items || []).filter(it => f === 'sale' ? it.kind !== '특전' : f === 'tok' ? it.kind === '특전' : f === 'rand' ? it.random : true);
+  const admin = popAdmin();
+  const chips = [['all', `전체 ${(p.items || []).length}`], ['sale', `판매 ${s.saleN}`], ['tok', `특전 ${s.tokN}`], ['rand', `랜덤 ${(p.items || []).filter(x => x.random).length}`]];
+  const card = it => {
+    const price = +it.price > 0 ? '₩' + fmt(it.price) : (it.kind === '특전' ? '증정 (판매가 없음)' : '₩0');
+    const badge = it.random ? `<span class="pill p-rand">랜덤 ${it.randomN ? fmt(it.randomN) + '종' : ''}</span>` : (it.randomN > 1 ? `<span class="pill p-mute">${fmt(it.randomN)}종</span>` : '');
+    const kindBadge = it.kind === '특전' ? '<span class="pill p-mute">특전</span>' : '';
+    const cell = (field, label, html) => {
+      const key = `${p.id}|${it.id}|${field}`;
+      if (admin && S.ui.popEdit === key) return `<div><span class="lb">${label}</span><input class="inp" data-popin="${esc(key)}" value="${esc(it[field] ?? '')}" aria-label="${label}"></div>`;
+      return `<div><span class="lb">${label}</span>${admin ? `<button type="button" class="cellbtn" data-pfield="${esc(key)}">${html}</button>` : `<b class="${it.limitNote && field === 'limit' ? 'pending' : ''}">${html}</b>`}</div>`;
+    };
+    return `<article class="pcard"><div class="pc-img">${it.image ? `<img src="${esc(it.image)}" alt="">` : '<span class="muted">이미지 없음</span>'}</div><div class="pc-body"><div class="pc-name">${esc(it.name)} ${kindBadge} ${badge}</div><div class="pc-price">${price} <span class="muted" style="font-weight:500;font-size:12px">VAT 포함</span></div><div class="pc-meta">${cell('limit', '구매제한', `${esc(it.limit || '미정')}${it.limitNote ? `<div class="pc-note">${esc(it.limitNote)}</div>` : ''}`)}${cell('qty', '확정수량', fmt(it.qty) + '개')}${cell('dp', 'DP', fmt(it.dp) + '개')}</div>${it.memo ? `<div class="pc-note">${esc(it.memo)}</div>` : ''}</div></article>`;
+  };
+  return `${head(p.name, `${esc(p.start || '')} ~ ${esc(p.end || '')} · ${esc(p.stores || '')} · 실입고 전 확정 수량`, '<button type="button" class="btn" id="popBack">목록으로</button>')}
+  <div class="note-strip"><b>${popDday(p.start)}</b> · ${esc(today())} 기준${p.note ? ' · ' + esc(p.note) : ''}</div>
+  <div class="sumgrid"><div class="card sumc"><div class="lb">판매 상품 ${s.saleN}종</div><div class="big">${fmt(s.saleQ)}개</div><div class="muted">DP ${fmt(s.saleD)}개</div></div><div class="card sumc"><div class="lb">특전 ${s.tokN}종</div><div class="big">${fmt(s.tokQ)}개</div><div class="muted">DP ${fmt(s.tokD)}개</div></div><div class="card sumc"><div class="lb">합계</div><div class="big">${fmt(s.allQ)}개</div><div class="muted">DP ${fmt(s.allD)}개 · 실입고 전</div></div></div>
+  <div class="card"><div class="fl">상품 구분</div><div class="fchips">${chips.map(([id, t]) => `<button type="button" class="fchip ${f === id ? 'on' : ''}" data-popf="${id}">${t}</button>`).join('')}</div><p class="src">보이는 상품 ${items.length}종</p></div>
+  <div class="pgrid">${items.map(card).join('')}</div>
+  ${admin ? `<div class="card"><h2>시트에서 다시 불러오기</h2><p class="src">구글 시트는 링크가 있는 사람 보기, 또는 CSV 주소여야 합니다.</p><input class="inp" id="popSheet" value="${esc(p.sheetUrl || '')}" placeholder="시트 주소" aria-label="시트 주소"><button type="button" class="btn pri" id="popReload" style="margin-top:8px">시트에서 다시 불러오기</button></div>` : ''}
+  <div class="card"><h2>변경 기록</h2>${(p.log || []).length ? `<ul class="hub-sum">${p.log.slice(0, 30).map(l => `<li>${esc(l.at)} · ${esc(l.by || '')}${l.email ? ' · ' + esc(l.email) : ''} · ${esc(l.what || '')}</li>`).join('')}</ul>` : '<p class="src">아직 없습니다.</p>'}</div>`;
+}
+const POP_COLS = { name: ['팝업명', '팝업', '행사명'], start: ['시작일', '시작', '오픈일'], end: ['종료일', '종료', '마감일'], store: ['매장', '장소', '진행매장'], kind: ['구분', '종류'], item: ['상품명', '상품', '품명'], image: ['이미지', '이미지url', '사진'], price: ['가격', '판매가', '소비자가'], random: ['랜덤여부', '랜덤'], limit: ['구매제한', '제한'], qty: ['확정수량', '수원수량', '수량'], dp: ['dp수량', 'dp'], memo: ['비고', '메모'] };
+function popHeadMap(headers) {
+  const map = {};
+  headers.forEach((h, i) => {
+    const n = normHead(String(h || '')).replace(/vat포함|vat별도/g, '');
+    for (const [k, names] of Object.entries(POP_COLS)) if (!map[k] && names.some(nm => n === normHead(nm) || n.includes(normHead(nm)))) map[k] = i;
+  });
+  return map;
+}
+function popRowsFromTable(rows) {
+  const header = (rows || []).findIndex(r => (r || []).some(c => /상품명|팝업명/.test(String(c || ''))));
+  if (header < 0) return { err: '상품명 열을 찾지 못했습니다.' };
+  const map = popHeadMap(rows[header]);
+  if (map.item == null) return { err: '상품명 열을 찾지 못했습니다.' };
+  const out = [];
+  for (const r of rows.slice(header + 1)) {
+    const g = i => i == null ? '' : String(r[i] ?? '').trim();
+    const item = g(map.item);
+    if (!item) continue;
+    const rnd = /^(y|yes|랜덤|true|1)$/i.test(g(map.random));
+    out.push({ pop: g(map.name), start: g(map.start).slice(0, 10), end: g(map.end).slice(0, 10), store: g(map.store), kind: /특전/.test(g(map.kind)) ? '특전' : '판매', name: item, image: g(map.image), price: parseInt(g(map.price).replace(/[^\d]/g, ''), 10) || 0, random: rnd || /랜덤/.test(item), randomN: 0, limit: g(map.limit), limitNote: '', qty: parseInt(g(map.qty).replace(/[^\d]/g, ''), 10) || 0, dp: parseInt(g(map.dp).replace(/[^\d]/g, ''), 10) || 0, memo: g(map.memo) });
+  }
+  return { rows: out };
+}
+async function popApplyRows(rows, src) {
+  const groups = new Map();
+  for (const r of rows) {
+    const key = r.pop || '이름 없는 팝업';
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(r);
+  }
+  let n = 0;
+  for (const [name, list] of groups) {
+    const id = popById([...popupDocs()].find(p => p.name === name)?.id) ? popupDocs().find(p => p.name === name).id : ('p' + Math.abs([...name].reduce((h, ch) => (h * 33 + ch.charCodeAt(0)) | 0, 7)).toString(36));
+    const prev = popById(id) || popupDocs().find(p => p.name === name) || { id, name, items: [], log: [], sheetUrl: '' };
+    const copy = JSON.parse(JSON.stringify(prev));
+    copy.name = name;
+    const first = list[0];
+    if (first.start) copy.start = first.start;
+    if (first.end) copy.end = first.end;
+    if (first.store) copy.stores = first.store;
+    const items = copy.items || [];
+    for (const r of list) {
+      let it = items.find(x => x.name === r.name);
+      if (!it) { it = { id: 'i' + items.length + Date.now().toString(36).slice(-4), name: r.name }; items.push(it); }
+      Object.assign(it, { kind: r.kind, name: r.name, price: r.price, random: r.random, qty: r.qty, dp: r.dp, limit: r.limit || it.limit || '', memo: r.memo || it.memo || '' });
+      if (r.image) it.image = r.image;
+      n++;
+    }
+    copy.items = items;
+    popLog(copy, `${src}에서 ${list.length}줄을 맞췄습니다`);
+    S.popLive = [copy, ...(S.popLive || []).filter(x => x.id !== copy.id)];
+  }
+  try { localStorage.setItem('smg-popup-live', JSON.stringify(S.popLive)); } catch (e) {}
+  if (DB.savePopupProduct) for (const p of S.popLive) { try { await DB.savePopupProduct(p); } catch (e) { toast('서버에 저장하지 못했습니다'); break; } }
+  toast(`${n}줄을 반영했습니다`);
+  render();
 }
 
 /* 토스포스 파일 */
@@ -5536,7 +5689,13 @@ function bind() {
     if (t.id === 'smOrderDone') { await saveStoreOrder(); S.ui.storeEdit = false; toast('매장 순서를 저장했습니다'); return; }
     if (t.id === 'smAll') { S.stores = [...myStores()]; S.sumStores = null; S.ui.range = null; S.ui.storeMenu = false; render(); return; }
     if (d.sg) { S.stores = [d.sg]; S.sumStores = null; S.ui.storeMenu = false; S.ui.range = null; render(); goTop(); return; }
-    if (d.nav) { if (d.nav === 'more' && S.view === 'more') return; S.view = d.nav; S.ui.drawer = null; render(); goTop(); return; }
+    if (d.nav) { if (d.nav === 'more' && S.view === 'more') return; S.view = d.nav; if (d.nav !== 'plist') S.ui.popId = ''; S.ui.drawer = null; render(); goTop(); return; }
+    if (d.pop) { S.view = 'plist'; S.ui.popId = d.pop; S.ui.popFilter = 'all'; S.ui.popEdit = ''; render(); goTop(); return; }
+    if (t.id === 'popBack') { S.ui.popId = ''; S.ui.popEdit = ''; render(); return; }
+    if (d.popf) { S.ui.popFilter = d.popf; render(); return; }
+    if (d.pfield && popAdmin()) { S.ui.popEdit = d.pfield; render(); return; }
+    if (t.id === 'popFile' && popAdmin()) { pickFile('.xlsx,.xls,.csv', f => popReadFile(f)); return; }
+    if (t.id === 'popReload' && popAdmin()) { popReloadSheet().catch(e => toast(e.message || String(e))); return; }
     if (t.id === 'closePrint') { window.print(); return; }
     if (t.id === 'schedFile') { pickFile('.md,.markdown,.txt,.json,text/markdown,application/json', f => schedReadFile(f)); return; }
     if (t.id === 'schedSave') { await schedSavePreview(); return; }
@@ -5716,6 +5875,19 @@ function bind() {
   };
   app.onchange = ev => { inChange = true; try { onChange(ev); } finally { inChange = false; } };
   const onChange = ev => {
+    if (ev.target && ev.target.dataset && ev.target.dataset.popin && popAdmin()) {
+      const [pid, iid, field] = ev.target.dataset.popin.split('|');
+      const p = popById(pid); if (!p) return;
+      const copy = JSON.parse(JSON.stringify(p));
+      const row = (copy.items || []).find(x => x.id === iid); if (!row) return;
+      const label = { limit: '구매제한', qty: '확정수량', dp: 'DP', price: '가격' }[field] || field;
+      const next = (field === 'qty' || field === 'dp' || field === 'price') ? (parseInt(String(ev.target.value).replace(/[^\d-]/g, ''), 10) || 0) : ev.target.value.trim();
+      const prev = row[field];
+      S.ui.popEdit = '';
+      if (String(prev ?? '') !== String(next)) { row[field] = next; popLog(copy, `${row.name} ${label}: ${prev ?? ''} → ${next}`); persistPopup(copy); }
+      else render();
+      return;
+    }
     const t = ev.target, d = t.dataset;
     if (d.dsel) {
       const [id, part] = d.dsel.split(':'); const h = document.getElementById(id); if (!h) return;
@@ -6018,8 +6190,41 @@ function setUser(u, opt) {
 const FB = window.SMG_FIREBASE ? window.SMG_FIREBASE(S, { render, setUser, indexProducts, STORES, OWNER_EMAIL, lockOut: lockNow }) : null;
 
 /* ───────── 시작 ───────── */
+async function popReadFile(f) {
+  await needX();
+  const buf = await f.arrayBuffer();
+  const wb = XLSX.read(buf, { type: 'array' });
+  const ws = wb.Sheets[wb.SheetNames[0]];
+  const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
+  const parsed = popRowsFromTable(rows);
+  if (parsed.err) { toast(parsed.err); return; }
+  await popApplyRows(parsed.rows, f.name);
+}
+async function popReloadSheet() {
+  const p = popById(S.ui.popId); if (!p) return;
+  const url = ((document.getElementById('popSheet') || {}).value || '').trim();
+  if (!url) { toast('시트 주소를 넣어 주세요'); return; }
+  const m = url.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/);
+  const gid = (url.match(/[?#&]gid=(\d+)/) || [])[1];
+  const csv = m ? `https://docs.google.com/spreadsheets/d/${m[1]}/gviz/tq?tqx=out:csv${gid ? '&gid=' + gid : ''}` : url;
+  const res = await fetch(csv);
+  if (!res.ok) throw new Error('시트를 열지 못했습니다. 링크가 있는 모든 사용자 보기로 바꿔 주세요.');
+  const text = await res.text();
+  await needX();
+  const wb = XLSX.read(text, { type: 'string' });
+  const rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, defval: '' });
+  const parsed = popRowsFromTable(rows);
+  if (parsed.err) { toast(parsed.err); return; }
+  parsed.rows.forEach(r => { if (!r.pop) r.pop = p.name; });
+  const copy = JSON.parse(JSON.stringify(p));
+  copy.sheetUrl = url;
+  S.popLive = [copy, ...(S.popLive || []).filter(x => x.id !== copy.id)];
+  await popApplyRows(parsed.rows, '시트');
+}
 async function start() {
   try {
+    try { S.popSeed = (await (await fetch('data/popup-products.json')).json()).popups || []; } catch (e) { S.popSeed = []; }
+    try { S.popLive = JSON.parse(localStorage.getItem('smg-popup-live') || '[]'); } catch (e) { S.popLive = []; }
     if (FB) { S.mode = 'live'; DB = FB.backend; await FB.start(); }
     else { await DB.load(); indexProducts(); setUser(S.users[0]); }
     S.ready = true; render();

@@ -91,6 +91,7 @@ window.SMG_FIREBASE = function (S, X) {
     unsub.push(db.collection('config').doc('app').onSnapshot(d => { const x = d.exists ? d.data() : {}; if (x.ipPlan) { S.ipPlan = x.ipPlan; S.ipPlanAt = x.ipPlanAt || ''; } R(); }, () => { }));
     db.collection('importMaps').get().then(q => { q.docs.forEach(d => { const x = d.data(); if (x.sig) S.maps[x.sig] = x; }); }).catch(() => { });
     unsub.push(db.collection('products').onSnapshot(q => { S.products = q.docs.map(d => d.data()); X.indexProducts(); R(); }, denied));
+    if (!S.user.limited) unsub.push(db.collection('popupProducts').onSnapshot(q => { S.popLive = q.docs.map(d => ({ id: d.id, ...d.data() })); R(); }, () => { }));
     for (const st of mine) {
       unsub.push(db.collection('stores').doc(st).onSnapshot(d => { const x = d.exists ? d.data() : {}; S.stock[st] = x.q || {}; if (st === 'suwon') S.cab = x.cab || {}; R(); }, denied));
       if (!S.user.limited) {
@@ -209,6 +210,7 @@ window.SMG_FIREBASE = function (S, X) {
     async saveImportMap(sig, m) { await db.collection('importMaps').doc(sigId(sig)).set({ sig, ...m }); },
     async saveZip(pw) { await db.collection('config').doc('zip').set({ pw }, { merge: true }); },
     async saveProduct(p) { await db.collection('products').doc(key(p.id)).set(p, { merge: true }); },
+    async savePopupProduct(p) { const { id, ...d } = JSON.parse(JSON.stringify(p)); await db.collection('popupProducts').doc(id).set(d); return true; },
     async apply(f) {
       const u = auth.currentUser;
       await db.collection('users').doc(u.uid).set({ name: f.name, email: u.email, company: f.company, companyOther: f.other || '', places: f.places, position: f.position, phone: f.phone || '', memo: f.memo || '', status: 'pending', perms: null, createdAt: ts() });

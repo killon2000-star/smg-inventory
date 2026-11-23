@@ -158,5 +158,10 @@ service cloud.firestore {
     // 월간 일정: 대표만. 공개 사이트에 일정 파일을 올리지 않고 여기만 둔다.
     // 게시 전: Firebase 콘솔 또는 규칙 워크플로로 이 파일을 올려야 앱에서 저장이 된다.
     match /schedules/{id} { allow read, write: if isOwner(); }
+    // 팝업 상품리스트. 승인된 사람은 읽고, 대표·승인자만 고친다.
+    match /popupProducts/{id} {
+      allow read: if active() && !limitedUser();
+      allow create, update, delete: if isOwner() || (perm('approve') && !stockFloor());
+    }
   }
 }
