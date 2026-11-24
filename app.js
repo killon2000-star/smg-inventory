@@ -50,7 +50,7 @@ const PERM_DEF = [
 ];
 
 const DEFAULT_ORDER = STORES.map(s => s.id);
-const APP_VERSION = '2026-11-23 22:07';   // 앱 화면을 마지막으로 고친 시각 (한국 시간)
+const APP_VERSION = '2026-11-24 09:31';   // 앱 화면을 마지막으로 고친 시각 (한국 시간)
 /* ───────── 작은 도구 ───────── */
 const $ = (s, el = document) => el.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -4361,7 +4361,9 @@ function popupDetail() {
       if (admin && S.ui.popEdit === key) return `<div><span class="lb">${label}</span><input class="inp" data-popin="${esc(key)}" value="${esc(it[field] ?? '')}" aria-label="${label}"></div>`;
       return `<div><span class="lb">${label}</span>${admin ? `<button type="button" class="cellbtn" data-pfield="${esc(key)}">${html}</button>` : `<b class="${it.limitNote && field === 'limit' ? 'pending' : ''}">${html}</b>`}</div>`;
     };
-    const shot = popImageBlank(it.image) ? '<span class="muted">이미지 없음</span>' : `<button type="button" class="pc-zoom" data-popimg="${esc(it.id)}" aria-label="${esc(it.name)} 크게 보기"><img src="${esc(it.image)}" alt=""></button>`;
+    const nOpt = (it.options || []).filter(o => o && o.name).length;
+    const kindMark = nOpt >= 2 ? `<span class="pc-kinds">${nOpt}종</span>` : '';
+    const shot = popImageBlank(it.image) ? '<span class="muted">이미지 없음</span>' : `<button type="button" class="pc-zoom" data-popimg="${esc(it.id)}" aria-label="${esc(it.name)} 크게 보기"><img src="${esc(it.image)}" alt="">${kindMark}</button>`;
     return `<article class="pcard"><div class="pc-img">${shot}</div><div class="pc-body"><div class="pc-name">${esc(it.name)} ${kindBadge} ${badge}</div><div class="pc-price">${price} <span class="muted" style="font-weight:500;font-size:12px">VAT 포함</span></div><div class="pc-meta">${cell('limit', '구매제한', `${esc(it.limit || '미정')}${it.limitNote ? `<div class="pc-note">${esc(it.limitNote)}</div>` : ''}`)}${cell('qty', '확정수량', fmt(it.qty) + '개')}${cell('dp', 'DP', fmt(it.dp) + '개')}</div>${it.memo ? `<div class="pc-note">${esc(it.memo)}</div>` : ''}</div></article>`;
   };
   return `${head(p.name, `${esc(p.start || '')} ~ ${esc(p.end || '')} · ${esc(p.stores || '')} · 실입고 전 확정 수량`, '<button type="button" class="btn" id="popBack">목록으로</button>')}
@@ -4372,27 +4374,59 @@ function popupDetail() {
   ${admin ? `<div class="card"><h2>시트에서 다시 불러오기</h2><p class="src">구글 시트는 링크가 있는 사람 보기, 또는 CSV 주소여야 합니다.</p><input class="inp" id="popSheet" value="${esc(p.sheetUrl || '')}" placeholder="시트 주소" aria-label="시트 주소"><button type="button" class="btn pri" id="popReload" style="margin-top:8px">시트에서 다시 불러오기</button></div>` : ''}
   <div class="card"><h2>변경 기록</h2>${(p.log || []).length ? `<ul class="hub-sum">${p.log.slice(0, 30).map(l => `<li>${esc(l.at)} · ${esc(l.by || '')}${l.email ? ' · ' + esc(l.email) : ''} · ${esc(l.what || '')}</li>`).join('')}</ul>` : '<p class="src">아직 없습니다.</p>'}</div>`;
 }
+function popSlides(it) {
+  const opts = it && Array.isArray(it.options) ? it.options.filter(o => o && o.name) : [];
+  if (opts.length >= 2) return opts.map(o => ({ name: String(o.name), image: o.image || '' }));
+  if (it && !popImageBlank(it.image)) return [{ name: '', image: it.image }];
+  return [];
+}
 function popZoomLayer() {
   const id = S.ui.popZoom;
   if (!id) return '';
   const p = popById(S.ui.popId);
   const it = p && (p.items || []).find(x => x.id === id);
-  if (!it || popImageBlank(it.image)) return '';
+  const slides = popSlides(it);
+  if (!it || !slides.length) return '';
+  const n = slides.length;
+  let i = S.ui.popOpt || 0;
+  if (i < 0 || i >= n) i = 0;
+  const slide = slides[i];
+  const many = n >= 2;
   const price = +it.price > 0 ? '₩' + fmt(it.price) : (it.kind === '특전' ? '증정 (판매가 없음)' : '₩0');
-  return `<div class="popzoom" id="popZoom" role="dialog" aria-modal="true" aria-label="${esc(it.name)} 크게 보기"><div class="popzoom-bar"><button type="button" class="popzoom-x" id="popZoomX" aria-label="닫기">×</button></div><img src="${esc(it.image)}" alt=""><div class="popzoom-cap"><b>${esc(it.name)}</b><div class="popzoom-price">${price} <span>VAT 포함</span></div><div>확정수량 ${fmt(it.qty)}개</div></div></div>`;
+  const pic = popImageBlank(slide.image) ? '<div class="popzoom-empty">사진 없음</div>' : `<img src="${esc(slide.image)}" alt="">`;
+  const nav = many ? '<button type="button" class="popzoom-nav prev" data-popopt="prev" aria-label="이전 옵션">‹</button><button type="button" class="popzoom-nav next" data-popopt="next" aria-label="다음 옵션">›</button>' : '';
+  const optLine = many ? `<div class="popzoom-opt">${esc(slide.name)} · ${i + 1}/${n}</div>` : '';
+  const thumbs = many ? `<div class="popzoom-thumbs">${slides.map((s, k) => `<button type="button" class="popzoom-thumb${k === i ? ' on' : ''}" data-popopt="${k}" aria-label="${esc(s.name)}">${popImageBlank(s.image) ? '<span>사진 없음</span>' : `<img src="${esc(s.image)}" alt="">`}</button>`).join('')}</div>` : '';
+  return `<div class="popzoom" id="popZoom" role="dialog" aria-modal="true" aria-label="${esc(it.name)} 크게 보기"><div class="popzoom-bar"><button type="button" class="popzoom-x" id="popZoomX" aria-label="닫기">×</button></div><div class="popzoom-stage">${nav}${pic}</div><div class="popzoom-cap">${optLine}<b>${esc(it.name)}</b><div class="popzoom-price">${price} <span>VAT 포함</span></div><div>확정수량 ${fmt(it.qty)}개</div></div>${thumbs}</div>`;
+}
+function popOptGo(which) {
+  const p = popById(S.ui.popId);
+  const it = p && (p.items || []).find(x => x.id === S.ui.popZoom);
+  const slides = popSlides(it);
+  if (slides.length < 2) return;
+  let i = S.ui.popOpt || 0;
+  if (which === 'prev') i = (i + slides.length - 1) % slides.length;
+  else if (which === 'next') i = (i + 1) % slides.length;
+  else i = Math.max(0, Math.min(slides.length - 1, parseInt(which, 10) || 0));
+  S.ui.popOpt = i;
+  render();
 }
 function fitPopZoom() {
   const z = document.getElementById('popZoom');
   if (!z) return;
-  const img = z.querySelector('img');
+  const img = z.querySelector('.popzoom-stage img');
   const cap = z.querySelector('.popzoom-cap');
   const bar = z.querySelector('.popzoom-bar');
-  if (!img || !cap || !bar) return;
+  const thumbs = z.querySelector('.popzoom-thumbs');
+  if (!cap || !bar) return;
   const cs = getComputedStyle(z);
   const padX = (parseFloat(cs.paddingLeft) || 0) + (parseFloat(cs.paddingRight) || 0);
   const padY = (parseFloat(cs.paddingTop) || 0) + (parseFloat(cs.paddingBottom) || 0);
   const availW = Math.max(1, z.clientWidth - padX);
-  const availH = Math.max(1, z.clientHeight - padY - bar.offsetHeight - cap.offsetHeight);
+  const availH = Math.max(1, z.clientHeight - padY - bar.offsetHeight - cap.offsetHeight - (thumbs ? thumbs.offsetHeight : 0));
+  const empty = z.querySelector('.popzoom-empty');
+  if (empty) empty.style.maxHeight = availH + 'px';
+  if (!img) return;
   const nw = img.naturalWidth, nh = img.naturalHeight;
   const pageZoom = parseFloat(getComputedStyle(document.body).zoom);
   const zoom = pageZoom > 1 ? pageZoom : 1;
@@ -4413,6 +4447,7 @@ function fitPopZoom() {
 function closePopZoom() {
   if (!S.ui.popZoom) return;
   S.ui.popZoom = '';
+  S.ui.popOpt = 0;
   render();
   resetZoom();
 }
@@ -5713,7 +5748,13 @@ function bind() {
   if (gw) gw.addEventListener('input', () => { const ok = document.getElementById('cntGuardOk'); if (ok) ok.disabled = gw.value.trim() !== '실사'; });
   const app = $('#app');
   app.onclick = async ev => {
-    if (S.ui.popZoom && ev.target.closest && ev.target.closest('#popZoom')) { closePopZoom(); return; }
+    if (S.ui.popZoom && ev.target.closest && ev.target.closest('#popZoom')) {
+      if (S.ui.popJustSwipe) { S.ui.popJustSwipe = false; return; }
+      const opt = ev.target.closest('[data-popopt]');
+      if (opt) { popOptGo(opt.dataset.popopt); return; }
+      closePopZoom();
+      return;
+    }
     const t = ev.target.closest('button,[data-pid],[data-cmpk],[data-hdip],label,input'); if (!t) return;
     const d = t.dataset;
     const pick = ev.target.closest('[data-cntpick]');
@@ -5769,7 +5810,7 @@ function bind() {
     if (d.popimg) {
       const pop = popById(S.ui.popId);
       const it = pop && (pop.items || []).find(x => x.id === d.popimg);
-      if (it && !popImageBlank(it.image)) { S.ui.popZoom = it.id; render(); }
+      if (it && !popImageBlank(it.image)) { S.ui.popZoom = it.id; S.ui.popOpt = 0; render(); }
       return;
     }
     if (d.popf) { S.ui.popFilter = d.popf; render(); return; }
@@ -6071,8 +6112,26 @@ function bind() {
   const ov = $('#ov'); if (ov) ov.onclick = e => { if (e.target === ov) { if (S.ui.stopScan) S.ui.stopScan(); S.ui.drawer = null; render(); } };
   document.onkeydown = e => {
     if (e.key === 'Escape' && S.ui.popZoom) { closePopZoom(); return; }
+    if ((e.key === 'ArrowLeft' || e.key === 'ArrowRight') && S.ui.popZoom) { popOptGo(e.key === 'ArrowLeft' ? 'prev' : 'next'); return; }
     if (e.key === 'Escape' && (S.ui.drawer || S.ui.storeMenu)) { S.ui.drawer = null; S.ui.storeMenu = false; render(); }
   };
+  const stage = document.querySelector('.popzoom-stage');
+  if (stage) {
+    let x0 = 0, y0 = 0, on = false;
+    stage.addEventListener('touchstart', e => {
+      if (e.touches.length !== 1) { on = false; return; }
+      on = true; x0 = e.touches[0].clientX; y0 = e.touches[0].clientY;
+    }, { passive: true });
+    stage.addEventListener('touchend', e => {
+      if (!on) return;
+      on = false;
+      const t = e.changedTouches[0];
+      const dx = t.clientX - x0, dy = t.clientY - y0;
+      if (Math.abs(dx) < 48 || Math.abs(dx) < Math.abs(dy)) return;
+      S.ui.popJustSwipe = true;
+      popOptGo(dx < 0 ? 'next' : 'prev');
+    }, { passive: true });
+  }
 }
 function debounce(fn, ms = 180) { let t; return () => { clearTimeout(t); t = setTimeout(fn, ms); }; }
 function rerenderKeep(sel) { const el = $(sel); const pos = el ? el.selectionStart : null; render(); const n = $(sel); if (n) { n.focus(); try { n.setSelectionRange(pos, pos); } catch (e) { } } }
