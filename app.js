@@ -50,7 +50,7 @@ const PERM_DEF = [
 ];
 
 const DEFAULT_ORDER = STORES.map(s => s.id);
-const APP_VERSION = '2026-11-25 20:18';   // 앱 화면을 마지막으로 고친 시각 (한국 시간)
+const APP_VERSION = '2026-11-25 20:30';   // 앱 화면을 마지막으로 고친 시각 (한국 시간)
 /* ───────── 작은 도구 ───────── */
 const $ = (s, el = document) => el.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -273,8 +273,46 @@ function beep(ok) {
     o.start(); o.stop(ctx.currentTime + (ok ? 0.1 : 0.3));
   } catch (e) { }
 }
-function excelZone(id) {
-  return `<div class="xlzone drop"><button type="button" class="btn pri xlbig" id="${id}">엑셀 파일 올리기</button><span class="drophint">또는 이 칸에 파일을 끌어다 놓기</span></div>`;
+function excelZone(id, kind) {
+  const k = kind || id;
+  return `<div class="xlzone drop"><div class="actpair xlpair"><button type="button" class="btn pri xlbig" id="${id}">엑셀 파일 올리기</button><button type="button" class="btn xlbig" id="${id}Sample" data-sample="${k}">샘플 양식 받기</button></div><span class="drophint">샘플 양식을 받아 칸에 적은 뒤 올리거나, 이 칸에 파일을 끌어다 놓으세요.</span></div>`;
+}
+function sampleExamples(n, pred) {
+  let ps = (S.products || []).filter(p => p && p.name && (!pred || pred(p)));
+  if (!ps.length) ps = (S.products || []).filter(p => p && p.name);
+  ps = ps.slice(0, n);
+  if (ps.length) return ps.map(p => ({ bc: p.barcode || p.sku || p.id || '', name: p.name, opt: p.opt || '' }));
+  return [{ bc: '8800000000016', name: '샘플 상품 A', opt: '기본' }, { bc: '8800000000023', name: '샘플 상품 B', opt: '' }].slice(0, n);
+}
+function sampleSpec(kind) {
+  const ex = sampleExamples(2, (kind === 'pull' || kind === 'pullBack') && typeof onShelf === 'function' ? onShelf : null);
+  const note = '예시입니다. 지우고 적어 주세요';
+  const specs = {
+    plan: { sheet: '입고예정', file: '샘플_입고예정양식.xlsx', headers: ['바코드', '상품명', '옵션', '예정수량', '비고'], rows: ex.map((r, i) => [r.bc, r.name, r.opt, i === 0 ? 10 : 5, i === 0 ? note : '']) },
+    onhand: { sheet: '실재고', file: '샘플_실재고양식.xlsx', headers: ['바코드', '상품명', '실재고', '비고'], rows: ex.map((r, i) => [r.bc, r.name, i === 0 ? 8 : 3, i === 0 ? note : '']) },
+    count: { sheet: '실사', file: '샘플_실사양식.xlsx', headers: ['바코드', '상품명', '실사수량', '비고'], rows: ex.map((r, i) => [r.bc, r.name, i === 0 ? 8 : 3, i === 0 ? note : '']) },
+    actual: { sheet: '실입고', file: '샘플_실입고양식.xlsx', headers: ['바코드', '상품명', '실입고수량', '비고'], rows: ex.map((r, i) => [r.bc, r.name, i === 0 ? 10 : 4, i === 0 ? note : '']) },
+    popup: { sheet: '팝업상품', file: '샘플_팝업상품양식.xlsx', headers: ['팝업명', '구분', '상품명', '바코드', '판매가', '확정수량', 'DP', '구매제한', '옵션명'], rows: [['샘플 팝업', '판매', ex[0].name, ex[0].bc, 15000, 10, 1, '', ex[0].opt], ['샘플 팝업', '판매', (ex[1] || ex[0]).name, (ex[1] || ex[0]).bc, 12000, 5, 0, '', (ex[1] || ex[0]).opt]] },
+    pull: { sheet: '매대', file: '샘플_매대양식.xlsx', headers: ['바코드', '상품명', '꺼낼수량', '비고'], rows: ex.map((r, i) => [r.bc, r.name, i === 0 ? 2 : 1, i === 0 ? note : '']) },
+    pullBack: { sheet: '매대', file: '샘플_매대되돌리기양식.xlsx', headers: ['바코드', '상품명', '되돌릴수량', '비고'], rows: ex.map((r, i) => [r.bc, r.name, i === 0 ? 2 : 1, i === 0 ? note : '']) },
+    ship: { sheet: '출고', file: '샘플_출고양식.xlsx', headers: ['바코드', '상품명', '출고수량', '비고'], rows: ex.map((r, i) => [r.bc, r.name, i === 0 ? 2 : 1, i === 0 ? note : '']) },
+    move: { sheet: '이동', file: '샘플_이동양식.xlsx', headers: ['바코드', '상품명', '이동수량', '비고'], rows: ex.map((r, i) => [r.bc, r.name, i === 0 ? 2 : 1, i === 0 ? note : '']) },
+    entry: { sheet: '입출고', file: '샘플_입출고양식.xlsx', headers: ['바코드', '상품명', '수량', '비고'], rows: ex.map((r, i) => [r.bc, r.name, i === 0 ? 2 : 1, i === 0 ? note : '']) },
+    regular: { sheet: '상설상품', file: '샘플_상설입고양식.xlsx', headers: ['바코드', '상품명', '입고수량', '비고'], rows: ex.map((r, i) => [r.bc, r.name, i === 0 ? 10 : 5, i === 0 ? note : '']) },
+    collab: { sheet: '실입고', file: '샘플_콜라보양식.xlsx', headers: ['바코드', '상품명', '옵션', '예정수량', '실입고수량', '비고'], rows: ex.map((r, i) => [r.bc, r.name, r.opt, i === 0 ? 10 : 5, '', i === 0 ? note : '']) }
+  };
+  return specs[kind] || specs.entry;
+}
+async function downloadSample(kind) {
+  const spec = sampleSpec(kind);
+  await needX();
+  const aoa = [spec.headers, ...spec.rows];
+  const ws = XLSX.utils.aoa_to_sheet(aoa);
+  ws['!cols'] = spec.headers.map(h => ({ wch: Math.max(14, String(h).length + 4) }));
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, spec.sheet);
+  XLSX.writeFile(wb, spec.file);
+  toast(`${spec.file}을 받았습니다. 예시 줄을 지우고 적어 올리시면 됩니다.`);
 }
 function pasteZone(id) {
   return `<label class="lb" for="${id}">복사한 표 붙여넣기</label><textarea class="inp cntpaste" id="${id}" placeholder="엑셀·구글 시트에서 칸을 복사해 붙여넣으세요. 머리글이 없어도 됩니다."></textarea>`;
@@ -1406,7 +1444,7 @@ async function downloadRegularXlsx() {
 async function stockDownload(kind) {
   if (kind === 'collab') {
     const ib = latestCollab();
-    if (!ib) { toast('내려받을 콜라보 입고 예정이 없습니다. 먼저 엑셀을 올리세요.'); return; }
+    if (!ib) { await downloadSample('collab'); return; }
     await downloadCollabXlsx(ib);
     await logUp({ button: '콜라보 IP상품', file: `실입고_${ib.id}.xlsx`, action: '내려받기' });
   } else {
@@ -1416,7 +1454,7 @@ async function stockDownload(kind) {
 }
 function stockInTop() {
   const mode = S.ui.stockMode || 'collab';
-  const card = (id, title, sub, on) => `<section class="modecard${on ? ' on' : ''}"><button type="button" class="dirbtn ${id === 'collab' ? 'dir-out' : 'dir-back'}${on ? ' on' : ''}" data-stockmode="${id}"><b>${title}</b><small>${sub}</small></button><button type="button" class="btn pri xlbig" data-stockup="${id}">엑셀 올리기</button><button type="button" class="btn xlbig" data-stockdl="${id}">${id === 'collab' ? '실입고 양식 내려받기' : '현재 재고 내려받기'}</button></section>`;
+  const card = (id, title, sub, on) => `<section class="modecard${on ? ' on' : ''}"><button type="button" class="dirbtn ${id === 'collab' ? 'dir-out' : 'dir-back'}${on ? ' on' : ''}" data-stockmode="${id}"><b>${title}</b><small>${sub}</small></button><div class="actpair xlpair"><button type="button" class="btn pri xlbig" data-stockup="${id}">엑셀 올리기</button><button type="button" class="btn xlbig" data-sample="${id === 'collab' ? 'collab' : 'regular'}">샘플 양식 받기</button></div><button type="button" class="btn" data-stockdl="${id}">${id === 'collab' ? '현재 입고 목록으로 받기' : '현재 재고 내려받기'}</button></section>`;
   const detail = S.ui.ib && S.ui.ib !== 'new';
   const pair = detail ? '' : `<div class="card"><p class="src">입고 예정이 없어도 실재고를 먼저 넣을 수 있습니다. 두 값이 다 있으면 차이를 보여 줍니다.</p>${actPair('ibPlanGo','ibStockGo')}</div>${upBatchCard(['입고 확인', '입고예정 등록', '실재고 입력'])}`;
   return pair + `<div class="modepair">${card('collab', '콜라보 IP상품', '입고예정 · 실입고', mode === 'collab')}${card('regular', '상설상품', '자유 양식 · 이름 그대로', mode === 'regular')}</div>`;
@@ -2811,7 +2849,7 @@ function pullView() {
   return `${head(back ? '창고로 되돌리기' : '매대로 꺼내기', back ? '매대 → 창고' : '창고 → 매대', ready ? '<button class="btn pri" data-act="pullOk">확인</button>' : '<button class="btn" id="pullBack">상품 목록</button>')}
   ${dirPair()}
   <div class="card pullbox">
-    ${excelZone('pullFile')}
+    ${excelZone('pullFile', (S.ui.pull || {}).dir === 'toRoom' ? 'pullBack' : 'pull')}
     <p class="src">${back ? '팔리지 않은 매대 수량을 창고로 되돌립니다. 지금 매대에 있는 수량보다 많이 되돌릴 수 없습니다. 실재고는 그대로입니다.' : '창고에 있는 수량을 매대로 꺼냅니다. 실재고는 변하지 않습니다.'}</p>
     <button type="button" class="btn" id="pullDl">${back ? '되돌리기' : '꺼내기'} 입력용 엑셀 내려받기</button>
     ${p.note ? `<p class="cntwhy">${esc(p.note)}</p>` : ''}
@@ -2877,7 +2915,7 @@ function shipoutView() {
   const lines = s.lines || [];
   return `${head('수량 정리 후 출고', '수원에서 내보냅니다', lines.length ? '<button class="btn pri" data-act="shipOk">출고 확정</button>' : '')}
   <div class="card pullbox">
-    ${excelZone('shipFile')}
+    ${excelZone('shipFile', 'ship')}
     <p class="src">수원 매장에서 밖으로 내보냅니다. 받는 곳은 물류창고, 홍대, 외부 팝업 현장입니다. 수량은 창고에서 먼저 빼고, 모자라면 매대에서 뺍니다.</p>
     <button type="button" class="btn" id="shipDl">출고 입력용 엑셀 내려받기</button>
     <div class="field"><label>받는 곳</label><div class="sgrid">${dests.map(([id, name]) => `<button type="button" class="sbtn ${s.dest === id ? 'on' : ''}" data-shipdest="${id}">${esc(name)}</button>`).join('')}</div></div>
@@ -2955,7 +2993,7 @@ function ibNewView() {
   const P = (f.parsed || []).filter(r => (r.qty > 0) || (r.actual > 0));
   return `${head('입고 확인', '입고 예정', P.length ? '<button class="btn pri" data-act="ibCreate">입고 예정 등록</button>' : '<button class="btn" id="ibBack">목록</button>')}
   <div class="card cntbox">
-    ${excelZone('ibSheetFile')}
+    ${excelZone('ibSheetFile', 'plan')}
     <div class="sgrid">${myStores().map(s => `<button type="button" class="sbtn ${f.store === s ? 'on' : ''}" data-ibstore="${s}">${esc(shortName(s))}</button>`).join('')}</div>
     ${manualRowBox('ibMan')}
     ${f.err ? warnNote(esc(f.err)) : ''}
@@ -2986,7 +3024,7 @@ function ibDetailView(ib) {
   const miss = ib.extra || [];
   return `${head('입고 확인', esc(ib.title), `<button class="btn danger" data-ibdel="${esc(ib.id)}">입고 삭제</button>${done ? '<button class="btn" id="ibBack">목록</button>' : '<button class="btn pri phone-hide" data-act="ibConfirm">입고 확정</button>'}`)}
   <div class="card cntbox">
-    ${done ? '' : excelZone('ibActFile')}
+    ${done ? '' : excelZone('ibActFile', 'actual')}
     ${done ? '' : '<button type="button" class="btn xlbig" id="ibDl">실입고 입력용 엑셀 내려받기</button>'}
     ${done && ib.result ? `<p class="cntwhy">${esc(ib.result)}</p>` : `<p class="src">올린 표의 실입고와 비고를 채운 뒤 확정합니다. 차이가 있는 줄은 붉게 표시됩니다.</p>`}
     ${S.ui.ibMsg ? `<p class="src${S.ui.ibMsg.bad ? ' bad' : ''}">${esc(S.ui.ibMsg.t)}</p>` : ''}
@@ -3302,8 +3340,8 @@ async function saveEntry() {
 /* 파일·링크 올리기 */
 function importBox() {
   return `<div class="drop" id="drop"><div style="font-weight:700">엑셀·CSV 파일을 끌어 놓거나 고르세요</div>
-    <div class="muted" style="font-size:13px;margin:4px 0 10px">품번·바코드·상품명·수량 칸을 자동으로 찾습니다. PDF·사진은 입력할 수 없습니다.</div>
-    <button class="btn" id="fileBtn">파일 고르기</button></div>
+    <div class="muted" style="font-size:13px;margin:4px 0 10px">품번·바코드·상품명·수량 칸을 자동으로 찾습니다. PDF·사진은 입력할 수 없습니다. 샘플 양식을 받아 적어 올리셔도 됩니다.</div>
+    <div class="actpair xlpair"><button class="btn pri" id="fileBtn">파일 고르기</button><button type="button" class="btn" id="fileBtnSample" data-sample="entry">샘플 양식 받기</button></div></div>
   <div class="row"><input class="inp" id="linkIn" placeholder="구글시트 링크 붙여넣기 (링크가 있는 모든 사용자 보기 권한)" style="flex:1;min-width:220px"><button class="btn" id="linkGo">링크 열기</button></div>`;
 }
 const HDR = {
@@ -3630,11 +3668,18 @@ function guessHeaderless(dataRows) {
   const qty = stats.filter(s => s.c > anchor && ok(s) && s.bc === 0 && s.num / Math.max(1, s.n) >= .6).sort((a, b) => a.c - b.c)[0];
   return { prod: bcCol ? bcCol.c : (nameCol ? nameCol.c : -1), qty: qty ? qty.c : -1, bc: bcCol ? bcCol.c : -1, name: nameCol ? nameCol.c : -1, countCol: false };
 }
+function lastFilledLabel(labels) {
+  const list = labels || [];
+  for (let i = list.length - 1; i >= 0; i--) if (foldText(list[i] || '').trim()) return i;
+  return -1;
+}
 function clipBigo(rows) {
   const h = findHeader(rows || []);
   if (!h) return rows || [];
   const b = h.labels.findIndex(x => { const n = normHead(x); return n === '비고' || n.startsWith('비고'); });
   if (b < 0) return rows || [];
+  // 비고가 마지막 제목 칸일 때만 오른쪽(주소·전화 등)을 버린다. 비고 오른쪽에 상품명·바코드가 있으면 그대로 둔다.
+  if (b < lastFilledLabel(h.labels)) return rows || [];
   return (rows || []).map(r => (r || []).slice(0, b + 1));
 }
 function isJunkRow(r) {
@@ -3708,11 +3753,12 @@ function countParseRows(rows, pick) {
   if (map.prod < 0 && map.bc < 0 && map.name < 0) return { err: '상품 칸(바코드·상품명)을 찾지 못했습니다. 아래 칸 버튼으로 골라 주세요.' };
   const width = Math.max(labels.length, ...body.slice(0, 40).map(r => r.length));
   const bigo = labels.findIndex(h => normHead(h) === '비고' || normHead(h).startsWith('비고'));
+  const clipAfterBigo = bigo >= 0 && bigo === lastFilledLabel(labels);
   const vals = c => body.map(r => String(r[c] ?? '').trim()).filter(Boolean);
   const priv = (label, vs) => isPrivateHead(label) || (vs.length && (vs.filter(isPhoneCell).length / vs.length >= .3 || vs.filter(v => /주소\s*[:：]/.test(v)).length / vs.length >= .3));
   const cols = [];
   for (let c = 0; c < width; c++) {
-    if (bigo >= 0 && c > bigo) continue;
+    if (clipAfterBigo && c > bigo) continue;
     const label = cleanLabel(labels[c] || '');
     const vs = vals(c);
     if (priv(label, vs)) continue;
@@ -3750,7 +3796,7 @@ function countParseRows(rows, pick) {
     if (isJunkRow(r)) return;
     const filled = (r || []).map(c => foldText(c).trim()).filter(Boolean);
     if (filled.length && !filled.some(c => isBarcodeCell(foldText(c))) && filled.every(isLabelCell)) return;
-    const stop = bigo >= 0 ? bigo : (r || []).length;
+    const stop = clipAfterBigo ? bigo : (r || []).length;
     let bc = foldText(cell(r, map.bc)).replace(/^'+/, '').replace(/\s/g, '');
     if (!isBarcodeCell(bc)) { bc = ''; for (let c = 0; c < stop; c++) { const t = foldText((r || [])[c] ?? '').trim().replace(/\s/g, ''); if (isBarcodeCell(t)) { bc = t; break; } } }
     const idCode = idCol >= 0 ? cell(r, idCol) : '';
@@ -4053,7 +4099,6 @@ function countTemplate() {
   for (let i = 2; i <= aoa.length; i++) { const cell = ws['B' + i]; if (cell) { cell.t = 's'; } }
   const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, '실사');
   const name = `${storeName(st)}_실사양식_${today()}.xlsx`;
-  if (S.mode === 'demo') { alertBox('미리보기 화면에서는 파일을 내려받을 수 없습니다. 실제 앱에서는 이 매장 상품 목록이 담긴 엑셀이 바로 받아집니다.'); return; }
   XLSX.writeFile(wb, name);
 }
 function countView() {
@@ -4064,7 +4109,7 @@ function countView() {
   const sel = p ? countSel(p) : { m: 0, n: 0 };
   return `${head(kind, `${esc(storeName(st))} · 입고 예정이 없어도 ${isOnhand() ? '실재고' : '실사'}를 바로 등록할 수 있습니다`, (sel.m || sel.n) ? `<button class="btn pri" data-cntgo="1">${countRegLabel(p)}</button>` : '')}
   <div class="card cntbox">
-    ${excelZone('cntFile')}
+    ${excelZone('cntFile', isOnhand() ? 'onhand' : 'count')}
     ${manualRowBox('oh')}
     <button type="button" class="btn xlbig" id="cntDl">${isOnhand() ? '실재고' : '실사'} 입력용 엑셀 내려받기</button>
     ${S.ui.cntUndo ? '<button class="btn" id="cntUndo">되돌리기</button>' : ''}
@@ -4130,7 +4175,7 @@ function transferView() {
   const line = l => { const p = S.P[l.pid] || {}; return `<div class="grow"><b>${esc(p.name || l.pid)}</b><div class="code">${esc(p.barcode || p.sku || '')} · ${here(l.pid)}</div><div class="gnums"><label>수량 <input class="inp qty" type="number" min="1" inputmode="numeric" value="${l.qty}" data-mvq="${esc(l.pid)}" aria-label="이동 수량"></label><button class="btn sm" type="button" data-mvdel="${esc(l.pid)}">빼기</button></div></div>`; };
   return `${head('상품 이동', '엑셀로 올릴 상품과 수량을 확인한 뒤 이동합니다', m.lines.length ? `<button class="btn pri" data-act="mvSave">이동 등록 (${m.lines.length}종)</button>` : '')}
   <div class="card" style="display:flex;flex-direction:column;gap:12px">
-    ${excelZone('mvFile')}
+    ${excelZone('mvFile', 'move')}
     <div class="field"><label>보내는 곳</label>${btns(m.from, 'mvfrom')}</div>
     ${m.from === 'suwon' ? `<div class="field"><label>수원 · ${esc(SHELF_IPS.join(' · '))}</label><div class="sgrid"><button type="button" class="sbtn ${m.lane === 'toShelf' ? 'on' : ''}" data-lane="toShelf">창고 → 매대</button><button type="button" class="sbtn ${m.lane === 'toRoom' ? 'on' : ''}" data-lane="toRoom">매대 → 창고</button></div><p class="src">이 이동은 실재고를 바꾸지 않습니다. 한 개씩은 상품 화면의 매대로 꺼내기를 씁니다.</p></div>` : ''}
     ${laneOn ? '' : `<div class="field"><label>받는 곳</label>${btns(m.to, 'mvto')}</div>`}
@@ -4781,7 +4826,7 @@ function popupHub() {
   ${canRegQty() ? `<div class="card"><h2>수량 등록</h2><p class="src">입고 예정과 실재고는 따로, 어떤 순서로든 등록할 수 있습니다. 둘 다 있으면 차이를 보여 줍니다.</p>${actPair('popPlanBtn','popStockBtn')}</div>` : ''}
   ${upBatchCard(['팝업 상품리스트', '입고예정 등록', '실재고 입력'])}
   <div class="hubgrid">${list.map(p => { const s = popSums(p); return `<article class="hubcard"><div class="hub-kicker">${esc(p.stores || '')}</div><h2>${esc(p.name)}</h2><p class="hub-meta">${esc(p.start || '')} ~ ${esc(p.end || '')}</p><ul class="hub-sum"><li>판매 ${s.saleN}종 · ${popSumText(s.saleQ, s.sale, 'qty')} · DP ${popSumText(s.saleD, s.sale, 'dp')}</li>${s.tokN ? `<li>특전 ${s.tokN}종 · ${popSumText(s.tokQ, s.tok, 'qty')} · DP ${popSumText(s.tokD, s.tok, 'dp')}</li>` : ''}</ul><button type="button" class="btn pri" data-pop="${esc(p.id)}">상품 보기</button></article>`; }).join('') || '<p class="src">등록된 팝업이 없습니다.</p>'}</div>
-  ${admin ? `<div class="card"><h2>상품 목록 엑셀 올리기</h2><p class="src">열 이름이 조금 달라도, 머리글이 아래에 있어도, 열 순서가 달라도 찾습니다. 물류 일정처럼 입고수량·IP가 있는 표도 그대로 올리면 됩니다. 같은 팝업·상품이면 그 줄을 고칩니다.</p><button type="button" class="btn" id="popFile">엑셀 올리기</button></div>` : ''}`;
+  <div class="card"><h2>상품 목록 엑셀</h2><p class="src">샘플 양식을 받아 칸에 적은 뒤 올리시면 됩니다. 열 이름이 조금 달라도 찾습니다.</p><div class="actpair xlpair">${admin ? '<button type="button" class="btn pri" id="popFile">엑셀 올리기</button>' : '<span></span>'}<button type="button" class="btn" id="popFileSample" data-sample="popup">샘플 양식 받기</button></div></div>`;
 }
 function popupDetail() {
   const p = popById(S.ui.popId);
@@ -6325,6 +6370,7 @@ function bind() {
     if (d.role) { const u = previewUser(d.role); if (canPreview() && u && roleRank(u) >= roleRank(S.actor)) { setUser(u, { preview: true }); if (stockFloor()) S.view = 'home'; } render(); return; }
     if (d.stockmode) { S.ui.stockMode = d.stockmode; S.ui.ib = null; render(); return; }
     if (d.stockup) { const kind = d.stockup; pickFile('.xlsx,.xls,.csv', f => stockUpload(kind, f).catch(e => toast(e.message || String(e)))); return; }
+    if (d.sample) { downloadSample(d.sample).catch(e => toast(e.message || String(e))); return; }
     if (d.stockdl) { stockDownload(d.stockdl).catch(e => toast(e.message || String(e))); return; }
     if (d.stpos) { S.ui.stPos = d.stpos; render(); return; }
     if (d.stadd != null) { staffAdd(); return; }
@@ -7075,7 +7121,7 @@ function salesPeriodRollover() {
 }
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') salesPeriodRollover(); });
 setInterval(salesPeriodRollover, 30000);
-window.SMGApp = { S, render, indexProducts, setUser, salesPresetRange, resolveSalesPeriod, salesPeriodRollover, parseSchedText, parseSchedJson, schedDocs, countFromPaste, countParseRows, parsePasteTable, ibApplyCountRows, moveFromRows, ibActLoaded, chooseSheet, sheetScore, readLineText, stampList, applyStock, shelfOf, roomOf, stockOf, applyPagePaste, logUp, exactHit, collabKeyOf, staffAdd, staffRevoke, staffAllow, actorRevoked, lockNow, floorPerms, canPreview, previewRoles, roleRank, popImagesByRow, popRowsFromTable, popPickSheet, popReadFile, popupDocs, wantDemo, actPair, recordUpBatch, revertUpBatch, ensureProduct, openPlanReg, openOnhandReg, loadUpBatches };
+window.SMGApp = { S, render, indexProducts, setUser, salesPresetRange, resolveSalesPeriod, salesPeriodRollover, parseSchedText, parseSchedJson, schedDocs, countFromPaste, countParseRows, parsePasteTable, ibApplyCountRows, moveFromRows, ibActLoaded, chooseSheet, sheetScore, readLineText, stampList, applyStock, shelfOf, roomOf, stockOf, applyPagePaste, logUp, exactHit, collabKeyOf, staffAdd, staffRevoke, staffAllow, actorRevoked, lockNow, floorPerms, canPreview, previewRoles, roleRank, popImagesByRow, popRowsFromTable, popPickSheet, popReadFile, popupDocs, wantDemo, actPair, recordUpBatch, revertUpBatch, ensureProduct, openPlanReg, openOnhandReg, loadUpBatches, downloadSample, sampleSpec };
 addEventListener('storage', e => {
   if (e.key !== 'smg-staff-reg' || !S.ready) return;
   try { S.staff = JSON.parse(e.newValue || '[]'); } catch (err) { return; }
