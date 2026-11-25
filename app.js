@@ -50,7 +50,7 @@ const PERM_DEF = [
 ];
 
 const DEFAULT_ORDER = STORES.map(s => s.id);
-const APP_VERSION = '2026-11-25 19:19';   // 앱 화면을 마지막으로 고친 시각 (한국 시간)
+const APP_VERSION = '2026-11-25 19:53';   // 앱 화면을 마지막으로 고친 시각 (한국 시간)
 /* ───────── 작은 도구 ───────── */
 const $ = (s, el = document) => el.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -2243,7 +2243,9 @@ function productDrawer(pid) {
   const p = S.P[pid]; if (!p) return '';
   const rows = STORES.filter(s => myStores().includes(s.id)).map(s => ({ s, q: stockOf(s.id, pid), has: (S.stock[s.id] || {})[pid] != null }));
   const mv = limited() ? [] : S.moves.filter(m => m.pid === pid && myStores().includes(m.store)).slice(-30).reverse();
+  const canName = !limited() && (can('move') || isOwner());
   return `<div class="hd"><div><div class="muted" style="font-size:12px">${esc(p.ip)}${p.cat ? ' · ' + esc(p.cat) : ''}</div><h3>${esc(p.name)}</h3></div>${S.ui.prevDrawer ? '<button class="btn sm" data-hback="1">← 목록</button>' : ''}<button class="x" data-close aria-label="닫기">×</button></div>
+  ${canName ? `<div class="card"><div class="field"><label for="prodNameEdit">상품명</label><input class="inp" id="prodNameEdit" value="${esc(p.name)}"></div><div class="field" style="margin-top:8px"><label for="prodOptEdit">옵션명</label><input class="inp" id="prodOptEdit" value="${esc(p.opt || '')}" placeholder="없으면 비워 두세요"></div><button type="button" class="btn pri" data-prensave="${esc(pid)}" style="margin-top:8px">이름 저장</button></div>` : ''}
   <div class="card"><dl class="kv"><dt>바코드</dt><dd class="num" style="text-align:left">${esc(p.barcode || '-')}</dd><dt>품번</dt><dd>${esc(p.sku || '-')}</dd>${!limited() && !stockFloor() && p.price ? `<dt>판매가</dt><dd>${won(p.price)}</dd>` : ''}${S.warehouse[pid] ? `<dt>창고 보관</dt><dd>${fmt(S.warehouse[pid])}개</dd>` : ''}${allPlaces().filter(pl => (pl.q || {})[pid]).map(pl => `<dt>외부 · ${esc(pl.kind)}</dt><dd>${esc(placeLabel(pl))} — ${fmt(pl.q[pid])}개</dd>`).join('')}</dl></div>
   <div class="card"><h2>매장별 재고</h2><table><tbody>${rows.map(r => `<tr><td class="nowrap"><span class="dot" style="background:${storeColor(r.s.id)};display:inline-block;margin-right:6px"></span>${esc(r.s.name)}${r.s.id === SHELF_STORE && r.has && onShelf(p) ? `<div class="muted" style="font-size:12px">창고 ${fmt(roomOf(r.s.id, pid))} · 매대 ${fmt(shelfOf(r.s.id, pid))} · 실재고 ${fmt(r.q)}</div>` : ''}</td><td class="n big ${r.q < 0 ? 'qty-neg' : ''}" style="font-size:18px">${r.has ? fmt(r.q) : '-'}</td><td style="width:1%">${r.has ? statusPill(r.q) : '<span class="pill p-mute">미등록</span>'}</td></tr>`).join('')}</tbody></table></div>
   ${can('move') ? `<div class="row"><button class="btn pri" data-quick="입고" data-qp="${esc(pid)}">입고 등록</button><button class="btn" data-quick="매장 이동" data-qp="${esc(pid)}">매장 이동</button>${can('count') ? `<button class="btn" data-quick="count" data-qp="${esc(pid)}">실사 입력</button>` : ''}</div>` : ''}
@@ -2708,7 +2710,7 @@ function inboundView() {
   const ib = S.inbounds.find(x => x.id === S.ui.ib);
   if (ib) { ibDropStale(ib); return ibDetailView(ib); }
   return `${head('입고 확인', '예정 수량을 한 번 올리고, 표에서 실입고를 적습니다', '<button class="btn pri" id="ibNew">입고 예정 올리기</button>')}
-  <div class="glist">${list.map(x => `<button type="button" class="grow" data-ib="${esc(x.id)}"><b>${esc(x.title)}</b><div class="code">${esc(storeName(x.store))} · ${x.items.length}종 · ${x.status === 'received' ? '입고 완료' : '실입고 입력'}</div></button>`).join('') || '<p class="src">아직 입고 예정이 없습니다.</p>'}</div>`;
+  <div class="glist">${list.map(x => `<div class="grow" style="display:flex;gap:8px;align-items:stretch"><button type="button" class="grow" data-ib="${esc(x.id)}"><b>${esc(x.title)}</b><div class="code">${esc(storeName(x.store))} · ${x.items.length}종 · ${x.status === 'received' ? '입고 완료' : '실입고 입력'}</div></button><button type="button" class="btn danger" data-ibdel="${esc(x.id)}">삭제</button></div>`).join('') || '<p class="src">아직 입고 예정이 없습니다.</p>'}</div>`;
 }
 function ibNewView() {
   const f = S.ui.ibForm ||= { store: S.stores[0], date: today(), title: '', ip: '', from: '', parsed: null, src: '', err: '' };
@@ -2734,7 +2736,7 @@ function ibDetailView(ib) {
     const bad = d != null && d !== 0;
     const diff = d == null ? '—' : (d > 0 ? '+' : '') + fmt(d);
     return `<div class="ibrow${bad ? ' bad' : ''}${S.ui.scanHit && (S.ui.scanHit === x.pid || S.ui.scanHit === x.bc) ? ' scanflash' : ''}" id="ibrow-${i}">
-      <div class="nm">${esc(x.name)}${x.opt ? ' · ' + esc(x.opt) : ''}<div class="code">${esc(x.code || x.bc || '')}${x.opt ? ' · ' + esc(x.opt) : ''}</div></div>
+      <div class="nm"><input class="inp" data-ibname="${i}" value="${esc(x.name || '')}" aria-label="상품명" placeholder="상품명">${x.opt != null || !done ? `<input class="inp" data-ibopt="${i}" value="${esc(x.opt || '')}" aria-label="옵션명" placeholder="옵션명" style="margin-top:4px">` : (x.opt ? ' · ' + esc(x.opt) : '')}<div class="code">${esc(x.code || x.bc || '')}</div><button type="button" class="btn danger" data-ibitemdel="${i}" style="margin-top:6px">삭제</button></div>
       <div><span class="iblbl">예정수량</span><b>${fmt(x.plan || 0)}</b></div>
       <div><span class="iblbl">실입고수량</span>${done ? `<b>${x.actual == null ? '—' : fmt(x.actual)}</b>` : `<input class="inp" inputmode="numeric" data-ibq="${i}" value="${x.actual == null ? '' : x.actual}" aria-label="${esc(x.name)} 실입고수량" placeholder="수량">`}</div>
       <div><span class="iblbl">차이</span><b class="ibdiff" data-ibdiff>${diff}</b></div>
@@ -2742,7 +2744,7 @@ function ibDetailView(ib) {
     </div>`;
   };
   const miss = ib.extra || [];
-  return `${head('입고 확인', esc(ib.title), done ? '<button class="btn" id="ibBack">목록</button>' : '<button class="btn pri phone-hide" data-act="ibConfirm">입고 확정</button>')}
+  return `${head('입고 확인', esc(ib.title), `<button class="btn danger" data-ibdel="${esc(ib.id)}">입고 삭제</button>${done ? '<button class="btn" id="ibBack">목록</button>' : '<button class="btn pri phone-hide" data-act="ibConfirm">입고 확정</button>'}`)}
   <div class="card cntbox">
     ${done ? '' : excelZone('ibActFile')}
     ${done ? '' : '<button type="button" class="btn xlbig" id="ibDl">실입고 입력용 엑셀 내려받기</button>'}
@@ -2880,6 +2882,65 @@ async function ibCancel() {
   if (DB.saveInbound) await DB.saveInbound(ib);
   toast('비교를 지웠습니다. 재고는 그대로입니다.');
 }
+async function renameRegisteredProduct(pid, name, opt) {
+  const p = S.P[pid]; if (!p) return false;
+  name = String(name || '').trim();
+  if (!name) { toast('상품명을 넣어 주세요'); return false; }
+  const prev = p.name;
+  p.name = name;
+  p.opt = String(opt || '').trim();
+  indexProducts();
+  for (const ib of (S.inbounds || [])) {
+    let hit = false;
+    for (const it of (ib.items || [])) if (it.pid === pid) { it.name = name; if (p.opt) it.opt = p.opt; hit = true; }
+    if (hit && DB.saveInbound) await DB.saveInbound(ib);
+  }
+  if (DB.saveProduct) await DB.saveProduct(p);
+  toast('이름을 바꿨습니다: ' + prev + ' → ' + name);
+  render();
+  return true;
+}
+async function ibRenameItem(i, name, opt) {
+  const ib = S.inbounds.find(x => x.id === S.ui.ib); if (!ib || !ib.items[i]) return;
+  name = String(name || '').trim();
+  if (!name) { toast('상품명을 넣어 주세요'); return; }
+  const row = ib.items[i];
+  row.name = name;
+  if (opt != null) row.opt = String(opt).trim();
+  if (row.pid && S.P[row.pid]) {
+    S.P[row.pid].name = name;
+    if (opt != null) S.P[row.pid].opt = String(opt).trim();
+    indexProducts();
+    if (DB.saveProduct) await DB.saveProduct(S.P[row.pid]);
+  }
+  if (DB.saveInbound) await DB.saveInbound(ib);
+}
+async function ibDelete(id) {
+  const ib = S.inbounds.find(x => x.id === id); if (!ib) return;
+  if (DB.deleteInbound) await DB.deleteInbound(id);
+  S.inbounds = S.inbounds.filter(x => x.id !== id);
+  if (S.ui.ib === id) S.ui.ib = null;
+  toast(ib.status === 'received' ? '입고 기록을 지웠습니다. 이미 반영된 재고는 그대로입니다.' : '입고 등록을 지웠습니다.');
+  render();
+}
+async function ibDeleteItem(i) {
+  const ib = S.inbounds.find(x => x.id === S.ui.ib); if (!ib || !ib.items[i]) return;
+  const name = ib.items[i].name;
+  ib.items.splice(i, 1);
+  if (DB.saveInbound) await DB.saveInbound(ib);
+  toast((name || '상품') + ' 줄을 지웠습니다');
+  render();
+}
+async function popDeleteItem(pid, iid) {
+  const p = popById(pid); if (!p) return;
+  const copy = JSON.parse(JSON.stringify(p));
+  const row = (copy.items || []).find(x => x.id === iid);
+  copy.items = (copy.items || []).filter(x => x.id !== iid);
+  if (row) popLog(copy, (row.name || '상품') + ' 상품을 지웠습니다');
+  await persistPopup(copy);
+  toast('상품을 지웠습니다');
+}
+
 async function ibConfirm(ib) {
   if (!ib || ib.status === 'received') return;
   ib.items.forEach(x => { if (x.actual == null) x.actual = 0; });
@@ -3103,10 +3164,39 @@ const COUNT_WORDS = ['실입고수량', '실제수량확인', '실제수량', '�
 function normHead(s) { return String(s ?? '').replace(/[\s\n\r\t()（）\[\]{}:：·.\-_/]/g, '').toLowerCase(); }
 function countWord(label) { const c = normHead(label); if (!c) return ''; let best = ''; for (const w of COUNT_WORDS) if (c.includes(normHead(w)) && w.length > best.length) best = w; return best; }
 function cleanLabel(s) { return String(s ?? '').replace(/[\r\n]+/g, ' ').replace(/\s+/g, ' ').trim(); }
+function excelSerialDate(n) {
+  if (typeof n !== 'number' || !isFinite(n) || n < 20000 || n > 80000) return '';
+  if (typeof XLSX !== 'undefined' && XLSX.SSF && XLSX.SSF.parse_date_code) {
+    const d = XLSX.SSF.parse_date_code(n);
+    if (!d) return '';
+    const p = x => String(x).padStart(2, '0');
+    return d.y + '-' + p(d.m) + '-' + p(d.d);
+  }
+  return '';
+}
+function cellText(v) {
+  if (v == null || v === '') return '';
+  if (Object.prototype.toString.call(v) === '[object Date]' && !isNaN(v)) {
+    const p = x => String(x).padStart(2, '0');
+    return v.getFullYear() + '-' + p(v.getMonth() + 1) + '-' + p(v.getDate());
+  }
+  if (typeof v === 'number' && isFinite(v)) {
+    if (Math.abs(v) >= 1e11 && Math.abs(v) < 1e15) return String(Math.round(v));
+    if (Math.abs(v - Math.round(v)) < 1e-9) return String(Math.round(v));
+    return String(v);
+  }
+  const s = foldText(v).trim();
+  if (/^\d+(?:\.\d+)?[eE]\+\d+$/.test(s)) {
+    const n = Number(s);
+    if (isFinite(n) && n >= 1e11 && n < 1e15) return String(Math.round(n));
+  }
+  return s;
+}
+function normalizeSheetRows(rows) { return (rows || []).map(r => (r || []).map(cellText)); }
 function isDateCell(s) { return /^\d{4}[./-]\d{1,2}[./-]\d{1,2}$/.test(s); }
 function isTimeCell(s) { return /^\d{1,2}:\d{2}(\s*[~\-～]\s*\d{1,2}:\d{2})?$/.test(s); }
 function isMemoCell(s) { return /^DP\s*수량/i.test(s) || /수량\s*[:：]\s*\d/.test(s); }
-function isBarcodeCell(s) { return /^880\d{9,12}$/.test(s) || /^\d{12,14}$/.test(s); }
+function isBarcodeCell(s) { const t = cellText(s).replace(/[\s']/g, ''); return /^880\d{9,12}$/.test(t) || /^\d{12,14}$/.test(t); }
 function isPlainNum(s) { return /^-?\d{1,3}(,\d{3})+(\.\d+)?$/.test(s) || /^-?\d+(\.\d+)?$/.test(s); }
 function isPrivateHead(label) { return /수령|담당|전화|연락|휴대폰|핸드폰|주소|address|phone|tel|mobile/.test(normHead(label)); }
 function isPhoneCell(s) { return /(?:^|\D)01[016789][-\s]?\d{3,4}[-\s]?\d{4}(?:\D|$)/.test(String(s || '')); }
@@ -3127,7 +3217,7 @@ function mapLabels(labels) {
     if (/바코드|barcode|ean|jan|upc|gtin/.test(n) && !/상품명|품명/.test(n)) { bc = bc < 0 ? i : bc; return; }
     if (n === '코드' && bc < 0) { bc = i; return; }
     if (/한글/.test(n) && /상품명|품명/.test(n)) nameKo = i;
-    else if (/상품명|품명|제품명|품목명/.test(n)) { if (name < 0) name = i; }
+    else if (/상품명|품명|제품명|품목명/.test(n) || n === '품목') { if (name < 0) name = i; }
     else if (/품번|^sku$/.test(n)) sku = sku < 0 ? i : sku;
   });
   if (nameKo >= 0) name = nameKo;
@@ -3137,12 +3227,14 @@ function mapLabels(labels) {
 }
 function planRank(h) {
   const n = normHead(h);
-  if (!n || /실입고|판매수량|dp수량|판매가|구매제한|재고/.test(n)) return 0;
+  if (!n || /실입고|dp수량|판매가|구매제한|재고/.test(n)) return 0;
+  if (/판매수량/.test(n) && !/1차납품|납품/.test(n)) return 0;
   if (/1차납품|납품수량/.test(n)) return 80;
+  if (n === '입고합계' || n === '입고수량합계') return 72;
   if (n === '입고수량') return 70;
+  if (n === '확정수량' || n === '수원수량') return 68;
   if (n === '예정수량') return 60;
   if (n === '발주수량') return 50;
-  if (n === '입고수량합계') return 15;
   return 0;
 }
 function actualRank(h) {
@@ -3159,7 +3251,9 @@ function actualRank(h) {
 }
 function genericRank(h) {
   const n = normHead(h);
-  if (!n || planRank(h) || actualRank(h) || /판매수량|dp수량|판매가|구매제한/.test(n)) return 0;
+  if (!n || planRank(h) || actualRank(h) || /실입고|dp수량|판매가|구매제한/.test(n)) return 0;
+  if (/판매수량/.test(n) && !/1차납품|납품/.test(n)) return 0;
+  if (n === '확정수량' || n === '수원수량') return 45;
   if (n === '수량' || n === '개수' || n === 'qty' || n === '입고') return 40;
   if (n === '재고' || n === '현재고' || n === '재고수량') return 25;
   return 0;
@@ -3173,13 +3267,15 @@ function catalogHead(labels) {
 }
 function isLabelCell(s) {
   const n = normHead(s);
-  if (!n || n.length > 30) return false;
+  if (!n || n.length >= 30) return false;
   if (countWord(s)) return true;
   return /^(no|번호|순번|구분)$/.test(n) || /바코드|상품명|품명|품번|옵션|입고|거래처|상품종류|비고|예정일|수량|재고|코드|품목|상품/.test(n);
 }
 function rowHeaderScore(row) {
   const cells = (row || []).map(c => String(c ?? '').trim()).filter(Boolean);
   if (cells.length < 2 || cells.some(isBarcodeCell)) return 0;
+  const uniq = new Set(cells.map(c => cleanLabel(c)));
+  if (uniq.size < 2) return 0;
   const labels = cells.filter(isLabelCell).length;
   const nums = cells.filter(c => isPlainNum(c)).length;
   if (labels < 2 || (nums > 1 && nums >= labels)) return 0;
@@ -3188,6 +3284,7 @@ function rowHeaderScore(row) {
 function headerTail(row) {
   const cells = (row || []).map(c => String(c ?? '').trim()).filter(Boolean);
   if (!cells.length || cells.some(isBarcodeCell) || cells.some(c => isPlainNum(c) && !isLabelCell(c))) return false;
+  if (new Set(cells.map(c => cleanLabel(c))).size < 2) return false;
   return cells.every(isLabelCell);
 }
 function bodyNums(rows, start, col) {
@@ -3230,7 +3327,7 @@ function sheetScore(name, rows) {
   const tab = normHead(name);
   if (/물류|입고/.test(tab)) score += 80;
   if (catalogHead(header.labels)) score -= 2000;
-  const sale = header.labels.findIndex(h => normHead(h).includes('판매수량'));
+  const sale = header.labels.findIndex(h => { const n = normHead(h); return n.includes('판매수량') && !/1차납품|납품/.test(n); });
   const realAct = header.labels.findIndex(h => actualRank(h) >= 90);
   if (sale >= 0 && bodyNums(peek, header.end + 1, sale) > 0 && (realAct < 0 || bodyNums(peek, header.end + 1, realAct) === 0)) score -= 1000;
   if (/출고정보|매대|노션/.test(tab) && !rawAct && !rawPlan) score -= 400;
@@ -3298,7 +3395,7 @@ function clipBigo(rows) {
 function isJunkRow(r) {
   const cells = (r || []).map(c => foldText(c).trim()).filter(Boolean);
   if (!cells.length) return true;
-  if (cells.some(c => /^(합계|총계|소계|총합|total|sum)$/i.test(c.replace(/\s/g, '')))) return true;
+  if (cells.some(c => /합계|총계|소계|총합|^total$|^sum$/i.test(String(c).replace(/\s/g, '')))) return true;
   if (cells.length === 1 && !isBarcodeCell(foldText(cells[0])) && !isPlainNum(cells[0])) return true;
   return false;
 }
@@ -3417,7 +3514,7 @@ function countParseRows(rows, pick) {
     if (map.name < 0 && map.prod >= 0 && map.prod !== map.bc && !isBarcodeCell(cell(r, map.prod))) name = cell(r, map.prod);
     const opt = cell(r, optCol);
     const keepOpt = !!(pick && (pick.splitOpt || pick.rawName));
-    if (!keepOpt && opt && !isLabelCell(opt) && name && !name.includes(opt)) name = (name + ' ' + opt).trim();
+    if (!keepOpt && opt && opt !== '-' && opt !== '—' && !isLabelCell(opt) && name && !name.includes(opt)) name = (name + ' ' + opt).trim();
     const peeled = peelQty(name); name = peeled.text;
     if (/^(합계|총계|소계|total)$/i.test(name)) return;
     if (!bc && isLabelCell(name)) return;
@@ -3538,10 +3635,31 @@ function countRepick(kind, idx) {
   S.ui.cntPick = { ...(S.ui.cntPick || {}), [kind]: idx };
   if (cntRows) countSetPreview(countParseRows(cntRows, S.ui.cntPick), (S.ui.cntPrev && S.ui.cntPrev.src) || '붙여넣기');
 }
+function isExcelDateFmt(cell) {
+  if (!cell) return false;
+  if (cell.t === 'd') return true;
+  const z = String(cell.z || '');
+  if (/[ymd]/i.test(z) && !/#/.test(z)) return true;
+  return /^\d{4}[./-]\d{1,2}[./-]\d{1,2}/.test(String(cell.w || ''));
+}
 function sheetRowsOf(ws) {
   if (!ws) return [];
-  let rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '', raw: false });
+  let rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '', raw: true });
   if (SM.fillMerges) rows = SM.fillMerges(rows, ws['!merges'] || []);
+  rows = normalizeSheetRows(rows);
+  if (ws['!ref'] && typeof XLSX !== 'undefined') {
+    const range = XLSX.utils.decode_range(ws['!ref']);
+    for (let r = range.s.r; r <= range.e.r && r < rows.length; r++) {
+      rows[r] = rows[r] || [];
+      for (let c = range.s.c; c <= range.e.c; c++) {
+        const cell = ws[XLSX.utils.encode_cell({ r, c })];
+        if (!cell || !isExcelDateFmt(cell)) continue;
+        const v = cell.t === 'd' ? cell.v : cell.v;
+        const dt = (v && Object.prototype.toString.call(v) === '[object Date]') ? cellText(v) : excelSerialDate(v);
+        if (dt) rows[r][c] = dt;
+      }
+    }
+  }
   return rows;
 }
 async function countUseSheet(name) {
@@ -4364,13 +4482,15 @@ async function commitPopIn(el) {
   const p = popById(pid); if (!p) return;
   const copy = JSON.parse(JSON.stringify(p));
   const row = (copy.items || []).find(x => x.id === iid); if (!row) return;
-  const label = { limit: '구매제한', qty: '확정수량', dp: 'DP', price: '가격' }[field] || field;
+  const label = { limit: '구매제한', qty: '확정수량', dp: 'DP', price: '가격', name: '상품명', opt: '옵션명' }[field] || (String(field || '').startsWith('opt:') ? '옵션명' : field);
   let next;
   if (field === 'qty' || field === 'dp' || field === 'price') {
     next = popNumOrEmpty(el.value);
     if (next === undefined) { toast('숫자만 입력해 주세요'); el.focus(); return; }
   } else next = String(el.value || '').trim();
-  const prev = row[field];
+  if (field === 'name' && !next) { toast('상품명을 넣어 주세요'); el.focus(); return; }
+  const optIdx = String(field || '').startsWith('opt:') ? +field.slice(4) : -1;
+  const prev = optIdx >= 0 ? ((row.options || [])[optIdx] || {}).name : (field === 'opt' ? row.opt : row[field]);
   const same = (field === 'qty' || field === 'dp' || field === 'price')
     ? (popHasNum(prev) ? +prev : null) === next
     : String(prev ?? '') === String(next);
@@ -4378,8 +4498,13 @@ async function commitPopIn(el) {
   S.ui.popDraft = null;
   if (same) { render(); return; }
   S.ui.popCommitting = key;
-  row[field] = next;
-  popLog(copy, `${row.name} ${label}: ${popHasNum(prev) ? prev : ''} → ${popHasNum(next) ? next : ''}`);
+  if (optIdx >= 0) {
+    row.options = row.options || [];
+    if (!row.options[optIdx]) row.options[optIdx] = { name: next };
+    else row.options[optIdx].name = next;
+  } else if (field === 'opt') row.opt = next;
+  else row[field] = next;
+  popLog(copy, `${field === 'name' ? (prev || '') : row.name} ${label}: ${popHasNum(prev) ? prev : (prev || '')} → ${popHasNum(next) ? next : (next || '')}`);
   try { await persistPopup(copy); }
   finally { if (S.ui.popCommitting === key) S.ui.popCommitting = ''; }
 }
@@ -4393,7 +4518,7 @@ function popupHub() {
   const admin = popAdmin();
   return `${head('팝업 상품리스트', '팝업 시작 전에 상품·가격·구매제한·확정수량을 미리 봅니다')}
   <div class="hubgrid">${list.map(p => { const s = popSums(p); return `<article class="hubcard"><div class="hub-kicker">${esc(p.stores || '')}</div><h2>${esc(p.name)}</h2><p class="hub-meta">${esc(p.start || '')} ~ ${esc(p.end || '')}</p><ul class="hub-sum"><li>판매 ${s.saleN}종 · ${popSumText(s.saleQ, s.sale, 'qty')} · DP ${popSumText(s.saleD, s.sale, 'dp')}</li>${s.tokN ? `<li>특전 ${s.tokN}종 · ${popSumText(s.tokQ, s.tok, 'qty')} · DP ${popSumText(s.tokD, s.tok, 'dp')}</li>` : ''}</ul><button type="button" class="btn pri" data-pop="${esc(p.id)}">상품 보기</button></article>`; }).join('') || '<p class="src">등록된 팝업이 없습니다.</p>'}</div>
-  ${admin ? `<div class="card"><h2>엑셀로 넣기</h2><p class="src">열 이름: 팝업명, 시작일, 종료일, 매장, 구분, 상품명, 이미지, 가격, 랜덤여부, 구매제한, 확정수량, DP수량, 비고. 이름이 조금 달라도 찾습니다. 팝업명과 상품명이 같으면 그 줄을 고칩니다.</p><button type="button" class="btn pri" id="popFile">엑셀 올리기</button></div>` : ''}`;
+  ${admin ? `<div class="card"><h2>엑셀로 넣기</h2><p class="src">열 이름이 조금 달라도, 머리글이 아래에 있어도, 열 순서가 달라도 찾습니다. 물류 일정처럼 입고수량·IP가 있는 표도 그대로 올리면 됩니다. 같은 팝업·상품이면 그 줄을 고칩니다.</p><button type="button" class="btn pri" id="popFile">엑셀 올리기</button></div>` : ''}`;
 }
 function popupDetail() {
   const p = popById(S.ui.popId);
@@ -4412,10 +4537,14 @@ function popupDetail() {
       if (admin && S.ui.popEdit === key) return `<div><span class="lb">${label}</span><input class="inp" data-popin="${esc(key)}" value="${esc(it[field] ?? '')}" aria-label="${label}"${field === 'qty' || field === 'dp' || field === 'price' ? ' inputmode="numeric"' : ''}></div>`;
       return `<div><span class="lb">${label}</span>${admin ? `<button type="button" class="cellbtn" data-pfield="${esc(key)}">${html}</button>` : `<b class="${it.limitNote && field === 'limit' ? 'pending' : ''}">${html}</b>`}</div>`;
     };
-    const nOpt = (it.options || []).filter(o => o && o.name).length;
+    const opts = (it.options || []).filter(o => o && o.name);
+    const nOpt = opts.length;
     const kindMark = nOpt >= 2 ? `<span class="pc-kinds">${nOpt}종</span>` : '';
     const shot = popImageBlank(it.image) ? '<span class="muted">이미지 없음</span>' : `<button type="button" class="pc-zoom" data-popimg="${esc(it.id)}" aria-label="${esc(it.name)} 크게 보기"><img src="${esc(it.image)}" alt="">${kindMark}</button>`;
-    return `<article class="pcard"><div class="pc-img">${shot}</div><div class="pc-body"><div class="pc-name">${esc(it.name)} ${kindBadge} ${badge}</div><div class="pc-price">${price} <span class="muted" style="font-weight:500;font-size:12px">VAT 포함</span></div><div class="pc-meta">${cell('limit', '구매제한', `${esc(it.limit || '미정')}${it.limitNote ? `<div class="pc-note">${esc(it.limitNote)}</div>` : ''}`)}${cell('qty', '확정수량', popQtyText(it.qty) || '입력')}${cell('dp', 'DP', popQtyText(it.dp) || '입력')}</div>${it.memo ? `<div class="pc-note">${esc(it.memo)}</div>` : ''}</div></article>`;
+    const nameCell = admin ? cell('name', '상품명', esc(it.name)) : `<div class="pc-name">${esc(it.name)} ${kindBadge} ${badge}</div>`;
+    const optCells = admin && nOpt ? `<div class="pc-meta">${opts.map((o, i) => cell('opt:' + i, '옵션명', esc(o.name))).join('')}</div>` : (it.opt && admin ? `<div class="pc-meta">${cell('opt', '옵션명', esc(it.opt))}</div>` : '');
+    const del = admin ? `<button type="button" class="btn danger" data-popidel="${esc(p.id + '|' + it.id)}" style="margin-top:8px">상품 삭제</button>` : '';
+    return `<article class="pcard"><div class="pc-img">${shot}</div><div class="pc-body">${nameCell}${admin ? ` ${kindBadge} ${badge}` : ''}<div class="pc-price">${price} <span class="muted" style="font-weight:500;font-size:12px">VAT 포함</span></div>${optCells}<div class="pc-meta">${cell('limit', '구매제한', `${esc(it.limit || '미정')}${it.limitNote ? `<div class="pc-note">${esc(it.limitNote)}</div>` : ''}`)}${cell('qty', '확정수량', popQtyText(it.qty) || '입력')}${cell('dp', 'DP', popQtyText(it.dp) || '입력')}</div>${it.memo ? `<div class="pc-note">${esc(it.memo)}</div>` : ''}${del}</div></article>`;
   };
   return `${head(p.name, `${esc(p.start || '')} ~ ${esc(p.end || '')} · ${esc(p.stores || '')} · 실입고 전 확정 수량`, '<button type="button" class="btn" id="popBack">목록으로</button>')}
   <div class="note-strip"><b>${popDday(p.start)}</b> · ${esc(today())} 기준${p.note ? ' · ' + esc(p.note) : ''}</div>
@@ -4502,28 +4631,120 @@ function closePopZoom() {
   render();
   resetZoom();
 }
-const POP_COLS = { name: ['팝업명', '팝업', '행사명'], start: ['시작일', '시작', '오픈일'], end: ['종료일', '종료', '마감일'], store: ['매장', '장소', '진행매장'], kind: ['구분', '종류'], item: ['상품명', '상품', '품명'], image: ['이미지', '이미지url', '사진'], price: ['가격', '판매가', '소비자가'], random: ['랜덤여부', '랜덤'], limit: ['구매제한', '제한'], qty: ['확정수량', '수원수량', '수량'], dp: ['dp수량', 'dp'], memo: ['비고', '메모'] };
+const POP_COLS = {
+  name: ['팝업명', '행사명', '팝업'],
+  start: ['시작일', '오픈일', '시작'],
+  end: ['종료일', '마감일', '종료'],
+  store: ['매장', '장소', '진행매장'],
+  kind: ['구분', '상품종류'],
+  item: ['상품명(한글)', '상품명', '품목명', '품명', '품목'],
+  image: ['이미지url', '이미지', '사진'],
+  price: ['판매가', '소비자가', '가격'],
+  random: ['랜덤여부', '랜덤'],
+  limit: ['구매제한', '제한'],
+  qty: ['확정수량', '수원수량', '입고수량', '예정수량', '입고합계', '1차납품', '수량'],
+  dp: ['dp수량', 'dp'],
+  memo: ['비고', '메모'],
+  ip: ['ip'],
+  opt: ['옵션명', '옵션'],
+  barcode: ['바코드', 'barcode', 'ean', 'jan', 'upc']
+};
+function popColScore(header, field, alias) {
+  const n = normHead(String(header || '')).replace(/vat포함|vat별도/g, '');
+  const a = normHead(alias);
+  if (!n || !a) return 0;
+  if (field === 'qty' && /실입고|dp수량|판매가|구매제한/.test(n) && !/1차납품/.test(n)) return 0;
+  if (field === 'item' && /상품종류/.test(n) && !/상품명|품명|품목명/.test(n)) return 0;
+  if (field === 'name' && (/상품명|품명/.test(n) || n === 'ip')) return 0;
+  if (field === 'kind' && n === '상품종류') return 8;
+  if (field === 'item' && /한글/.test(String(header || '')) && /상품명|품명/.test(n)) return 12;
+  if (n === a) return 10;
+  if (a.length >= 2 && (n.startsWith(a) || n.endsWith(a))) return 7;
+  if (a.length >= 2 && n.includes(a)) return 4;
+  return 0;
+}
 function popHeadMap(headers) {
-  const map = {};
-  headers.forEach((h, i) => {
-    const n = normHead(String(h || '')).replace(/vat포함|vat별도/g, '');
-    for (const [k, names] of Object.entries(POP_COLS)) if (!map[k] && names.some(nm => n === normHead(nm) || n.includes(normHead(nm)))) map[k] = i;
-  });
+  const map = {}, used = new Set();
+  for (const [field, aliases] of Object.entries(POP_COLS)) {
+    let bi = -1, bs = 0;
+    (headers || []).forEach((h, i) => {
+      if (used.has(i)) return;
+      aliases.forEach((al, ai) => {
+        const s = popColScore(h, field, al) + (aliases.length - ai) * 0.01;
+        if (s > bs) { bs = s; bi = i; }
+      });
+    });
+    if (bi >= 0 && bs >= 4) { map[field] = bi; used.add(bi); }
+  }
   return map;
 }
+function popGuessName(raw) {
+  const s = String(raw || '').replace(/[<>＜＞\[\]【】]/g, '').replace(/\s*팝업(스토어)?\s*$/, '').trim();
+  if (!s) return '';
+  const docs = (typeof popupDocs === 'function' ? popupDocs() : []) || [];
+  const hit = docs.find(p => {
+    const n = String(p.name || '').replace(/\s*팝업스토어\s*$/, '').trim();
+    return n && (p.name === raw || p.name.includes(s) || s.includes(n) || n.includes(s));
+  });
+  return hit ? hit.name : (s + ' 팝업스토어');
+}
+function popDpFromMemo(s) {
+  const m = String(s || '').match(/DP\s*수량\s*[:：]?\s*(\d+)/i);
+  return m ? parseInt(m[1], 10) : 0;
+}
+function popNormItemName(name) {
+  return String(name || '').replace(/^[A-Za-z]+_?\d+[_\s-]+/, '').replace(/^특전\s+/, '').replace(/\s*\([^)]*\)\s*$/, '').trim();
+}
+function popFindItem(items, name) {
+  const raw = String(name || '').trim();
+  const cleaned = popNormItemName(raw);
+  let m = (items || []).filter(x => x.name === raw || x.name === cleaned);
+  if (m.length === 1) return m[0];
+  m = (items || []).filter(x => {
+    const n = popNormItemName(x.name);
+    return n && cleaned && (cleaned === n || cleaned.startsWith(n + '_') || cleaned.startsWith(n + ' ') || n.startsWith(cleaned + ' ') || n.startsWith(cleaned + '_'));
+  });
+  if (m.length === 1) return m[0];
+  if (m.length > 1) {
+    m.sort((a, b) => popNormItemName(b.name).length - popNormItemName(a.name).length);
+    const bestLen = popNormItemName(m[0].name).length;
+    const best = m.filter(x => popNormItemName(x.name).length === bestLen);
+    if (best.length === 1) return best[0];
+  }
+  return null;
+}
 function popRowsFromTable(rows) {
-  const header = (rows || []).findIndex(r => (r || []).some(c => /상품명|팝업명/.test(String(c || ''))));
-  if (header < 0) return { err: '상품명 열을 찾지 못했습니다.' };
-  const map = popHeadMap(rows[header]);
+  const list = rows || [];
+  const found = typeof findHeader === 'function' ? findHeader(list) : null;
+  let headerIdx, map;
+  if (found && found.labels && found.labels.length) {
+    headerIdx = found.end;
+    map = popHeadMap(found.labels);
+  } else {
+    headerIdx = list.findIndex(r => (r || []).some(c => /상품명|팝업명|품목/.test(String(c || ''))));
+    if (headerIdx < 0) return { err: '상품명 열을 찾지 못했습니다.' };
+    map = popHeadMap((list[headerIdx] || []).map(cleanLabel));
+  }
   if (map.item == null) return { err: '상품명 열을 찾지 못했습니다.' };
   const out = [];
-  for (let i = header + 1; i < rows.length; i++) {
-    const r = rows[i];
-    const g = ci => ci == null ? '' : String(r[ci] ?? '').trim();
-    const item = g(map.item);
+  for (let i = headerIdx + 1; i < list.length; i++) {
+    const r = list[i];
+    const g = ci => ci == null ? '' : cellText((r || [])[ci] ?? '').trim();
+    const item = g(map.item) || (map.opt != null ? g(map.opt) : '');
     if (!item) continue;
+    if (/합계|총계|소계|총합|^total$/i.test(item.replace(/\s/g, ''))) continue;
+    const memo = g(map.memo);
+    let qty = popNumOrEmpty(g(map.qty));
+    if (qty != null && (qty >= 1e7 || isBarcodeCell(String(qty)))) qty = null;
+    if (/^[※*]|출처|원본/.test(item) || (typeof isLabelCell === 'function' && isLabelCell(item) && !/[가-힣].{1,}/.test(item) && item.length < 6)) continue;
+    if (/^[※*]/.test(item)) continue;
+
+    let dp = map.dp != null ? popNumOrEmpty(g(map.dp)) : null;
+    if (dp == null) { const d = popDpFromMemo(memo); dp = d ? d : null; }
+    const pop = g(map.name) || popGuessName(g(map.ip));
     const rnd = /^(y|yes|랜덤|true|1)$/i.test(g(map.random));
-    out.push({ excelRow: i + 1, pop: g(map.name), start: g(map.start).slice(0, 10), end: g(map.end).slice(0, 10), store: g(map.store), kind: /특전/.test(g(map.kind)) ? '특전' : '판매', name: item, image: g(map.image), price: parseInt(g(map.price).replace(/[^\d]/g, ''), 10) || 0, random: rnd || /랜덤/.test(item), randomN: 0, limit: g(map.limit), limitNote: '', qty: parseInt(g(map.qty).replace(/[^\d]/g, ''), 10) || 0, dp: parseInt(g(map.dp).replace(/[^\d]/g, ''), 10) || 0, memo: g(map.memo) });
+    const kindRaw = g(map.kind);
+    out.push({ excelRow: i + 1, pop, start: g(map.start).slice(0, 10), end: g(map.end).slice(0, 10), store: g(map.store), kind: /특전/.test(kindRaw) || /^특전/.test(item) ? '특전' : '판매', name: item, opt: g(map.opt), bc: g(map.barcode), image: g(map.image), price: popNumOrEmpty(g(map.price)) || 0, random: rnd || /랜덤/.test(item), randomN: 0, limit: g(map.limit), limitNote: '', qty: qty || 0, dp: dp || 0, memo, ip: g(map.ip) });
   }
   return { rows: out };
 }
@@ -4546,12 +4767,29 @@ async function popApplyRows(rows, src, ambRows) {
     if (first.store) copy.stores = first.store;
     const items = copy.items || [];
     for (const r of list) {
-      let it = items.find(x => x.name === r.name);
-      if (!it) { it = { id: 'i' + items.length + Date.now().toString(36).slice(-4), name: r.name }; items.push(it); }
-      Object.assign(it, { kind: r.kind, name: r.name, price: r.price, random: r.random, qty: r.qty, dp: r.dp, limit: r.limit || it.limit || '', memo: r.memo || it.memo || '' });
+      let it = popFindItem(items, r.name) || items.find(x => x.name === r.name);
+      const fresh = !it;
+      if (!it) { it = { id: 'i' + items.length + Date.now().toString(36).slice(-4), name: popNormItemName(r.name) || r.name }; items.push(it); }
+      if (it._acc === src) {
+        it.qty = (popHasNum(it.qty) ? +it.qty : 0) + (r.qty || 0);
+        it.dp = (popHasNum(it.dp) ? +it.dp : 0) + (r.dp || 0);
+        if (r.opt && it.options) { /* keep */ }
+      } else {
+        if (r.kind) it.kind = r.kind;
+        if (fresh) it.name = popNormItemName(r.name) || r.name;
+        if (r.price) it.price = r.price;
+        it.random = r.random || it.random;
+        it.qty = r.qty;
+        it.dp = r.dp;
+        it.limit = r.limit || it.limit || '';
+        it.memo = r.memo || it.memo || '';
+        if (r.opt) it.opt = r.opt;
+        it._acc = src;
+      }
       if (r.image) it.image = r.image;
       n++;
     }
+    items.forEach(it => { delete it._acc; });
     copy.items = items;
     const pics = list.filter(r => r.embedded).length;
     const amb = ambRows && ambRows.length ? ` · 그림이 겹친 행 ${ambRows.join(', ')}은 빼 둠` : '';
@@ -4661,7 +4899,7 @@ async function readBook(f) { await needX();
   return XLSX.read(await f.arrayBuffer(), { type: 'array' });
 }
 // 파일 끌어다 놓기: 파일 고르기 버튼이 있는 칸 어디에 놓아도 그 버튼을 누른 것과 같게
-const FILE_BTNS = ['fileBtn', 'posFileBtn', 'rulesBtn', 'ibPlanFile', 'ibSheetFile', 'ibPlanImg', 'ibActFile', 'cntFile', 'mvFile', 'pullFile', 'shipFile', 'machFileBtn', 'naverFileBtn', 'schedFile'];
+const FILE_BTNS = ['fileBtn', 'popFile', 'posFileBtn', 'rulesBtn', 'ibPlanFile', 'ibSheetFile', 'ibPlanImg', 'ibActFile', 'cntFile', 'mvFile', 'pullFile', 'shipFile', 'machFileBtn', 'naverFileBtn', 'schedFile'];
 let pendingDrop = null;
 const okType = (f, accept) => !accept || accept.split(',').some(a => { a = a.trim().toLowerCase(); if (!a) return false; if (a.endsWith('/*')) return (f.type || '').toLowerCase().startsWith(a.slice(0, -1)); if (a.startsWith('.')) return f.name.toLowerCase().endsWith(a); return (f.type || '').toLowerCase() === a; });
 function markDropZones() {
@@ -5589,7 +5827,7 @@ const SM = (() => {
   function score1(cell, f) {
     const c = nz(cell); if (!c) return 0; let best = 0;
     SYN[f].forEach((k, i) => { const w = 1 - i * .02; if (c === k) best = Math.max(best, 3 * w); else if (k.length >= 2 && (c.startsWith(k) || c.endsWith(k))) best = Math.max(best, 2 * w); else if (k.length >= 2 && c.includes(k)) best = Math.max(best, 1.2 * w); });
-    if (f === 'qty' && /현재고|참고|리스트/.test(c)) best *= .5; if (f === 'qty' && /금액|가격|단가/.test(c)) best = 0; if (f === 'name' && /코드|번호|바코드/.test(c)) best = 0; if (f === 'sku' && /바코드|barcode/.test(c)) best = 0;
+    if (f === 'qty' && /현재고|참고|리스트/.test(c)) best *= .5; if (f === 'qty' && /금액|가격|단가|dp수량/.test(c)) best = 0; if (f === 'qty' && /입고합계|확정수량|입고수량/.test(c)) best += 1.5; if (f === 'name' && /코드|번호|바코드/.test(c)) best = 0; if (f === 'name' && /한글/.test(String(cell ?? ''))) best += 1.2; if (f === 'sku' && /바코드|barcode/.test(c)) best = 0;
     return best;
   }
   const score = (cell, f) => { const parts = String(cell ?? '').split(' > '); if (parts.length < 2) return score1(cell, f); const L = parts.length - 1; return Math.max(score1(parts[L], f), ...parts.slice(0, L).map(x => score1(x, f) * .6), score1(parts.join(''), f) * .7); };
@@ -5635,7 +5873,7 @@ const SM = (() => {
     return wb.SheetNames.map(n => { const ws = wb.Sheets[n]; if (!ws['!ref']) return null;
       let mr = 0, mc = 0; for (const k of Object.keys(ws)) { if (k[0] === '!') continue; const v = ws[k]; if (v && v.v !== '' && v.v != null) { const a = XLSX.utils.decode_cell(k); if (a.r > mr) mr = a.r; if (a.c > mc) mc = a.c; } }
       ws['!ref'] = XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: mr, c: mc } });
-      return { n, rows: fillMerges(XLSX.utils.sheet_to_json(ws, { header: 1, defval: '', raw: true, blankrows: true }), ws['!merges'] || []) }; }).filter(Boolean);
+      return { n, rows: normalizeSheetRows(fillMerges(XLSX.utils.sheet_to_json(ws, { header: 1, defval: '', raw: true, blankrows: true }), ws['!merges'] || [])) }; }).filter(Boolean);
   }
   return { SYN, nz, numVal, isNum, TOTAL, detectHeader, headerBlock, flatHeader, signature, autoMap, bookSheets, fillMerges };
 })();
@@ -5935,6 +6173,10 @@ function bind() {
           .finally(() => { S.ui.seeding = false; render(); });
       }); return;
     }
+    if (d.ibdel) { const ib = S.inbounds.find(x => x.id === d.ibdel); confirmDrawer('입고 삭제', `<p style="margin:0">${esc(ib ? ib.title : '')} 등록을 지웁니다.${ib && ib.status === 'received' ? ' 이미 재고에 반영된 수량은 그대로입니다.' : ''}</p>`, '삭제', () => ibDelete(d.ibdel), true); return; }
+    if (d.ibitemdel != null) { const ib = S.inbounds.find(x => x.id === S.ui.ib); const row = ib && ib.items[+d.ibitemdel]; confirmDrawer('상품 삭제', `<p style="margin:0">${esc(row ? row.name : '이 줄')}을 이 입고에서 지웁니다.</p>`, '삭제', () => ibDeleteItem(+d.ibitemdel), true); return; }
+    if (d.popidel) { const [pid, iid] = d.popidel.split('|'); const p = popById(pid); const it = p && (p.items || []).find(x => x.id === iid); confirmDrawer('상품 삭제', `<p style="margin:0">${esc(it ? it.name : '이 상품')}을 팝업 목록에서 지웁니다.</p>`, '삭제', () => popDeleteItem(pid, iid), true); return; }
+    if (d.prensave) { const name = (document.getElementById('prodNameEdit') || {}).value; const opt = (document.getElementById('prodOptEdit') || {}).value; await renameRegisteredProduct(d.prensave, name, opt); return; }
     if (d.ib) { S.ui.ib = d.ib; S.ui.ibMsg = null; S.ui.ibF = 'all'; render(); goTop(); return; }
     if (t.id === 'ibNew') { S.ui.ib = 'new'; S.ui.ibForm = null; render(); return; }
     if (t.id === 'ibBack') { S.ui.ib = null; S.ui.ibStep = null; render(); return; }
@@ -6137,6 +6379,15 @@ function bind() {
   }));
   document.querySelectorAll('[data-ibnote]').forEach(el => el.addEventListener('input', () => {
     const ib = S.inbounds.find(x => x.id === S.ui.ib); const row = ib && ib.items[+el.dataset.ibnote]; if (row) row.note = el.value;
+  }));
+  document.querySelectorAll('[data-ibname],[data-ibopt]').forEach(el => el.addEventListener('change', () => {
+    const ib = S.inbounds.find(x => x.id === S.ui.ib); if (!ib) return;
+    const i = +(el.dataset.ibname != null ? el.dataset.ibname : el.dataset.ibopt);
+    const row = ib.items[i]; if (!row) return;
+    const box = el.closest('.ibrow');
+    const nameEl = box && box.querySelector('[data-ibname]');
+    const optEl = box && box.querySelector('[data-ibopt]');
+    ibRenameItem(i, nameEl ? nameEl.value : row.name, optEl ? optEl.value : row.opt);
   }));
   const rq = $('#rq'); if (rq) rq.oninput = debounce(() => { S.ui.recQ = rq.value; rerenderKeep('#rq'); });
   const eq = $('#eq');
@@ -6475,10 +6726,15 @@ async function popImagesByRow(buf, onlyName) {
 function popPickSheet(wb) {
   let best = null;
   for (const name of wb.SheetNames) {
-    const rows = XLSX.utils.sheet_to_json(wb.Sheets[name], { header: 1, defval: '' });
+    const rows = sheetRowsOf(wb.Sheets[name]);
     const parsed = popRowsFromTable(rows);
     if (parsed.err || !parsed.rows.length) continue;
-    const score = parsed.rows.length + (/팝업\s*수량|상품리스트/.test(name) ? 1000 : 0);
+    let score = parsed.rows.length;
+    if (/상품리스트|상품\s*수량|물류|입고/.test(name) && !/요약|안내|가이드/.test(name)) score += 1000;
+    if (/요약|안내|가이드/.test(name)) score -= 500;
+    score += parsed.rows.filter(r => r.pop).length * 2;
+    score += parsed.rows.filter(r => r.price > 0).length;
+    score += parsed.rows.filter(r => r.bc).length;
     if (!best || score > best.score) best = { name, parsed, score };
   }
   return best;
@@ -6511,7 +6767,7 @@ async function popReloadSheet() {
   const text = await res.text();
   await needX();
   const wb = XLSX.read(text, { type: 'string' });
-  const rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, defval: '' });
+  const rows = normalizeSheetRows(XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, defval: '', raw: true }));
   const parsed = popRowsFromTable(rows);
   if (parsed.err) { toast(parsed.err); return; }
   parsed.rows.forEach(r => { if (!r.pop) r.pop = p.name; });
