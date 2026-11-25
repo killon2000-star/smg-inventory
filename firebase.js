@@ -181,6 +181,8 @@ window.SMG_FIREBASE = function (S, X) {
     async deleteStaff(email) { await db.collection('staff').doc(String(email || '').trim()).delete(); return true; },
     async saveUplog(row) { await db.collection('uplogs').doc(row.id).set(row); return true; },
     async saveInbound(ib) { await db.collection('inbounds').doc(ib.id).set(JSON.parse(JSON.stringify(ib))); },
+    async deleteInbound(id) { await db.collection('inbounds').doc(id).delete(); },
+    async deleteProduct(id) { await db.collection('products').doc(key(id)).delete(); },
     async saveSettleRules(r) { await db.collection('settle').doc('_rules').set(r); },
     async savePopup(p) { await db.collection('popups').doc(p.id).set(p); },
     async deletePopup(id) { await db.collection('popups').doc(id).delete(); },
