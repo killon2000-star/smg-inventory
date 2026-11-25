@@ -1020,6 +1020,18 @@ tr.off td{opacity:.45}
 .btn.danger{background:#A8232A;color:#fff;border:0}
 @media(max-width:700px){.modepair{grid-template-columns:1fr}}
 .dirpair{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:0 0 12px}
+.actpair{display:grid;grid-template-columns:1fr 1fr;gap:8px;width:100%;margin:0 0 12px;align-items:stretch}
+.actpair>.btn{min-height:56px;height:100%;width:100%;margin:0;display:flex;align-items:center;justify-content:center;text-align:center;font-size:16px;font-weight:800;white-space:normal;line-height:1.25;padding:12px 8px;box-sizing:border-box}
+@media(max-width:360px){.actpair>.btn{font-size:15px;min-height:52px;padding:10px 6px}}
+.ohrow{display:grid;grid-template-columns:1fr 1fr;gap:8px;align-items:end;margin:0 0 8px}
+.ohrow .ohqty{min-width:0}
+.ohrow .ohadd{grid-column:1/-1;min-height:48px;width:100%}
+.popdiff{font-size:13px;margin-top:6px;color:var(--muted)}
+.popdiff b.up{color:var(--hot)}
+.popdiff b.dn{color:#1F5FBF}
+.upbatch .uprow{padding:10px 0;border-bottom:1px solid var(--line-2)}
+.upbatch .uprow:last-child{border-bottom:0}
+
 #app button.dirbtn{min-height:84px;border:0;border-radius:12px;color:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;padding:10px}
 .dirbtn b{font-size:18px;font-weight:800}
 .dirbtn small{font-size:13px;font-weight:700}
@@ -1255,8 +1267,8 @@ body.sched-on .pha > .chip{border-radius:8px;justify-content:center}
 <script defer src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
 <script defer src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 <script defer src="config.js"></script>
-<script defer src="firebase.js?v=138"></script>
-<script defer src="app.js?v=138"></script>
+<script defer src="firebase.js?v=139"></script>
+<script defer src="app.js?v=139"></script>
 <script>if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});</script>
 
 </body></html>
