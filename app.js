@@ -50,7 +50,7 @@ const PERM_DEF = [
 ];
 
 const DEFAULT_ORDER = STORES.map(s => s.id);
-const APP_VERSION = '2026-11-24 09:31';   // 앱 화면을 마지막으로 고친 시각 (한국 시간)
+const APP_VERSION = '2026-11-25 19:19';   // 앱 화면을 마지막으로 고친 시각 (한국 시간)
 /* ───────── 작은 도구 ───────── */
 const $ = (s, el = document) => el.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -404,6 +404,12 @@ addEventListener('popstate', () => { if (navStack.length) goBack(); });
 function render() {
   if (inChange && ptrDown) { renderPending = true; return; }
   renderPending = false;
+  // 다른 자료가 와서 화면을 다시 그려도, 수량 입력 중인 값은 잃지 않게 잠시 담아 둔다.
+  const popFocus = document.activeElement;
+  if (popFocus && popFocus.dataset && popFocus.dataset.popin && !S.ui.popCommitting) {
+    S.ui.popDraft = { key: popFocus.dataset.popin, value: popFocus.value };
+    S.ui.popEdit = popFocus.dataset.popin;
+  }
   const app = $('#app');
   if (S.ui.locked || actorRevoked()) {
     document.body.classList.remove('in-app');
@@ -452,7 +458,13 @@ function render() {
   ${S.ui.toast ? `<div class="toast" role="status">${esc(S.ui.toast)}</div>` : ''}`;
   { const tb = document.querySelector('.tabbar'), z = S.ui.textZoom || 1; if (tb) tb.style.zoom = z === 1 ? '' : String(1 / z); }   // 글자 크기를 바꿔도 아래 메뉴는 화면 폭에 딱 맞게
   bind(); pinTabbar(); fitPopZoom(); fitTabLabels(); fitTabbarBox(); fitNotice(); markDropZones(); placeClock();
-  document.querySelectorAll('[data-popin]').forEach(el => { el.focus(); el.addEventListener('keydown', e => { if (e.key === 'Enter') el.blur(); }); el.addEventListener('blur', () => setTimeout(() => { if (S.ui.popEdit === el.dataset.popin) { S.ui.popEdit = ''; render(); } }, 0)); });
+  document.querySelectorAll('[data-popin]').forEach(el => {
+    el.focus();
+    if (S.ui.popDraft && S.ui.popDraft.key === el.dataset.popin) el.value = S.ui.popDraft.value;
+    el.addEventListener('input', () => { S.ui.popDraft = { key: el.dataset.popin, value: el.value }; });
+    el.addEventListener('keydown', e => { if (e.key === 'Enter') el.blur(); });
+    el.addEventListener('blur', () => commitPopIn(el));
+  });
   // 왼쪽 메뉴 아래가 시계에 가려지지 않게: 시계 높이만큼 아래 여백 (글자 크기 목록은 위로 펼침)
   const kc = document.querySelector('.kclock'); if (kc && kc.offsetHeight) document.documentElement.style.setProperty('--kch', kc.offsetHeight + 'px');
   fitSide();
@@ -4321,16 +4333,55 @@ function popLog(p, what) {
 }
 async function persistPopup(p) {
   S.popLive = [JSON.parse(JSON.stringify(p)), ...(S.popLive || []).filter(x => x.id !== p.id)];
-  try { localStorage.setItem('smg-popup-live', JSON.stringify(S.popLive)); } catch (e) {}
+  try { localStorage.setItem('smg-popup-live-v137', JSON.stringify(S.popLive)); } catch (e) {}
   if (DB.savePopupProduct) { try { await DB.savePopupProduct(p); } catch (e) { toast('서버에 저장하지 못했습니다: ' + (e.message || e)); } }
   render();
+}
+function popHasNum(v) { return v != null && v !== ''; }
+function popQtyText(v) { return popHasNum(v) ? fmt(v) + '개' : ''; }
+function popSumText(n, items, key) {
+  const has = (items || []).some(x => popHasNum(x[key]));
+  return has ? fmt(n) + '개' : '—';
 }
 function popSums(p) {
   const sale = (p.items || []).filter(x => x.kind !== '특전');
   const tok = (p.items || []).filter(x => x.kind === '특전');
-  const q = a => a.reduce((n, x) => n + (+x.qty || 0), 0);
-  const d = a => a.reduce((n, x) => n + (+x.dp || 0), 0);
-  return { saleN: sale.length, saleQ: q(sale), saleD: d(sale), tokN: tok.length, tokQ: q(tok), tokD: d(tok), allQ: q(p.items || []), allD: d(p.items || []) };
+  const q = a => a.reduce((n, x) => n + (popHasNum(x.qty) ? +x.qty || 0 : 0), 0);
+  const d = a => a.reduce((n, x) => n + (popHasNum(x.dp) ? +x.dp || 0 : 0), 0);
+  return { saleN: sale.length, saleQ: q(sale), saleD: d(sale), tokN: tok.length, tokQ: q(tok), tokD: d(tok), allQ: q(p.items || []), allD: d(p.items || []), items: p.items || [], sale, tok };
+}
+function popNumOrEmpty(raw) {
+  const s = String(raw ?? '').trim().replace(/[^\d-]/g, '');
+  if (s === '' || s === '-') return null;
+  const n = parseInt(s, 10);
+  return Number.isNaN(n) ? undefined : n;
+}
+async function commitPopIn(el) {
+  if (!el || !el.dataset || !el.dataset.popin || !popAdmin()) return;
+  const key = el.dataset.popin;
+  if (S.ui.popCommitting === key) return;
+  const [pid, iid, field] = key.split('|');
+  const p = popById(pid); if (!p) return;
+  const copy = JSON.parse(JSON.stringify(p));
+  const row = (copy.items || []).find(x => x.id === iid); if (!row) return;
+  const label = { limit: '구매제한', qty: '확정수량', dp: 'DP', price: '가격' }[field] || field;
+  let next;
+  if (field === 'qty' || field === 'dp' || field === 'price') {
+    next = popNumOrEmpty(el.value);
+    if (next === undefined) { toast('숫자만 입력해 주세요'); el.focus(); return; }
+  } else next = String(el.value || '').trim();
+  const prev = row[field];
+  const same = (field === 'qty' || field === 'dp' || field === 'price')
+    ? (popHasNum(prev) ? +prev : null) === next
+    : String(prev ?? '') === String(next);
+  S.ui.popEdit = '';
+  S.ui.popDraft = null;
+  if (same) { render(); return; }
+  S.ui.popCommitting = key;
+  row[field] = next;
+  popLog(copy, `${row.name} ${label}: ${popHasNum(prev) ? prev : ''} → ${popHasNum(next) ? next : ''}`);
+  try { await persistPopup(copy); }
+  finally { if (S.ui.popCommitting === key) S.ui.popCommitting = ''; }
 }
 function popDday(start) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(start || '')) return '';
@@ -4341,7 +4392,7 @@ function popupHub() {
   const list = popupDocs();
   const admin = popAdmin();
   return `${head('팝업 상품리스트', '팝업 시작 전에 상품·가격·구매제한·확정수량을 미리 봅니다')}
-  <div class="hubgrid">${list.map(p => { const s = popSums(p); return `<article class="hubcard"><div class="hub-kicker">${esc(p.stores || '')}</div><h2>${esc(p.name)}</h2><p class="hub-meta">${esc(p.start || '')} ~ ${esc(p.end || '')}</p><ul class="hub-sum"><li>판매 ${s.saleN}종 · ${fmt(s.saleQ)}개 · DP ${fmt(s.saleD)}개</li>${s.tokN ? `<li>특전 ${s.tokN}종 · ${fmt(s.tokQ)}개 · DP ${fmt(s.tokD)}개</li>` : ''}</ul><button type="button" class="btn pri" data-pop="${esc(p.id)}">상품 보기</button></article>`; }).join('') || '<p class="src">등록된 팝업이 없습니다.</p>'}</div>
+  <div class="hubgrid">${list.map(p => { const s = popSums(p); return `<article class="hubcard"><div class="hub-kicker">${esc(p.stores || '')}</div><h2>${esc(p.name)}</h2><p class="hub-meta">${esc(p.start || '')} ~ ${esc(p.end || '')}</p><ul class="hub-sum"><li>판매 ${s.saleN}종 · ${popSumText(s.saleQ, s.sale, 'qty')} · DP ${popSumText(s.saleD, s.sale, 'dp')}</li>${s.tokN ? `<li>특전 ${s.tokN}종 · ${popSumText(s.tokQ, s.tok, 'qty')} · DP ${popSumText(s.tokD, s.tok, 'dp')}</li>` : ''}</ul><button type="button" class="btn pri" data-pop="${esc(p.id)}">상품 보기</button></article>`; }).join('') || '<p class="src">등록된 팝업이 없습니다.</p>'}</div>
   ${admin ? `<div class="card"><h2>엑셀로 넣기</h2><p class="src">열 이름: 팝업명, 시작일, 종료일, 매장, 구분, 상품명, 이미지, 가격, 랜덤여부, 구매제한, 확정수량, DP수량, 비고. 이름이 조금 달라도 찾습니다. 팝업명과 상품명이 같으면 그 줄을 고칩니다.</p><button type="button" class="btn pri" id="popFile">엑셀 올리기</button></div>` : ''}`;
 }
 function popupDetail() {
@@ -4358,17 +4409,17 @@ function popupDetail() {
     const kindBadge = it.kind === '특전' ? '<span class="pill p-mute">특전</span>' : '';
     const cell = (field, label, html) => {
       const key = `${p.id}|${it.id}|${field}`;
-      if (admin && S.ui.popEdit === key) return `<div><span class="lb">${label}</span><input class="inp" data-popin="${esc(key)}" value="${esc(it[field] ?? '')}" aria-label="${label}"></div>`;
+      if (admin && S.ui.popEdit === key) return `<div><span class="lb">${label}</span><input class="inp" data-popin="${esc(key)}" value="${esc(it[field] ?? '')}" aria-label="${label}"${field === 'qty' || field === 'dp' || field === 'price' ? ' inputmode="numeric"' : ''}></div>`;
       return `<div><span class="lb">${label}</span>${admin ? `<button type="button" class="cellbtn" data-pfield="${esc(key)}">${html}</button>` : `<b class="${it.limitNote && field === 'limit' ? 'pending' : ''}">${html}</b>`}</div>`;
     };
     const nOpt = (it.options || []).filter(o => o && o.name).length;
     const kindMark = nOpt >= 2 ? `<span class="pc-kinds">${nOpt}종</span>` : '';
     const shot = popImageBlank(it.image) ? '<span class="muted">이미지 없음</span>' : `<button type="button" class="pc-zoom" data-popimg="${esc(it.id)}" aria-label="${esc(it.name)} 크게 보기"><img src="${esc(it.image)}" alt="">${kindMark}</button>`;
-    return `<article class="pcard"><div class="pc-img">${shot}</div><div class="pc-body"><div class="pc-name">${esc(it.name)} ${kindBadge} ${badge}</div><div class="pc-price">${price} <span class="muted" style="font-weight:500;font-size:12px">VAT 포함</span></div><div class="pc-meta">${cell('limit', '구매제한', `${esc(it.limit || '미정')}${it.limitNote ? `<div class="pc-note">${esc(it.limitNote)}</div>` : ''}`)}${cell('qty', '확정수량', fmt(it.qty) + '개')}${cell('dp', 'DP', fmt(it.dp) + '개')}</div>${it.memo ? `<div class="pc-note">${esc(it.memo)}</div>` : ''}</div></article>`;
+    return `<article class="pcard"><div class="pc-img">${shot}</div><div class="pc-body"><div class="pc-name">${esc(it.name)} ${kindBadge} ${badge}</div><div class="pc-price">${price} <span class="muted" style="font-weight:500;font-size:12px">VAT 포함</span></div><div class="pc-meta">${cell('limit', '구매제한', `${esc(it.limit || '미정')}${it.limitNote ? `<div class="pc-note">${esc(it.limitNote)}</div>` : ''}`)}${cell('qty', '확정수량', popQtyText(it.qty) || '입력')}${cell('dp', 'DP', popQtyText(it.dp) || '입력')}</div>${it.memo ? `<div class="pc-note">${esc(it.memo)}</div>` : ''}</div></article>`;
   };
   return `${head(p.name, `${esc(p.start || '')} ~ ${esc(p.end || '')} · ${esc(p.stores || '')} · 실입고 전 확정 수량`, '<button type="button" class="btn" id="popBack">목록으로</button>')}
   <div class="note-strip"><b>${popDday(p.start)}</b> · ${esc(today())} 기준${p.note ? ' · ' + esc(p.note) : ''}</div>
-  <div class="sumgrid"><div class="card sumc"><div class="lb">판매 상품 ${s.saleN}종</div><div class="big">${fmt(s.saleQ)}개</div><div class="muted">DP ${fmt(s.saleD)}개</div></div><div class="card sumc"><div class="lb">특전 ${s.tokN}종</div><div class="big">${fmt(s.tokQ)}개</div><div class="muted">DP ${fmt(s.tokD)}개</div></div><div class="card sumc"><div class="lb">합계</div><div class="big">${fmt(s.allQ)}개</div><div class="muted">DP ${fmt(s.allD)}개 · 실입고 전</div></div></div>
+  <div class="sumgrid"><div class="card sumc"><div class="lb">판매 상품 ${s.saleN}종</div><div class="big">${popSumText(s.saleQ, s.sale, 'qty')}</div><div class="muted">DP ${popSumText(s.saleD, s.sale, 'dp')}</div></div><div class="card sumc"><div class="lb">특전 ${s.tokN}종</div><div class="big">${popSumText(s.tokQ, s.tok, 'qty')}</div><div class="muted">DP ${popSumText(s.tokD, s.tok, 'dp')}</div></div><div class="card sumc"><div class="lb">합계</div><div class="big">${popSumText(s.allQ, s.items, 'qty')}</div><div class="muted">DP ${popSumText(s.allD, s.items, 'dp')} · 실입고 전</div></div></div>
   <div class="card"><div class="fl">상품 구분</div><div class="fchips">${chips.map(([id, t]) => `<button type="button" class="fchip ${f === id ? 'on' : ''}" data-popf="${id}">${t}</button>`).join('')}</div><p class="src">보이는 상품 ${items.length}종</p></div>
   <div class="pgrid">${items.map(card).join('')}</div>
   ${admin ? `<div class="card"><h2>시트에서 다시 불러오기</h2><p class="src">구글 시트는 링크가 있는 사람 보기, 또는 CSV 주소여야 합니다.</p><input class="inp" id="popSheet" value="${esc(p.sheetUrl || '')}" placeholder="시트 주소" aria-label="시트 주소"><button type="button" class="btn pri" id="popReload" style="margin-top:8px">시트에서 다시 불러오기</button></div>` : ''}
@@ -4397,7 +4448,7 @@ function popZoomLayer() {
   const nav = many ? '<button type="button" class="popzoom-nav prev" data-popopt="prev" aria-label="이전 옵션">‹</button><button type="button" class="popzoom-nav next" data-popopt="next" aria-label="다음 옵션">›</button>' : '';
   const optLine = many ? `<div class="popzoom-opt">${esc(slide.name)} · ${i + 1}/${n}</div>` : '';
   const thumbs = many ? `<div class="popzoom-thumbs">${slides.map((s, k) => `<button type="button" class="popzoom-thumb${k === i ? ' on' : ''}" data-popopt="${k}" aria-label="${esc(s.name)}">${popImageBlank(s.image) ? '<span>사진 없음</span>' : `<img src="${esc(s.image)}" alt="">`}</button>`).join('')}</div>` : '';
-  return `<div class="popzoom" id="popZoom" role="dialog" aria-modal="true" aria-label="${esc(it.name)} 크게 보기"><div class="popzoom-bar"><button type="button" class="popzoom-x" id="popZoomX" aria-label="닫기">×</button></div><div class="popzoom-stage">${nav}${pic}</div><div class="popzoom-cap">${optLine}<b>${esc(it.name)}</b><div class="popzoom-price">${price} <span>VAT 포함</span></div><div>확정수량 ${fmt(it.qty)}개</div></div>${thumbs}</div>`;
+  return `<div class="popzoom" id="popZoom" role="dialog" aria-modal="true" aria-label="${esc(it.name)} 크게 보기"><div class="popzoom-bar"><button type="button" class="popzoom-x" id="popZoomX" aria-label="닫기">×</button></div><div class="popzoom-stage">${nav}${pic}</div><div class="popzoom-cap">${optLine}<b>${esc(it.name)}</b><div class="popzoom-price">${price} <span>VAT 포함</span></div><div>확정수량 ${popQtyText(it.qty) || '—'}</div></div>${thumbs}</div>`;
 }
 function popOptGo(which) {
   const p = popById(S.ui.popId);
@@ -4507,7 +4558,7 @@ async function popApplyRows(rows, src, ambRows) {
     popLog(copy, `${src}에서 ${list.length}줄을 맞췄습니다${pics ? ` · 그림 ${pics}개` : ''}${amb}`);
     S.popLive = [copy, ...(S.popLive || []).filter(x => x.id !== copy.id)];
   }
-  try { localStorage.setItem('smg-popup-live', JSON.stringify(S.popLive)); } catch (e) {}
+  try { localStorage.setItem('smg-popup-live-v137', JSON.stringify(S.popLive)); } catch (e) {}
   if (DB.savePopupProduct) for (const p of S.popLive) { try { await DB.savePopupProduct(p); } catch (e) { toast('서버에 저장하지 못했습니다'); break; } }
   const pics = rows.filter(r => r.embedded).length;
   const amb = ambRows && ambRows.length ? ` · 그림이 겹쳐 빼 둔 행 ${ambRows.join(', ')}` : '';
@@ -5997,16 +6048,7 @@ function bind() {
   app.onchange = ev => { inChange = true; try { onChange(ev); } finally { inChange = false; } };
   const onChange = ev => {
     if (ev.target && ev.target.dataset && ev.target.dataset.popin && popAdmin()) {
-      const [pid, iid, field] = ev.target.dataset.popin.split('|');
-      const p = popById(pid); if (!p) return;
-      const copy = JSON.parse(JSON.stringify(p));
-      const row = (copy.items || []).find(x => x.id === iid); if (!row) return;
-      const label = { limit: '구매제한', qty: '확정수량', dp: 'DP', price: '가격' }[field] || field;
-      const next = (field === 'qty' || field === 'dp' || field === 'price') ? (parseInt(String(ev.target.value).replace(/[^\d-]/g, ''), 10) || 0) : ev.target.value.trim();
-      const prev = row[field];
-      S.ui.popEdit = '';
-      if (String(prev ?? '') !== String(next)) { row[field] = next; popLog(copy, `${row.name} ${label}: ${prev ?? ''} → ${next}`); persistPopup(copy); }
-      else render();
+      commitPopIn(ev.target);
       return;
     }
     const t = ev.target, d = t.dataset;
@@ -6481,7 +6523,7 @@ async function popReloadSheet() {
 async function start() {
   try {
     try { S.popSeed = (await (await fetch('data/popup-products.json')).json()).popups || []; } catch (e) { S.popSeed = []; }
-    try { S.popLive = JSON.parse(localStorage.getItem('smg-popup-live') || '[]'); } catch (e) { S.popLive = []; }
+    try { S.popLive = JSON.parse(localStorage.getItem('smg-popup-live-v137') || '[]'); } catch (e) { S.popLive = []; }
     if (FB) { S.mode = 'live'; DB = FB.backend; await FB.start(); }
     else { await DB.load(); indexProducts(); setUser(S.users[0]); }
     S.ready = true; render();
