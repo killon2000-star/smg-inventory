@@ -50,7 +50,7 @@ const PERM_DEF = [
 ];
 
 const DEFAULT_ORDER = STORES.map(s => s.id);
-const APP_VERSION = '2026-11-25 19:53';   // 앱 화면을 마지막으로 고친 시각 (한국 시간)
+const APP_VERSION = '2026-11-25 20:18';   // 앱 화면을 마지막으로 고친 시각 (한국 시간)
 /* ───────── 작은 도구 ───────── */
 const $ = (s, el = document) => el.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -978,6 +978,235 @@ async function logUp(rec) {
   if (DB.saveUplog && S.mode === 'live') { try { await DB.saveUplog(row); } catch (e) {} }
   return row;
 }
+function wantDemo() {
+  try { return /^(localhost|127\.0\.0\.1)$/.test(location.hostname) && /(?:^|[?&])demo=1(?:&|$)/.test(location.search); } catch (e) { return false; }
+}
+function canRegQty() { return !stockFloor() && (typeof popAdmin === 'function' ? (popAdmin() || can('move') || can('count') || isOwner()) : true); }
+function isOnhand() { return S.ui.cntKind === 'onhand'; }
+function actPair(planId, stockId) {
+  return `<div class="actpair" role="group" aria-label="등록 방법"><button type="button" class="btn pri" id="${planId}" data-actgo="plan">입고예정 등록</button><button type="button" class="btn pri" id="${stockId}" data-actgo="stock">실재고 입력</button></div>`;
+}
+function openPlanReg(from) {
+  S.view = 'inbound'; S.ui.ib = 'new'; S.ui.regFrom = from || ''; S.ui.drawer = null; S.ui.ibForm = S.ui.ibForm || { store: S.stores[0], date: today(), title: '', ip: '', from: '', parsed: null, src: '', err: '' };
+  render(); goTop();
+}
+function openOnhandReg(from) {
+  S.view = 'count'; S.ui.cntKind = 'onhand'; S.ui.cntFrom = from || ''; S.ui.cntPrev = null; S.ui.cntMsg = null; S.ui.drawer = null;
+  render(); goTop();
+}
+function fmtWhen(iso) {
+  if (!iso) return '';
+  const d = new Date(iso); if (isNaN(d)) return String(iso);
+  const p = n => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+function warnNote(t) { return `<div class="note warn">${t}</div>`; }
+function planVsOnhand(plan, onhand) {
+  if (plan == null || plan === '' || onhand == null || onhand === '') return '';
+  const p = +plan, o = +onhand; if (isNaN(p) || isNaN(o)) return '';
+  const d = o - p; const cls = d > 0 ? 'up' : d < 0 ? 'dn' : '';
+  return `<div class="popdiff">입고예정 ${fmt(p)} · 실재고 ${fmt(o)} · 차이 <b class="${cls}">${d > 0 ? '+' : ''}${fmt(d)}</b></div>`;
+}
+function onhandOfPopItem(it) {
+  if (!it) return null;
+  if (it.onhand != null && it.onhand !== '') return +it.onhand;
+  const bc = it.barcode || it.bc || it.code;
+  const p = bc && typeof productByBarcode === 'function' ? productByBarcode(String(bc)) : null;
+  if (p) return stockOf(S.stores[0], p.id);
+  const hits = it.name ? (S.byName[norm(it.name)] || []) : [];
+  if (hits.length === 1) return stockOf(S.stores[0], hits[0].id);
+  return null;
+}
+function manualRowBox(prefix) {
+  return `<div class="card ohmanual"><h2>직접 입력</h2><div class="ohrow"><div class="field"><label for="${prefix}Name">상품명</label><input class="inp" id="${prefix}Name" placeholder="상품명"></div><div class="field"><label for="${prefix}Bc">바코드 (있으면)</label><input class="inp" id="${prefix}Bc" placeholder="바코드"></div><div class="field ohqty"><label for="${prefix}Qty">수량</label><input class="inp" id="${prefix}Qty" placeholder="수량" inputmode="numeric"></div><button type="button" class="btn pri ohadd" id="${prefix}Add">줄 추가</button></div><p class="src">바코드가 없어도 이름만으로 등록됩니다. 전산에 없으면 새 상품으로 넣습니다. 수량을 비워도 막히지 않고 경고만 보여 줍니다.</p></div>`;
+}
+const UP_BATCH_KEY = 'smg-upload-batches-v139';
+const DEMO_STATE_KEY = 'smg-demo-state-v139';
+function loadUpBatches() {
+  try { S.upBatches = JSON.parse(localStorage.getItem(UP_BATCH_KEY) || '[]'); } catch (e) { S.upBatches = []; }
+  if (!Array.isArray(S.upBatches)) S.upBatches = [];
+}
+function persistUpBatches() {
+  try { localStorage.setItem(UP_BATCH_KEY, JSON.stringify((S.upBatches || []).slice(0, 200))); } catch (e) {}
+}
+function persistDemoState() {
+  if (S.mode !== 'demo') return;
+  try { localStorage.setItem(DEMO_STATE_KEY, JSON.stringify({ products: S.products, stock: S.stock, cab: S.cab, moves: S.moves, inbounds: S.inbounds, transfers: S.transfers, warehouse: S.warehouse })); } catch (e) {}
+}
+function restoreDemoState() {
+  try {
+    const d = JSON.parse(localStorage.getItem(DEMO_STATE_KEY) || 'null');
+    if (!d || !Array.isArray(d.products)) return false;
+    S.products = d.products; S.stock = d.stock || S.stock; S.cab = d.cab || S.cab;
+    S.moves = d.moves || S.moves; S.inbounds = d.inbounds || S.inbounds;
+    S.transfers = d.transfers || S.transfers; S.warehouse = d.warehouse || S.warehouse;
+    return true;
+  } catch (e) { return false; }
+}
+function recordUpBatch(b) {
+  loadUpBatches();
+  const row = { id: 'UB' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5), at: new Date().toISOString(), by: (S.user || {}).name || '', menu: b.menu || '', kind: b.kind || '', file: b.file || '', rows: b.rows || 0, warns: b.warns || [], effects: b.effects || [], inboundId: b.inboundId || '', popupId: b.popupId || '', createdPids: b.createdPids || [], status: 'applied' };
+  S.upBatches.unshift(row); persistUpBatches();
+  logUp({ button: row.menu, file: row.file, action: '올리기', note: `${row.rows}행${row.warns && row.warns.length ? ' · 경고 ' + row.warns.length : ''}` });
+  persistDemoState();
+  return row;
+}
+function upBatchesFor(menu) {
+  loadUpBatches();
+  if (!menu) return S.upBatches || [];
+  const set = Array.isArray(menu) ? menu : [menu];
+  return (S.upBatches || []).filter(u => set.includes(u.menu) || set.includes(u.kind));
+}
+function upBatchCard(menus) {
+  const list = upBatchesFor(menus);
+  if (!list.length) return '';
+  return `<div class="card upbatch" id="upBatchCard"><h2>올린 파일</h2><p class="src">파일 이름·시간·행수가 남습니다. 문제 행만 지울 수도 있고, 그 파일로 들어온 값을 통째로 되돌릴 수도 있습니다.</p>${list.slice(0, 30).map(u => {
+    const nWarn = (u.warns || []).length || (u.effects || []).filter(e => e.warn && !e.reverted).length;
+    const left = (u.effects || []).filter(e => !e.reverted).length;
+    const done = u.status === 'reverted' || !left;
+    return `<div class="uprow${done ? ' muted' : ''}"><b>${esc(u.file || '직접 입력')}</b><div class="code">${esc(fmtWhen(u.at))}${u.by ? ' · ' + esc(u.by) : ''} · ${u.rows}행${nWarn ? ' · 경고 ' + nWarn : ''}${done ? ' · 취소됨' : ''}</div>${done ? '' : `<div class="row" style="margin-top:8px;flex-wrap:wrap;gap:8px"><button type="button" class="btn" data-uprows="${esc(u.id)}">문제 행만 삭제</button><button type="button" class="btn danger" data-upundo="${esc(u.id)}">이 파일 등록 취소</button></div>`}</div>`;
+  }).join('')}</div>`;
+}
+function ensureProduct(r) {
+  const bc = foldText(r.bc || r.barcode || r.code || '').replace(/\s/g, '');
+  const sku = String(r.sku || '').trim();
+  const name = String(r.name || '').trim() || '이름 없음';
+  let p = bc && typeof productByBarcode === 'function' ? productByBarcode(bc) : null;
+  if (!p && r.pid && S.P[r.pid]) p = S.P[r.pid];
+  if (!p && sku) { const hits = findProduct(sku) || []; if (hits.length) p = hits[0]; }
+  if (!p && name && name !== '이름 없음') { const hits = S.byName[norm(name)] || []; if (hits.length) p = hits[0]; }
+  if (p) return { prod: p, created: false };
+  const id = bc || ('n' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6));
+  const ip = typeof fileIp === 'function' ? fileIp(r.ip, name) : { ip: r.ip || '', cat: r.cat || '' };
+  p = { id, barcode: bc, sku, name, ip: ip.ip || r.ip || '', cat: r.cat || ip.cat || '', price: r.price == null ? null : r.price, kind: r.kind || '상설', memo: r.vendor || r.memo || '', opt: r.opt || '', createdBy: (S.user || {}).name || '', createdAt: new Date().toISOString(), fromUpload: true };
+  S.products.push(p); indexProducts();
+  if (DB.saveProduct) DB.saveProduct(p);
+  return { prod: p, created: true };
+}
+async function applyUpEffectReverse(e) {
+  if (!e || e.reverted) return;
+  if (e.type === 'stock') {
+    const st = e.store || S.stores[0];
+    const cur = stockOf(st, e.pid);
+    const target = e.before;
+    const diff = (target == null ? 0 : +target) - cur;
+    if (diff !== 0 && e.pid) {
+      const m = { id: 'u' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5), date: today(), store: st, type: typeof COUNT_TYPE !== 'undefined' ? COUNT_TYPE : '재고 조정', pid: e.pid, qty: diff, cab: 0, memo: `업로드 취소${e.file ? ' · ' + e.file : ''}`, by: (S.user || {}).name || '', at: new Date().toISOString() };
+      stampList([m]); await DB.saveMoves(stampMoves([m], e.file || '')); S.moves.push(m); applyStock(m);
+    }
+  } else if (e.type === 'popup') {
+    const p = popById(e.popupId); const it = p && (p.items || []).find(x => x.id === e.itemId);
+    if (it && e.field) { it[e.field] = e.before; await persistPopup(p); }
+  } else if (e.type === 'inboundItem') {
+    const ib = S.inbounds.find(x => x.id === e.inboundId);
+    if (ib) {
+      if (e.op === 'add') ib.items = (ib.items || []).filter(x => x.key !== e.itemKey);
+      else if (e.field) { const it = (ib.items || []).find(x => x.key === e.itemKey || (e.pid && x.pid === e.pid)); if (it) it[e.field] = e.before; }
+      if (DB.saveInbound) await DB.saveInbound(ib);
+    }
+  } else if (e.type === 'inbound') {
+    const ib = S.inbounds.find(x => x.id === e.inboundId);
+    if (ib && ib.status !== 'received' && DB.deleteInbound) await DB.deleteInbound(ib.id);
+    else if (ib && DB.deleteInbound) await DB.deleteInbound(ib.id);
+    S.inbounds = S.inbounds.filter(x => x.id !== e.inboundId);
+  } else if (e.type === 'move') {
+    const m = S.moves.find(x => x.id === e.moveId);
+    if (m) {
+      const inv = { ...m, id: 'u' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5), qty: -(m.qty || 0), cab: -(m.cab || 0), memo: (m.memo || '') + ' · 업로드 취소', at: new Date().toISOString() };
+      stampList([inv]); await DB.saveMoves(stampMoves([inv], e.file || '')); S.moves.push(inv); applyStock(inv);
+    }
+  } else if (e.type === 'product' && e.op === 'add' && e.pid) {
+    S.products = S.products.filter(p => p.id !== e.pid);
+    const st = e.store || S.stores[0]; if (S.stock[st]) delete S.stock[st][e.pid];
+    indexProducts(); if (DB.deleteProduct) await DB.deleteProduct(e.pid);
+  }
+  e.reverted = true;
+}
+async function revertUpBatch(id, onlyKeys) {
+  loadUpBatches();
+  const b = (S.upBatches || []).find(x => x.id === id);
+  if (!b || b.status === 'reverted') return;
+  const effects = (b.effects || []).filter(e => !e.reverted && (!onlyKeys || (onlyKeys === 'warns' ? e.warn : onlyKeys.includes(e.key))));
+  for (const e of effects.slice().reverse()) await applyUpEffectReverse(e);
+  if (!(b.effects || []).some(e => !e.reverted)) b.status = 'reverted';
+  persistUpBatches(); persistDemoState();
+  await logUp({ button: b.menu, file: b.file, action: onlyKeys === 'warns' ? '문제 행 삭제' : (onlyKeys ? '행 삭제' : '파일 등록 취소'), note: `${effects.length}건 되돌림` });
+  toast(onlyKeys === 'warns' ? `문제 행 ${effects.length}건을 지웠습니다` : (onlyKeys ? '선택한 행을 지웠습니다' : `${b.file || '등록'}을 취소하고 값을 되돌렸습니다`));
+  render();
+}
+function openUpRows(id) {
+  loadUpBatches();
+  const b = (S.upBatches || []).find(x => x.id === id); if (!b) return;
+  const rows = (b.effects || []).filter(e => !e.reverted);
+  const warns = rows.filter(e => e.warn);
+  const show = warns.length ? warns : rows.slice(0, 80);
+  S.ui.drawer = () => `<div class="hd"><h3>문제 행 삭제</h3><button class="x" data-close aria-label="닫기">×</button></div><div class="card"><p class="src">${esc(b.file || '직접 입력')} · ${esc(fmtWhen(b.at))} · ${b.rows}행</p>${show.length ? `<div class="glist">${show.map(e => `<div class="grow"><b>${esc(e.label || e.pid || e.key || '행')}</b><div class="code">${esc(e.why || (e.warn ? '경고' : ''))}${e.after != null && e.after !== '' ? ' · ' + fmt(e.after) : ''}</div><button type="button" class="btn danger" data-updelrow="${esc(b.id + '|' + e.key)}">이 행만 삭제</button></div>`).join('')}</div>` : '<p class="src">지울 행이 없습니다.</p>'}${warns.length ? `<div class="row" style="margin-top:12px;justify-content:flex-end"><button class="btn danger" data-upundowarn="${esc(b.id)}">문제 행 모두 삭제</button></div>` : ''}</div>`;
+  render();
+}
+async function applyPlanToPopups(items, src) {
+  const effects = [];
+  const list = typeof popupDocs === 'function' ? popupDocs() : [];
+  for (const p of list) {
+    let changed = false;
+    for (const it of p.items || []) {
+      const hit = (items || []).find(r => (r.bc && (it.barcode === r.bc || it.bc === r.bc || it.code === r.bc)) || (r.name && norm(it.name) === norm(r.name)));
+      if (!hit) continue;
+      const after = hit.plan != null ? hit.plan : hit.qty;
+      if (after == null) continue;
+      const before = it.qty;
+      it.qty = after; changed = true;
+      effects.push({ type: 'popup', key: p.id + '|' + it.id + '|qty', popupId: p.id, itemId: it.id, field: 'qty', before, after, label: it.name, file: src });
+    }
+    if (changed) await persistPopup(p);
+  }
+  return effects;
+}
+async function syncPopupOnhand(rows, src) {
+  const effects = [];
+  const list = typeof popupDocs === 'function' ? popupDocs() : [];
+  for (const p of list) {
+    let changed = false;
+    for (const it of p.items || []) {
+      const hit = (rows || []).find(r => (r.bc && (it.barcode === r.bc || it.bc === r.bc || it.code === r.bc)) || (r.pid && (it.pid === r.pid || it.id === r.pid)) || (r.name && norm(it.name) === norm(r.name)));
+      if (!hit || hit.qty == null) continue;
+      const before = it.onhand;
+      it.onhand = hit.qty; changed = true;
+      effects.push({ type: 'popup', key: p.id + '|' + it.id + '|onhand', popupId: p.id, itemId: it.id, field: 'onhand', before, after: it.onhand, label: it.name, file: src });
+    }
+    if (changed) await persistPopup(p);
+  }
+  return effects;
+}
+function addManualRow(kind) {
+  const prefix = kind === 'plan' ? 'ibMan' : 'oh';
+  const name = String((document.getElementById(prefix + 'Name') || {}).value || '').trim();
+  const bc = String((document.getElementById(prefix + 'Bc') || {}).value || '').trim();
+  const raw = String((document.getElementById(prefix + 'Qty') || {}).value || '').trim();
+  const qty = raw === '' ? 0 : Number(String(raw).replace(/[^\d.-]/g, ''));
+  const warn = (!name && !bc) || raw === '' || isNaN(qty);
+  const row = { name: name || '이름 없음', bc, qty: isNaN(qty) ? 0 : qty, plan: isNaN(qty) ? 0 : qty, warn, why: !name && !bc ? '이름·바코드가 비어 있습니다' : (raw === '' ? '수량이 비어 있어 0으로 넣습니다' : '') };
+  if (kind === 'plan') {
+    const f = S.ui.ibForm ||= { store: S.stores[0], date: today(), title: '', ip: '', from: '', parsed: [], src: '직접 입력', err: '' };
+    f.parsed = [...(f.parsed || []), row]; f.src = f.src || '직접 입력';
+    if (warn) f.err = row.why;
+    render(); return;
+  }
+  const { prod } = ensureProduct(row);
+  row.pid = prod.id;
+  const st = S.stores[0];
+  const p = S.ui.cntPrev || { src: '직접 입력', matched: [], missing: [], fresh: [], absent: 0, blankN: 0, cols: [], warns: [] };
+  if (prod && S.P[prod.id] && !prod.fromUpload && stockOf(st, prod.id) != null) {
+    const book = stockOf(st, prod.id);
+    p.matched.push({ pid: prod.id, name: prod.name, code: prod.barcode || '', qty: row.qty, book, bookCab: shelfOf(st, prod.id), bookWh: book - shelfOf(st, prod.id), diff: row.qty - book, lines: 1, warn: row.warn, why: row.why });
+  } else {
+    p.fresh = p.fresh || [];
+    p.fresh.push({ key: row.bc || norm(row.name) + Math.random().toString(36).slice(2, 5), bc: row.bc, name: row.name, qty: row.qty, lines: 1, on: true, warn: row.warn, why: row.why, pid: prod.id });
+  }
+  if (row.warn) p.warns = [...(p.warns || []), row.why];
+  S.ui.cntPrev = p; S.ui.cntMsg = row.warn ? { warn: true, html: row.why } : null;
+  render();
+}
+
 function actorRevoked() {
   const a = S.actor;
   if (!a || a.owner || a.position === '대표' || a.position === '본부장') return false;
@@ -1188,7 +1417,9 @@ async function stockDownload(kind) {
 function stockInTop() {
   const mode = S.ui.stockMode || 'collab';
   const card = (id, title, sub, on) => `<section class="modecard${on ? ' on' : ''}"><button type="button" class="dirbtn ${id === 'collab' ? 'dir-out' : 'dir-back'}${on ? ' on' : ''}" data-stockmode="${id}"><b>${title}</b><small>${sub}</small></button><button type="button" class="btn pri xlbig" data-stockup="${id}">엑셀 올리기</button><button type="button" class="btn xlbig" data-stockdl="${id}">${id === 'collab' ? '실입고 양식 내려받기' : '현재 재고 내려받기'}</button></section>`;
-  return `<div class="modepair">${card('collab', '콜라보 IP상품', '입고예정 · 실입고', mode === 'collab')}${card('regular', '상설상품', '자유 양식 · 이름 그대로', mode === 'regular')}</div>`;
+  const detail = S.ui.ib && S.ui.ib !== 'new';
+  const pair = detail ? '' : `<div class="card"><p class="src">입고 예정이 없어도 실재고를 먼저 넣을 수 있습니다. 두 값이 다 있으면 차이를 보여 줍니다.</p>${actPair('ibPlanGo','ibStockGo')}</div>${upBatchCard(['입고 확인', '입고예정 등록', '실재고 입력'])}`;
+  return pair + `<div class="modepair">${card('collab', '콜라보 IP상품', '입고예정 · 실입고', mode === 'collab')}${card('regular', '상설상품', '자유 양식 · 이름 그대로', mode === 'regular')}</div>`;
 }
 function regularPanel() {
   const p = S.ui.regPrev;
@@ -2011,7 +2242,10 @@ function productsView() {
     return `${per}<td class="n big ${cls(r.t)}" style="font-size:16px">${fmt(r.t)}</td>`;
   };
   const heads = oneSuwon && pilot ? '<th class="n bin-wide">창고</th><th class="n bin-wide">매대</th><th class="n">실재고</th>' : `<th class="n">${multi ? '합계' : '재고'}</th>`;
-  return `${head(stockFloor() ? '현재 수량 확인' : '상품·재고', `${fmt(rows.length)}종 · ${pilot ? SHELF_IPS.join(' · ') + ' · ' : ''}${freshLine(st) || '이름·바코드·품번·IP로 찾기'}`, `<button class="btn" id="scanBtn">${ic('scan')} 카메라 스캔</button>${stockFloor() ? '' : '<button class="btn pri" id="stockDoc">재고 문서 출력</button>'}`)}${oneSuwon ? dirPair() : ''}${freshTable(st, { sales: false })}
+  return `${head(stockFloor() ? '현재 수량 확인' : '상품·재고', `${fmt(rows.length)}종 · ${pilot ? SHELF_IPS.join(' · ') + ' · ' : ''}${freshLine(st) || '이름·바코드·품번·IP로 찾기'}`, `<button class="btn" id="scanBtn">${ic('scan')} 카메라 스캔</button>${stockFloor() ? '' : '<button class="btn pri" id="stockDoc">재고 문서 출력</button>'}`)}
+  ${canRegQty() ? `<div class="card"><h2>수량 등록</h2><p class="src">입고 예정과 실재고는 따로, 어떤 순서로든 등록할 수 있습니다. 현재 수량 화면에서도 실재고를 바로 넣을 수 있습니다.</p>${actPair('prPlanGo','prStockGo')}</div>` : ''}
+  ${upBatchCard(['현재 수량', '입고예정 등록', '실재고 입력', '실사'])}
+  ${oneSuwon ? dirPair() : ''}${freshTable(st, { sales: false })}
   <div class="card" style="display:flex;flex-direction:column;gap:10px">
     ${pilot ? `<p class="src">지금은 ${esc(SHELF_IPS.join(' · '))}만 창고와 매대로 나눕니다. 실재고 = 창고 + 매대.</p><button class="btn" type="button" id="shelfAll">다른 IP 보기</button>` : (oneSuwon ? '<button class="btn" type="button" id="shelfAll">에반게리온 · 진격의 거인만</button>' : '')}
     <div class="row"><div class="search">${ic('search')}<input class="inp" id="pq" type="search" placeholder="상품명, 바코드, 품번, IP" value="${esc(S.ui.q)}" autocomplete="off"></div>
@@ -2281,12 +2515,16 @@ function placeDrawer() {
     <div class="formgrid"><div class="field"><label for="plPerson">현장 담당자</label><input class="inp" id="plPerson" value="${esc(f.person)}" placeholder="이름"></div><div class="field"><label for="plMemo">메모</label><input class="inp" id="plMemo" value="${esc(f.memo)}"></div></div>
     ${dup.length ? `<div class="note warn">🔸 같은 이름의 장소가 이미 ${dup.length}곳 있습니다: ${dup.map(p => esc(placeLabel(p))).join(' / ')}<br>날짜·위치가 다르면 새로 등록하고, 같은 곳이면 목록에서 고르세요.</div>` : ''}
   </div>
-  <div class="row" style="justify-content:flex-end"><button class="btn" data-close>취소</button><button class="btn pri" id="plSave" ${f.name.trim() && f.start ? '' : 'disabled'}>장소 등록</button></div>`;
+  <div class="row" style="justify-content:flex-end"><button class="btn" data-close>취소</button><button class="btn pri" id="plSave">장소 등록</button></div>`;
 }
 async function savePlace() {
-  const f = S.ui.placeForm; const n = S.places.filter(p => p.start === f.start).length + 1;
-  const id = 'P' + f.start.replace(/-/g, '').slice(2) + '-' + String(n).padStart(2, '0') + Math.random().toString(36).slice(2, 5);
-  const p = { id, name: f.name.trim(), kind: f.kind, start: f.start, end: f.end || f.start, addr: f.addr.trim(), person: f.person.trim(), memo: f.memo.trim(), q: {}, by: S.user.name, at: new Date().toISOString() };
+  const f = S.ui.placeForm; if (!f) return;
+  if (!(f.name || '').trim() || !f.start) toast('🔸 이름 또는 시작일이 비어 있습니다. 이대로 등록합니다.');
+  const start = f.start || today();
+  const name = (f.name || '').trim() || '이름 없음';
+  const n = (S.places || []).filter(p => p.start === start).length + 1;
+  const id = 'P' + String(start).replace(/-/g, '').slice(2) + '-' + String(n).padStart(2, '0') + Math.random().toString(36).slice(2, 5);
+  const p = { id, name, kind: f.kind, start, end: f.end || start, addr: (f.addr || '').trim(), person: (f.person || '').trim(), memo: (f.memo || '').trim(), q: {}, by: (S.user || {}).name || '', at: new Date().toISOString() };
   if (DB.savePlace) await DB.savePlace(p);
   S.places.push(p); S.ui.placeForm = null; S.ui.drawer = null;
   const e = S.ui.entry; if (e) { if (e.type === '외부에서 돌아옴') e.from = id; else e.place = id; }
@@ -2637,7 +2875,7 @@ function shipoutView() {
   const s = S.ui.ship ||= { dest: '', custom: '', lines: [], miss: [], note: '' };
   const dests = [['gukdae', '물류창고'], ['museum', '홍대'], ['custom', '외부 팝업 현장']];
   const lines = s.lines || [];
-  return `${head('수량 정리 후 출고', '수원에서 내보냅니다', lines.length && s.dest ? '<button class="btn pri" data-act="shipOk">출고 확정</button>' : '')}
+  return `${head('수량 정리 후 출고', '수원에서 내보냅니다', lines.length ? '<button class="btn pri" data-act="shipOk">출고 확정</button>' : '')}
   <div class="card pullbox">
     ${excelZone('shipFile')}
     <p class="src">수원 매장에서 밖으로 내보냅니다. 받는 곳은 물류창고, 홍대, 외부 팝업 현장입니다. 수량은 창고에서 먼저 빼고, 모자라면 매대에서 뺍니다.</p>
@@ -2650,7 +2888,7 @@ function shipoutView() {
     ${pasteZone('shipPaste')}
     ${gunBox()}
   </div>
-  ${lines.length ? `<div class="cntregbar"><p class="cntwhy">${lines.length}종 · ${s.dest === 'gukdae' ? '물류창고' : s.dest === 'museum' ? '홍대' : s.dest === 'custom' ? '외부 팝업 현장' : '받는 곳'}</p><button class="btn pri" data-act="shipOk" ${s.dest ? '' : 'disabled'}>출고 확정</button></div>` : ''}`;
+  ${lines.length ? `<div class="cntregbar"><p class="cntwhy">${lines.length}종 · ${s.dest === 'gukdae' ? '물류창고' : s.dest === 'museum' ? '홍대' : s.dest === 'custom' ? '외부 팝업 현장' : '받는 곳'}</p><button class="btn pri" data-act="shipOk">출고 확정</button></div>` : ''}`;
 }
 function shipFromRows(rows, src) {
   const parsed = countParseRows(rows, { mode: 'move' });
@@ -2668,7 +2906,7 @@ function shipFromRows(rows, src) {
   render();
 }
 async function shipSave() {
-  const s = S.ui.ship; if (!s || !s.dest || !(s.lines || []).length) { toast('받는 곳과 상품을 넣어 주세요'); return; }
+  const s = S.ui.ship; if (!s || !(s.lines || []).length) { toast('출고할 상품을 넣어 주세요'); return; } if (!s.dest) { confirmDrawer('받는 곳 없이 출고', '<p style="margin:0">받는 곳이 비어 있습니다. 그래도 출고 기록을 남길까요?</p>', '이대로 출고', () => { s.dest = s.dest || 'custom'; s.placeName = s.placeName || '받는 곳 미입력'; shipSave(); }); return; }
   const custom = ((document.getElementById('shipCustom') || {}).value || s.custom || '').trim();
   if (s.dest === 'custom' && !custom) { toast('팝업 현장 이름을 적어 주세요'); return; }
   const toId = s.dest === 'custom' ? '' : s.dest;
@@ -2709,8 +2947,8 @@ function inboundView() {
   if (S.ui.ib === 'new') return ibNewView();
   const ib = S.inbounds.find(x => x.id === S.ui.ib);
   if (ib) { ibDropStale(ib); return ibDetailView(ib); }
-  return `${head('입고 확인', '예정 수량을 한 번 올리고, 표에서 실입고를 적습니다', '<button class="btn pri" id="ibNew">입고 예정 올리기</button>')}
-  <div class="glist">${list.map(x => `<div class="grow" style="display:flex;gap:8px;align-items:stretch"><button type="button" class="grow" data-ib="${esc(x.id)}"><b>${esc(x.title)}</b><div class="code">${esc(storeName(x.store))} · ${x.items.length}종 · ${x.status === 'received' ? '입고 완료' : '실입고 입력'}</div></button><button type="button" class="btn danger" data-ibdel="${esc(x.id)}">삭제</button></div>`).join('') || '<p class="src">아직 입고 예정이 없습니다.</p>'}</div>`;
+  return `${head('입고 확인', '입고 예정과 실재고를 따로, 어떤 순서로든 등록합니다')}
+  <div class="glist">${list.map(x => `<div class="grow" style="display:flex;gap:8px;align-items:stretch"><button type="button" class="grow" data-ib="${esc(x.id)}"><b>${esc(x.title)}</b><div class="code">${esc(storeName(x.store))} · ${x.items.length}종 · ${x.status === 'received' ? '입고 완료' : '실입고 입력'}</div></button><button type="button" class="btn danger" data-ibdel="${esc(x.id)}">삭제</button></div>`).join('') || '<p class="src">아직 입고 예정이 없습니다. 실재고는 바로 입력할 수 있습니다.</p>'}</div>`;
 }
 function ibNewView() {
   const f = S.ui.ibForm ||= { store: S.stores[0], date: today(), title: '', ip: '', from: '', parsed: null, src: '', err: '' };
@@ -2719,9 +2957,11 @@ function ibNewView() {
   <div class="card cntbox">
     ${excelZone('ibSheetFile')}
     <div class="sgrid">${myStores().map(s => `<button type="button" class="sbtn ${f.store === s ? 'on' : ''}" data-ibstore="${s}">${esc(shortName(s))}</button>`).join('')}</div>
-    ${f.err ? `<p class="cntwhy bad">${esc(f.err)}</p>` : ''}
-    ${P.length ? `<p class="cntwhy">상품 ${P.length}종${f.readLine ? ' · ' + esc(f.readLine) : ''}</p><div class="glist">${P.map(r => ibCard(r.pid && S.P[r.pid] ? S.P[r.pid].name : r.name, r.bc || '', `<span>예정 ${fmt(r.qty)}</span>`, !r.pid)).join('')}</div>` : '<p class="src">엑셀을 올리면 상품과 예정수량을 읽어 표로 보여 줍니다.</p>'}
+    ${manualRowBox('ibMan')}
+    ${f.err ? warnNote(esc(f.err)) : ''}
+    ${P.length ? `<p class="cntwhy">상품 ${P.length}종${f.readLine ? ' · ' + esc(f.readLine) : ''}</p><div class="glist">${P.map(r => ibCard(r.pid && S.P[r.pid] ? S.P[r.pid].name : r.name, r.bc || '', `<span>예정 ${fmt(r.qty)}</span>`, !r.pid)).join('')}</div>` : '<p class="src">엑셀을 올리거나 위에서 직접 입력하세요. 바코드가 없어도 등록됩니다.</p>'}
     ${pasteZone('ibPaste')}
+    ${upBatchCard(['입고 확인', '입고예정 등록'])}
   </div>
   ${P.length ? `<div class="cntregbar"><p class="cntwhy">상품 ${P.length}종</p><button class="btn pri" data-act="ibCreate">입고 예정 등록</button></div>` : ''}`;
 }
@@ -2739,7 +2979,7 @@ function ibDetailView(ib) {
       <div class="nm"><input class="inp" data-ibname="${i}" value="${esc(x.name || '')}" aria-label="상품명" placeholder="상품명">${x.opt != null || !done ? `<input class="inp" data-ibopt="${i}" value="${esc(x.opt || '')}" aria-label="옵션명" placeholder="옵션명" style="margin-top:4px">` : (x.opt ? ' · ' + esc(x.opt) : '')}<div class="code">${esc(x.code || x.bc || '')}</div><button type="button" class="btn danger" data-ibitemdel="${i}" style="margin-top:6px">삭제</button></div>
       <div><span class="iblbl">예정수량</span><b>${fmt(x.plan || 0)}</b></div>
       <div><span class="iblbl">실입고수량</span>${done ? `<b>${x.actual == null ? '—' : fmt(x.actual)}</b>` : `<input class="inp" inputmode="numeric" data-ibq="${i}" value="${x.actual == null ? '' : x.actual}" aria-label="${esc(x.name)} 실입고수량" placeholder="수량">`}</div>
-      <div><span class="iblbl">차이</span><b class="ibdiff" data-ibdiff>${diff}</b></div>
+      <div><span class="iblbl">차이</span><b class="ibdiff" data-ibdiff>${diff}</b>${x.pid ? planVsOnhand(x.plan, stockOf(ib.store || S.stores[0], x.pid)) : ''}</div>
       <div class="note"><span class="iblbl">비고</span>${done ? `<span>${esc(x.note || '')}</span>` : `<input class="inp" data-ibnote="${i}" value="${esc(x.note || '')}" aria-label="${esc(x.name)} 비고" placeholder="${bad ? '차이 이유를 적어 주세요' : '비고'}">`}</div>
     </div>`;
   };
@@ -2829,24 +3069,29 @@ function ibActLoaded(ib, x) {
   if (DB.saveInbound) DB.saveInbound(ib); render();
 }
 async function ibCreate() {
-  const f = S.ui.ibForm; if (!f || !f.parsed) return;
+  const f = S.ui.ibForm; if (!f || !f.parsed) { toast('올릴 줄을 넣어 주세요. 엑셀이나 직접 입력으로 넣을 수 있습니다'); return; }
+  const createdPids = []; const warns = [];
   for (const r of f.parsed) {
-    if (!r.bc || !((r.qty > 0) || (r.actual > 0))) continue;
-    const known = productByBarcode(r.bc);
-    if (known) { r.pid = known.id; continue; }
-    if (r.pid && S.P[r.pid] && (S.P[r.pid].barcode === r.bc || S.P[r.pid].id === r.bc)) continue;
-    const ip = fileIp(r.ip || f.ip, r.name);
-    const p = { id: r.bc, barcode: r.bc, sku: r.sku || '', name: r.name, ip: ip.ip, cat: r.cat || ip.cat || '', price: null, kind: '상설', memo: [r.vendor ? `매입 거래처 ${r.vendor}` : '', ip.raw && ip.raw !== ip.ip ? ip.raw : ''].filter(Boolean).join(' · ') };
-    S.products.push(p); r.pid = r.bc;
-    indexProducts();
-    if (DB.saveProduct) await DB.saveProduct(p);
+    const g = ensureProduct(r); r.pid = g.prod.id; if (!r.bc) r.bc = g.prod.barcode;
+    if (g.created) createdPids.push(g.prod.id);
+    if (r.warn || (!(r.qty > 0) && !(r.actual > 0))) warns.push((r.name || r.bc || '행') + ' · ' + (r.why || '수량 없음'));
   }
   indexProducts();
   const items = {};
-  for (const r of f.parsed) { if (!(r.qty > 0) && !(r.actual > 0)) continue; const k = itemKey(r); const x = items[k] ||= { key: k, pid: r.pid, name: r.pid ? S.P[r.pid].name : r.name, code: r.bc || r.sku || (r.pid ? (S.P[r.pid].barcode || S.P[r.pid].sku) : ''), bc: r.bc, sku: r.sku, plan: 0, price: r.price == null ? null : r.price, ip: r.ip || f.ip || '', cat: r.cat || '', vendor: r.vendor || '', actual: null, note: '' }; x.plan += r.qty || 0; }
-  const ib = { id: 'IB-' + f.date.replace(/-/g, '').slice(2) + '-' + Math.random().toString(36).slice(2, 6).toUpperCase(), store: f.store, date: f.date, title: f.title.trim() || f.src, ip: f.ip.trim(), from: f.from.trim(), status: 'planned', items: Object.values(items), extra: [], by: S.user.name, co: userCo(S.user), src: f.src, readLine: '', warns: [], parseRev: IB_PARSE, at: new Date().toISOString() };
+  for (const r of f.parsed) { const k = itemKey(r) || ('n:' + (r.name || '') + ':' + (r.bc || '')); const x = items[k] ||= { key: k, pid: r.pid, name: r.pid && S.P[r.pid] ? S.P[r.pid].name : (r.name || '이름 없음'), code: r.bc || r.sku || (r.pid && S.P[r.pid] ? (S.P[r.pid].barcode || S.P[r.pid].sku) : ''), bc: r.bc, sku: r.sku, plan: 0, price: r.price == null ? null : r.price, ip: r.ip || f.ip || '', cat: r.cat || '', vendor: r.vendor || '', actual: null, note: r.why || '', warn: !!r.warn }; x.plan += r.qty || 0; }
+  const ib = { id: 'IB-' + String(f.date || today()).replace(/-/g, '').slice(2) + '-' + Math.random().toString(36).slice(2, 6).toUpperCase(), store: f.store || S.stores[0], date: f.date || today(), title: (f.title || '').trim() || f.src || '입고 예정', ip: (f.ip || '').trim(), from: (f.from || '').trim(), status: 'planned', items: Object.values(items), extra: [], by: (S.user || {}).name || '', co: userCo(S.user), src: f.src, readLine: '', warns, parseRev: IB_PARSE, at: new Date().toISOString() };
   if (DB.saveInbound) await DB.saveInbound(ib);
-  S.inbounds.push(ib); S.ui.ibForm = null; S.ui.ib = ib.id; toast(`입고 예정 ${ib.items.length}종을 등록했습니다`);
+  S.inbounds.push(ib);
+  const popFx = await applyPlanToPopups(ib.items, f.src);
+  const effects = [
+    { type: 'inbound', key: 'ib:' + ib.id, inboundId: ib.id, label: ib.title, file: f.src },
+    ...ib.items.map(x => ({ type: 'inboundItem', key: 'ibi:' + ib.id + ':' + x.key, inboundId: ib.id, itemKey: x.key, pid: x.pid, op: 'add', after: x.plan, label: x.name, file: f.src, warn: !!x.warn, why: x.note })),
+    ...createdPids.map(id => ({ type: 'product', key: 'p:' + id, pid: id, op: 'add', label: (S.P[id] || {}).name, file: f.src })),
+    ...popFx
+  ];
+  recordUpBatch({ menu: '입고예정 등록', kind: '입고예정 등록', file: f.src || '직접 입력', rows: (f.parsed || []).length, warns, effects, inboundId: ib.id, createdPids });
+  S.ui.ibForm = null; S.ui.ib = ib.id; persistDemoState();
+  toast(`입고 예정 ${ib.items.length}종을 등록했습니다` + (warns.length ? ` · 경고 ${warns.length}` : ''));
 }
 async function ibApplyPlanTo(ib, rows, src, extra) {
   const parsed = countParseRows(rows, { mode: 'plan' });
@@ -3009,22 +3254,22 @@ function entryLines(e) {
     <div class="tw"><table><thead><tr><th>상품명</th><th class="hide-s">바코드·품번</th><th class="n">현재 재고</th><th class="n">수량</th><th class="n">반영 후</th><th></th></tr></thead><tbody>
     ${e.lines.map((l, i) => { const now = stockOf(e.store, l.pid); const after = now + T.sign * (+l.qty || 0); const flag = after < 0 || l.flag; return `<tr class="${flag ? 'flag' : ''}"><td class="nm">${esc(S.P[l.pid].name)}${l.flag ? `<div style="font-size:12px;color:var(--warn)">🔸 ${esc(l.flag)}</div>` : ''}</td><td class="code hide-s">${esc(S.P[l.pid].barcode || S.P[l.pid].sku)}</td><td class="n">${fmt(now)}</td><td class="n"><input class="inp qty" type="number" inputmode="numeric" min="1" value="${l.qty}" data-lq="${i}" aria-label="수량"></td><td class="n ${after < 0 ? 'qty-neg' : ''}" style="font-weight:700">${fmt(after)}</td><td style="width:1%"><button class="btn sm" data-ld="${i}" aria-label="빼기">빼기</button></td></tr>`; }).join('')}
     </tbody></table></div>
-    <div class="row" style="margin-top:12px;justify-content:flex-end"><button class="btn" id="eClear">모두 지우기</button><button class="btn pri" id="eSave" ${issues.some(x => x.block) ? 'disabled' : ''}>${esc(e.type)} ${e.lines.length}종 저장</button></div></div>`;
+    <div class="row" style="margin-top:12px;justify-content:flex-end"><button class="btn" id="eClear">모두 지우기</button><button class="btn pri" id="eSave">${esc(e.type)} ${e.lines.length}종 저장</button></div></div>`;
 }
 function lineIssues(e) {
   const out = []; const T = TYPES.find(t => t.id === e.type);
-  if (T.to && !e.to) out.push({ lv: 'bad', block: true, t: '받는 곳을 골라 주세요.' });
-  if (T.to && e.to === '__custom' && !e.place) out.push({ lv: 'bad', block: true, t: '외부 장소를 고르거나 [새 장소 등록]으로 만들어 주세요.' });
-  if (T.from && !e.from) out.push({ lv: 'bad', block: true, t: '돌아온 외부 장소를 골라 주세요.' });
-  if (T.from && e.from) { const pl = placeById(e.from); const over = e.lines.filter(l => (+l.qty || 0) > ((pl && pl.q || {})[l.pid] || 0)); if (over.length) { const why = (e.memo || '').trim(); out.push({ lv: why ? 'warn' : 'bad', block: !why, over: true, t: `그 장소로 보낸 수량보다 많이 돌아온 상품 ${over.length}종: ${over.slice(0, 4).map(l => `${esc(S.P[l.pid].name)} (보냄 ${fmt((pl && pl.q || {})[l.pid] || 0)} · 돌아옴 ${fmt(l.qty)})`).join(', ')}${over.length > 4 ? ' 외' : ''}. ${why ? `사유: ${esc(why)} — 이대로 저장합니다.` : '<b>수량을 고치거나, 메모 칸에 사유를 적어야 저장할 수 있습니다.</b>'}` }); } }
-  if (T.partner && !e.partner.trim()) out.push({ lv: 'bad', block: true, t: `${e.type === '반품' ? '반품처' : '받는 업체'}를 적어 주세요.` });
-  const neg = e.lines.filter(l => stockOf(e.store, l.pid) + T.sign * (+l.qty || 0) < 0);
-  if (neg.length) out.push({ lv: 'warn', t: `반영하면 재고가 마이너스가 되는 상품 ${neg.length}종이 있습니다. 수량을 확인해 주세요.` });
-  if (e.lines.some(l => !(+l.qty > 0))) out.push({ lv: 'bad', block: true, t: '수량이 0이거나 비어 있는 줄이 있습니다.' });
+  if (T.to && !e.to) out.push({ lv: 'warn', t: '받는 곳이 비어 있습니다. 그래도 저장할 수 있습니다.' });
+  if (T.to && e.to === '__custom' && !e.place) out.push({ lv: 'warn', t: '외부 장소가 비어 있습니다. 그래도 저장할 수 있습니다.' });
+  if (T.from && !e.from) out.push({ lv: 'warn', t: '돌아온 외부 장소가 비어 있습니다. 그래도 저장할 수 있습니다.' });
+  if (T.from && e.from) { const pl = placeById(e.from); const over = e.lines.filter(l => (+l.qty || 0) > ((pl && pl.q || {})[l.pid] || 0)); if (over.length) { const why = (e.memo || '').trim(); out.push({ lv: 'warn', over: true, t: `그 장소로 보낸 수량보다 많이 돌아온 상품 ${over.length}종: ${over.slice(0, 4).map(l => `${esc((S.P[l.pid] || {}).name || l.pid)} (보냄 ${fmt((pl && pl.q || {})[l.pid] || 0)} · 돌아옴 ${fmt(l.qty)})`).join(', ')}${over.length > 4 ? ' 외' : ''}. ${why ? `사유: ${esc(why)}` : '메모에 사유를 적으면 나중에 찾기 쉽습니다.'} 이대로 저장할 수 있습니다.` }); } }
+  if (T.partner && !e.partner.trim()) out.push({ lv: 'warn', t: `${e.type === '반품' ? '반품처' : '받는 업체'}가 비어 있습니다. 그래도 저장할 수 있습니다.` });
+  const neg = e.lines.filter(l => l.pid && stockOf(e.store, l.pid) + T.sign * (+l.qty || 0) < 0);
+  if (neg.length) out.push({ lv: 'warn', t: `반영하면 재고가 마이너스가 되는 상품 ${neg.length}종이 있습니다. 그래도 저장할 수 있습니다.` });
+  if (e.lines.some(l => !(+l.qty > 0))) out.push({ lv: 'warn', t: '수량이 0이거나 비어 있는 줄이 있습니다. 그 줄도 함께 저장됩니다.' });
   const big = e.lines.filter(l => +l.qty >= 1000);
   if (big.length) out.push({ lv: 'warn', t: `수량 1,000개 이상인 줄 ${big.length}개 — 단위(박스·낱개)를 확인해 주세요.` });
   const dupToday = e.lines.filter(l => S.moves.some(m => m.store === e.store && m.pid === l.pid && m.date === e.date && m.type === e.type && m.qty === T.sign * (+l.qty)));
-  if (dupToday.length) out.push({ lv: 'warn', t: `같은 날짜·같은 수량으로 이미 등록된 ${e.type} ${dupToday.length}건이 있습니다. 중복 등록인지 확인해 주세요.` });
+  if (dupToday.length) out.push({ lv: 'warn', t: `같은 날짜·같은 수량으로 이미 등록된 ${e.type} ${dupToday.length}건이 있습니다. 중복이어도 저장할 수 있습니다.` });
   return out;
 }
 function addLine(pid, qty = 1, flag) {
@@ -3111,10 +3356,10 @@ function importPreview() {
   return `${mapPanel(im)}<div class="card"><h2>미리보기 · ${esc(im.src)} <span class="r">${R.length}줄 (제목 ${im.header}번째 줄)</span></h2>
     <div class="alerts" style="margin-bottom:10px">
       <div class="al"><span class="ic">✔</span><span class="tx">상품을 찾은 줄 <b>${ok.length}</b>개 · ${fmt(ok.reduce((a, b) => a + b.qty, 0))}개</span></div>
-      ${cnt('new') ? `<div class="al"><span class="ic">🔺</span><span class="tx">등록된 상품에 없는 줄 <b>${cnt('new')}</b>개 — 저장에서 빠집니다. 새 상품이면 관리 › 상품 목록에서 먼저 등록해 주세요.</span></div>` : ''}
+      ${cnt('new') ? `<div class="al"><span class="ic">🔸</span><span class="tx">등록된 상품에 없는 줄 <b>${cnt('new')}</b>개 — 새 상품으로 함께 등록됩니다.</span></div>` : ''}
       ${cnt('multi') ? (() => { const M = R.filter(r => r.st === 'multi'), left = M.filter(r => !r.pid).length; const ips = {}; M.forEach(r => r.cand.forEach(c => { const ip = S.P[c].ip || '(IP 없음)'; ips[ip] = (ips[ip] || 0) + 1; }));
         return `<div class="al"><span class="ic">🔸</span><span class="tx">이름이 같은(괄호·띄어쓰기만 다른) 상품이 두 개 이상인 줄 <b>${M.length}</b>개${left ? ` · 아직 안 고른 줄 <b>${left}</b>개` : ' · ✔ 모두 골랐습니다'}<br><span style="font-size:12.5px">한꺼번에 고르기:</span> <span class="mpick"><button class="btn sm" data-mpick="__stock">재고 있는 쪽으로</button>${Object.entries(ips).sort((a, b) => b[1] - a[1]).map(([ip, n]) => `<button class="btn sm" data-mpick="${esc(ip)}">IP '${esc(ip)}' 쪽 (${n})</button>`).join('')}${M.some(r => r.pid) ? '<button class="btn sm" data-mpick="__clear">선택 지우기</button>' : ''}</span><br><span class="muted" style="font-size:12px">상품 정보는 합치거나 지우지 않습니다. 이번 등록에 어느 상품으로 넣을지만 고릅니다.</span></span></div>`; })() : ''}
-      ${cnt('qty') ? `<div class="al"><span class="ic">🔺</span><span class="tx">수량이 비었거나 0인 줄 <b>${cnt('qty')}</b>개 — 저장에서 빠집니다.</span></div>` : ''}
+      ${cnt('qty') ? `<div class="al"><span class="ic">🔸</span><span class="tx">수량이 비었거나 0인 줄 <b>${cnt('qty')}</b>개 — 경고만 남기고 함께 담습니다.</span></div>` : ''}
       ${dup ? `<div class="al"><span class="ic">🔸</span><span class="tx">파일 안에 같은 상품이 두 번 나온 줄 <b>${dup}</b>개 — <span class="fseg sm"><button class="${im.dupMode === 'sum' ? 'on' : ''}" data-dupm="sum">수량 합치기</button><button class="${im.dupMode === 'first' ? 'on' : ''}" data-dupm="first">처음 줄만</button></span></span></div>` : ''}
       ${im.prevFile ? `<div class="al"><span class="ic">🔺</span><span class="tx">같은 이름의 파일을 ${md(im.prevFile.date)}에 이미 올렸습니다 (${esc(whoText(im.prevFile.by, im.prevFile.co))}). 두 번 넣지 않도록 확인해 주세요.</span></div>` : ''}
     </div>
@@ -3123,7 +3368,7 @@ function importPreview() {
       <td class="nm">${r.st === 'multi' ? `<select class="inp" data-ip="${i}" style="min-width:180px"><option value="">고르기</option>${r.cand.map(c => `<option value="${esc(c)}" ${r.pid === c ? 'selected' : ''}>${esc(S.P[c].name)} · ${esc(S.P[c].sku || S.P[c].barcode)} · ${esc(S.P[c].ip || '')} · 재고 ${fmt(stockOf(S.ui.entry.store, c))}</option>`).join('')}</select>` : r.pid ? `${esc(S.P[r.pid].name)}<div class="muted" style="font-size:12px">${esc(r.how)}로 찾음</div>` : '<span class="muted">없음</span>'}</td>
       <td class="n" style="font-weight:700">${fmt(r.qty)}</td><td>${r.st === 'new' ? '<span class="pill p-bad">🔺 미등록</span>' : r.st === 'qty' ? '<span class="pill p-bad">🔺 수량</span>' : r.st === 'multi' && !r.pid ? '<span class="pill p-warn">🔸 선택</span>' : r.dup ? `<span class="pill p-warn">🔸 ${r.dup}줄과 중복</span>` : '<span class="pill p-ok">✔</span>'}</td></tr>`).join('')}
     </tbody></table></div>
-    <div class="row" style="margin-top:12px;justify-content:flex-end"><button class="btn" id="impCancel">취소</button><button class="btn pri" id="impUse">찾은 ${R.filter(r => r.pid && r.qty > 0 && !(r.dup && im.dupMode === 'first')).length}줄을 ${esc(S.ui.entry.type)} 목록에 담기</button></div></div>`;
+    <div class="row" style="margin-top:12px;justify-content:flex-end"><button class="btn" id="impCancel">취소</button><button class="btn pri" id="impUse">${R.filter(r => !(r.dup && im.dupMode === 'first')).length}줄을 ${esc(S.ui.entry.type)} 목록에 담기</button></div></div>`;
 }
 async function readFile(f) {
   if (/\.(pdf|png|jpe?g|heic|gif|webp)$/i.test(f.name)) { S.ui.imp = { src: f.name, err: 'PDF·사진은 입력할 수 없습니다. 엑셀이나 구글시트로 받아 주세요.' }; render(); return; }
@@ -3566,15 +3811,14 @@ function countSetPreview(parsed, src) {
   const skip = S.ui.cntSkip || {}, edit = S.ui.cntEdit || {};
   for (const r of parsed.items || []) {
     const noQty = r.blank || r.qty == null;
-    if (!r.bc && noQty) { missing.push({ ...r, why: '바코드·실사 수량 없음' }); continue; }
-    if (r.countCol && noQty) { missing.push({ ...r, why: '실사 수량 없음' }); continue; }
-    if (noQty) { missing.push({ ...r, why: '수량이 비어 있습니다' }); continue; }
-    if (r.multi) { missing.push({ ...r, why: '같은 이름 상품이 여러 개입니다. 코드를 적어 주세요' }); continue; }
+    let why = '';
+    if (noQty) { r.qty = 0; why = '수량이 비어 있어 0으로 넣습니다'; missing.push({ ...r, why }); }
+    if (r.multi) why = why ? why + ' · 같은 이름 상품이 여러 개라 첫 상품으로 맞춥니다' : '같은 이름 상품이 여러 개라 첫 상품으로 맞춥니다';
     if (!r.pid) {
-      const key = r.bc || norm(r.name);
+      const key = r.bc || norm(r.name) || ('row' + fresh.size);
       const prev = fresh.get(key);
-      if (prev) { prev.qty += Math.max(0, r.qty || 0); prev.lines++; }
-      else fresh.set(key, { key, bc: r.bc || '', name: r.name, qty: r.qty, lines: 1 });
+      if (prev) { prev.qty += Math.max(0, r.qty || 0); prev.lines++; if (why) prev.why = why; prev.warn = true; prev.on = prev.on !== false; }
+      else fresh.set(key, { key, bc: r.bc || '', name: r.name || '이름 없음', qty: r.qty || 0, lines: 1, ip: r.ip, sku: r.sku, vendor: r.vendor, opt: r.opt, on: true, warn: !!why, why });
       continue;
     }
     const book = stockOf(st, r.pid);
@@ -3594,8 +3838,14 @@ function countSetPreview(parsed, src) {
   if (!S.ui.cntNoScroll) countScroll();
   S.ui.cntNoScroll = false;
 }
-function countSel(p) { return { m: (p.matched || []).length, n: 0, fresh: [] }; }
-function countRegLabel(p) { const m = countSel(p).m; return m ? `실사 반영 (${m}종)` : '실사 반영'; }
+function countSel(p) {
+  const fresh = (p.fresh || []).filter(x => x.on !== false);
+  return { m: (p.matched || []).length, n: fresh.length, fresh };
+}
+function countRegLabel(p) {
+  const s = countSel(p); const t = isOnhand() ? '실재고 반영' : '실사 반영'; const n = s.m + s.n;
+  return n ? `${t} (${n}종)` : t;
+}
 function countSummary(p) {
   const same = p.matched.filter(m => m.diff === 0).length;
   const diff = p.matched.length - same;
@@ -3687,19 +3937,20 @@ async function countReadFile(f) {
     await cntTick();
     const got = await readBestSheet(cntBuf, 'count');
     S.ui.cntFile = f.name; S.ui.cntCands = null; S.ui.cntSheet = got ? got.name : '';
-    if (!got) { S.ui.cntMsg = { bad: true, html: '🔺 상품(바코드·상품명)과 수량 칸이 있는 탭을 찾지 못했습니다.' }; render(); countScroll(); return; }
+    if (!got) { S.ui.cntMsg = { warn: true, html: '🔸 상품(바코드·상품명)과 수량 칸을 자동으로 찾지 못했습니다. 직접 입력하거나 다른 파일을 올려 주세요. 파일 기록은 남깁니다.' }; recordUpBatch({ menu: isOnhand() ? '실재고 입력' : '실사', kind: isOnhand() ? '실재고 입력' : '실사', file: f.name, rows: 0, warns: ['탭을 자동으로 찾지 못함'], effects: [] }); render(); countScroll(); return; }
     cntRows = got.rows;
     countSetPreview(got.parsed, f.name + ' › ' + got.name);
     S.ui.cntLine = got.readLine; S.ui.cntWarns = got.warns; render();
-  } catch (e) { S.ui.cntPrev = null; S.ui.cntMsg = { bad: true, html: '🔺 파일을 읽지 못했습니다. ' + esc(e.message || e) }; render(); countScroll(); }
+  } catch (e) { S.ui.cntPrev = null; S.ui.cntMsg = { warn: true, html: '🔸 파일을 읽지 못했습니다. ' + esc(e.message || e) + ' 직접 입력은 그대로 할 수 있습니다.' }; recordUpBatch({ menu: isOnhand() ? '실재고 입력' : '실사', kind: isOnhand() ? '실재고 입력' : '실사', file: f && f.name, rows: 0, warns: [String(e.message || e)], effects: [] }); render(); countScroll(); }
 }
 function countOpenGuard() {
   const p = S.ui.cntPrev; const sel = p ? countSel(p) : { m: 0, n: 0, fresh: [] };
-  if (!p || (!sel.m && !sel.n)) return;
+  if (!p) return;
   const st = S.stores[0];
-  const chg = p.matched.filter(m => m.qty !== m.book);
+  const kind = isOnhand() ? '실재고' : '실사';
+  const chg = (p.matched || []).filter(m => m.qty !== m.book);
   const drops = chg.filter(m => m.book > 0 && (m.qty === 0 || m.qty <= m.book * 0.7));
-  const ids = new Set(p.matched.map(m => m.pid));
+  const ids = new Set((p.matched || []).map(m => m.pid));
   const bcs = new Set(sel.fresh.map(x => x.bc));
   const hits = [];
   for (const ib of S.inbounds || []) {
@@ -3707,12 +3958,12 @@ function countOpenGuard() {
     const n = [...(ib.items || []), ...(ib.extra || [])].filter(x => (x.pid && ids.has(x.pid)) || (x.bc && bcs.has(x.bc)) || (x.code && bcs.has(x.code))).length;
     if (n) hits.push({ ib, n });
   }
-  const body = `<p class="cntwhy">기존 재고 ${chg.length}종이 바뀝니다.</p>
-    ${drops.length ? `<p class="cntwhy bad">크게 줄어드는 상품 ${drops.length}종</p><div class="tw"><table class="cntgrid"><tbody>${drops.map(m => `<tr><td class="nm">${esc(m.name)}<div class="code">${esc(m.code)}</div></td><td class="n" style="color:var(--bad);font-weight:800">${fmt(m.book)} → ${fmt(m.qty)}</td></tr>`).join('')}</tbody></table></div>` : '<p class="src">30% 이상 줄거나 0이 되는 기존 상품은 없습니다.</p>'}
-    ${hits.length ? `<div class="note bad"><b>입고 확정 먼저 하세요.</b><br>확정되지 않은 입고 예정에 같은 상품이 ${hits.map(h => `${esc(h.ib.title)} ${h.n}종`).join(', ')} 있습니다.${hits.map(h => `<div class="row" style="margin-top:8px"><button class="btn" data-ibjump="${esc(h.ib.id)}">입고 확인으로</button></div>`).join('')}</div>` : ''}
-    <div class="field" style="margin-top:12px"><label for="cntGuard">확인 글자</label><input class="inp" id="cntGuard" placeholder="실사" autocomplete="off" aria-label="실사 입력"></div>
-    <p class="src">등록하려면 위 칸에 실사 를 그대로 입력하세요.</p>`;
-  S.ui.drawer = () => `<div class="hd"><h3>실사 등록 확인</h3><button class="x" data-close aria-label="닫기">×</button></div><div class="card">${body}</div><div class="row" style="justify-content:flex-end"><button class="btn" data-close>취소</button><button class="btn pri" id="cntGuardOk" disabled>실사 등록</button></div>`;
+  const body = `<p class="cntwhy">${kind} ${sel.m + sel.n}종을 반영합니다.${chg.length ? ' 기존 재고 ' + chg.length + '종이 바뀝니다.' : ''}</p>
+    ${!sel.m && !sel.n ? warnNote('반영할 줄이 없습니다. 그래도 확인하면 현재 화면 그대로 둡니다.') : ''}
+    ${drops.length ? warnNote(`크게 줄어드는 상품 ${drops.length}종이 있습니다. 그래도 등록할 수 있습니다.`) + `<div class="tw"><table class="cntgrid"><tbody>${drops.map(m => `<tr><td class="nm">${esc(m.name)}<div class="code">${esc(m.code)}</div></td><td class="n">${fmt(m.book)} → ${fmt(m.qty)}</td></tr>`).join('')}</tbody></table></div>` : ''}
+    ${hits.length ? warnNote(`<b>아직 확정되지 않은 입고 예정이 있습니다.</b> ${kind}는 그대로 등록됩니다. 입고 예정이 나중에 들어오면 그때 비교합니다. ${hits.map(h => `${esc(h.ib.title)} ${h.n}종`).join(', ')}`) : ''}
+    ${sel.n ? warnNote(`전산에 없던 ${sel.n}종은 새 상품으로 등록합니다. 바코드가 없어도 이름만으로 넣습니다.`) : ''}`;
+  S.ui.drawer = () => `<div class="hd"><h3>${kind} 등록 확인</h3><button class="x" data-close aria-label="닫기">×</button></div><div class="card">${body}</div><div class="row" style="justify-content:flex-end"><button class="btn" data-close>취소</button><button class="btn pri" id="cntGuardOk">${kind} 등록</button></div>`;
   render();
 }
 function countUndoAsk() {
@@ -3740,29 +3991,34 @@ async function countUndo(delNew) {
 }
 async function countRegister() {
   const p = S.ui.cntPrev; const sel = p ? countSel(p) : { m: 0, n: 0, fresh: [] };
-  if (!p || (!sel.m && !sel.n)) return;
+  if (!p) return;
+  if (!sel.m && !sel.n) { toast('반영할 줄이 없어 화면만 닫습니다'); S.ui.cntPrev = null; render(); return; }
   const st = S.stores[0];
   const before = {};
   const beforeCab = {};
   p.matched.forEach(m => { before[m.pid] = stockOf(st, m.pid); beforeCab[m.pid] = shelfOf(st, m.pid); });
-  sel.fresh.forEach(n => { before[n.bc] = stockOf(st, n.bc); beforeCab[n.bc] = shelfOf(st, n.bc); });
   const created = [];
-  let made = 0;
+  const effects = [];
+  const warns = [];
   for (const n of sel.fresh) {
-    if (S.P[n.bc]) continue;
-    const prod = { id: n.bc, barcode: n.bc, sku: n.sku || '', name: n.name, ip: n.ip || '', cat: n.cat || '', price: null, kind: '상설', memo: n.vendor ? `매입 거래처 ${n.vendor}` : '', createdBy: S.user && S.user.uid || '' };
-    S.products.push(prod); made++; created.push(prod.id);
-    if (DB.saveProduct) await DB.saveProduct(prod);
+    const g = ensureProduct(n);
+    n.pid = g.prod.id;
+    if (g.created) { created.push(g.prod.id); effects.push({ type: 'product', key: 'p:' + g.prod.id, pid: g.prod.id, op: 'add', label: g.prod.name, file: p.src, store: st }); }
+    before[n.pid] = stockOf(st, n.pid); beforeCab[n.pid] = shelfOf(st, n.pid);
+    if (n.warn) warns.push((n.name || n.bc || '행') + ' · ' + (n.why || '경고'));
   }
-  if (made) indexProducts();
+  indexProducts();
   S.ui.counts[st] = {};
   S.ui.cntBins = {};
-  p.matched.forEach(m => { if (S.P[m.pid]) { S.ui.counts[st][m.pid] = m.qty; if (m.bins) S.ui.cntBins[m.pid] = { wh: m.wh || 0, cab: m.cabQty || 0 }; } });
-  sel.fresh.forEach(n => { if (S.P[n.bc]) { S.ui.counts[st][n.bc] = n.qty; S.ui.cntVend = S.ui.cntVend || {}; if (n.vendor) S.ui.cntVend[n.bc] = n.vendor; } });
+  p.matched.forEach(m => { if (S.P[m.pid]) { S.ui.counts[st][m.pid] = m.qty; if (m.bins) S.ui.cntBins[m.pid] = { wh: m.wh || 0, cab: m.cabQty || 0 }; effects.push({ type: 'stock', key: 's:' + m.pid, pid: m.pid, store: st, before: before[m.pid], after: m.qty, label: m.name, file: p.src, warn: !!m.warn, why: m.why || '' }); } });
+  sel.fresh.forEach(n => { const id = n.pid; if (S.P[id]) { S.ui.counts[st][id] = n.qty; S.ui.cntVend = S.ui.cntVend || {}; if (n.vendor) S.ui.cntVend[id] = n.vendor; effects.push({ type: 'stock', key: 's:' + id, pid: id, store: st, before: before[id], after: n.qty, label: n.name, file: p.src, warn: !!n.warn, why: n.why || '' }); } });
   S.ui.cntSrc = p.src;
   await saveCount();
+  const popFx = await syncPopupOnhand([...(p.matched || []), ...sel.fresh], p.src);
+  recordUpBatch({ menu: isOnhand() ? '실재고 입력' : '실사', kind: isOnhand() ? '실재고 입력' : '실사', file: p.src || '직접 입력', rows: sel.m + sel.n, warns, effects: effects.concat(popFx), createdPids: created });
   S.ui.cntUndo = { store: st, at: new Date().toISOString(), before, beforeCab, created };
   try { localStorage.setItem('smg-count-undo', JSON.stringify(S.ui.cntUndo)); } catch (e) { }
+  persistDemoState();
   S.ui.cntPrev = null; S.ui.cntCands = null; S.ui.cntSheet = ''; S.ui.cntVend = null;
 }
 function countApply(rows, src) {
@@ -3804,11 +4060,15 @@ function countView() {
   if (S.ui.cntUndo === undefined) { try { S.ui.cntUndo = JSON.parse(localStorage.getItem('smg-count-undo') || 'null'); } catch (e) { S.ui.cntUndo = null; } }
   const st = S.stores[0];
   const p = S.ui.cntPrev;
-  return `${head('실사', `${esc(storeName(st))} · 엑셀을 올리면 전산재고와 바로 비교합니다`, p && p.matched.length ? `<button class="btn pri" data-cntgo="1">${countRegLabel(p)}</button>` : '')}
+  const kind = isOnhand() ? '실재고 입력' : '실사';
+  const sel = p ? countSel(p) : { m: 0, n: 0 };
+  return `${head(kind, `${esc(storeName(st))} · 입고 예정이 없어도 ${isOnhand() ? '실재고' : '실사'}를 바로 등록할 수 있습니다`, (sel.m || sel.n) ? `<button class="btn pri" data-cntgo="1">${countRegLabel(p)}</button>` : '')}
   <div class="card cntbox">
     ${excelZone('cntFile')}
-    <button type="button" class="btn xlbig" id="cntDl">실사 입력용 엑셀 내려받기</button>
+    ${manualRowBox('oh')}
+    <button type="button" class="btn xlbig" id="cntDl">${isOnhand() ? '실재고' : '실사'} 입력용 엑셀 내려받기</button>
     ${S.ui.cntUndo ? '<button class="btn" id="cntUndo">되돌리기</button>' : ''}
+    ${upBatchCard([kind, '실재고 입력', '실사'])}
     ${pasteZone('cntPaste')}
     ${gunBox()}
     ${(S.ui.cntCands || []).length > 1 ? `<div class="cnttabs" role="group" aria-label="엑셀 탭">${S.ui.cntCands.map(n => `<button type="button" class="btn ${S.ui.cntSheet === n ? 'pri' : ''}" data-cntsheet="${esc(n)}">${esc(n)}</button>`).join('')}</div>` : ''}
@@ -3834,7 +4094,8 @@ function countPrevHtml() {
 }
 function countRegBar() {
   const p = S.ui.cntPrev; if (!p) return '';
-  return `<div class="cntregbar"><p class="cntwhy">${countSummary(p)}</p><button class="btn pri" data-cntgo="1" ${p.matched.length ? '' : 'disabled'}>${countRegLabel(p)}</button></div>`;
+  const sel = countSel(p);
+  return `<div class="cntregbar"><p class="cntwhy">${countSummary(p)}</p><button class="btn pri" data-cntgo="1" ${(sel.m || sel.n) ? '' : ''}>${countRegLabel(p)}</button></div>`;
 }
 async function saveCount() {
   const st = S.stores[0]; const c = S.ui.counts[st]; const at = new Date().toISOString();
@@ -3850,7 +4111,7 @@ async function saveCount() {
   stampList(list);
   await DB.saveMoves(stampMoves(list, S.ui.cntSrc));
   for (const m of list) { S.moves.push(m); applyStock(m); }
-  S.ui.counts[st] = {}; S.ui.cntSrc = null; toast(`실사 차이 ${list.length}종을 반영했습니다`);
+  S.ui.counts[st] = {}; S.ui.cntSrc = null; persistDemoState(); toast(`${isOnhand() ? '실재고' : '실사'} ${list.length}종을 반영했습니다`);
 }
 
 /* ───────── 매장 이동 ───────── */
@@ -3867,7 +4128,7 @@ function transferView() {
   const hits = q ? S.products.filter(p => norm(p.name).includes(q) || (p.barcode || '').includes(String(m.q).trim()) || norm(p.sku || '').includes(q)).slice(0, 8) : [];
   const pend = S.transfers.filter(t => S.stores.includes(t.to) && t.status === 'sent');
   const line = l => { const p = S.P[l.pid] || {}; return `<div class="grow"><b>${esc(p.name || l.pid)}</b><div class="code">${esc(p.barcode || p.sku || '')} · ${here(l.pid)}</div><div class="gnums"><label>수량 <input class="inp qty" type="number" min="1" inputmode="numeric" value="${l.qty}" data-mvq="${esc(l.pid)}" aria-label="이동 수량"></label><button class="btn sm" type="button" data-mvdel="${esc(l.pid)}">빼기</button></div></div>`; };
-  return `${head('상품 이동', '엑셀로 올릴 상품과 수량을 확인한 뒤 이동합니다', ready ? `<button class="btn pri" data-act="mvSave">이동 등록 (${m.lines.length}종)</button>` : '')}
+  return `${head('상품 이동', '엑셀로 올릴 상품과 수량을 확인한 뒤 이동합니다', m.lines.length ? `<button class="btn pri" data-act="mvSave">이동 등록 (${m.lines.length}종)</button>` : '')}
   <div class="card" style="display:flex;flex-direction:column;gap:12px">
     ${excelZone('mvFile')}
     <div class="field"><label>보내는 곳</label>${btns(m.from, 'mvfrom')}</div>
@@ -3882,7 +4143,7 @@ function transferView() {
     ${m.lines.length ? `<div class="glist">${m.lines.map(line).join('')}</div>` : '<p class="src">엑셀을 올리면 보낼 상품이 여기 쌓입니다.</p>'}
     ${(m.miss || []).length ? `<h3>맞추지 못한 줄</h3><div class="glist">${m.miss.map(r => `<div class="grow"><b>${esc(r.name || '이름 없음')}</b><div class="code">${esc(r.bc || '')} · ${fmt(r.qty)}</div></div>`).join('')}</div>` : ''}
   </div>
-  ${m.lines.length ? `<div class="cntregbar"><p class="cntwhy">${m.lines.length}종 · ${laneOn ? esc(laneText) : esc(moveLabel(m.from)) + ' → ' + (m.to ? esc(moveLabel(m.to)) : '받는 곳')}</p><button class="btn pri" data-act="mvSave" ${ready ? '' : 'disabled'}>이동 등록</button></div>` : ''}
+  ${m.lines.length ? `<div class="cntregbar"><p class="cntwhy">${m.lines.length}종 · ${laneOn ? esc(laneText) : esc(moveLabel(m.from)) + ' → ' + (m.to ? esc(moveLabel(m.to)) : '받는 곳')}</p><button class="btn pri" data-act="mvSave">이동 등록</button></div>` : ''}
   <div class="card"><h2>받을 상품 <span class="r">${pend.length}건</span></h2>${pend.length ? pend.map(t => `<div class="grow"><b>${esc((S.P[t.pid] || {}).name || t.pid)}</b><div class="code">${esc(moveLabel(t.from))} → ${esc(moveLabel(t.to))} · ${fmt(t.qty)}개</div><div class="gnums"><input class="inp qty" id="rq_${t.id}" type="number" min="0" value="${t.qty}" aria-label="받은 수량"><button class="btn pri" data-recv="${t.id}">받기 확인</button></div></div>`).join('') : '<p class="src">받을 상품이 없습니다.</p>'}</div>`;
 }
 async function moveFromRows(rows, src) {
@@ -3904,9 +4165,9 @@ async function moveFromRows(rows, src) {
   render();
 }
 async function moveSave() {
-  const m = S.ui.move; if (!m || !m.lines.length) return;
+  const m = S.ui.move; if (!m || !m.lines.length) { toast('옮길 상품을 넣어 주세요'); return; }
   const laneOn = m.from === 'suwon' && (m.lane === 'toShelf' || m.lane === 'toRoom');
-  if (!laneOn && (!m.from || !m.to || m.from === m.to)) return;
+  if (!laneOn && (!m.from || !m.to || m.from === m.to)) { confirmDrawer('받는 곳 없이 이동', '<p style="margin:0">받는 곳이 없거나 보내는 곳과 같습니다. 그래도 기록을 남길까요?</p>', '이대로 등록', () => { if (!m.to) m.to = m.from; moveSave.goForce = true; moveSave(); }); if (!moveSave.goForce) return; moveSave.goForce = false; }
   const at = new Date().toISOString();
   if (laneOn) {
     const toShelf = m.lane === 'toShelf';
@@ -3942,8 +4203,8 @@ async function moveSave() {
 async function receive(id) {
   const t = S.transfers.find(x => x.id === id); if (!t) return;
   const el = document.getElementById('rq_' + id); let q = el ? parseInt(el.value, 10) : t.qty;
-  if (isNaN(q) || q < 0) { toast('받은 수량을 0 이상 숫자로 넣어 주세요'); return; }
-  if (q > t.qty) { toast(`보낸 수량(${fmt(t.qty)}개)보다 많이 받을 수 없습니다`); return; }
+  if (isNaN(q) || q < 0) { confirmDrawer('받은 수량 확인', `<p style="margin:0">받은 수량이 비어 있거나 숫자가 아닙니다. 0개로 받을까요?</p>`, '0개로 받기', () => { const el2 = document.getElementById('rq_' + id); if (el2) el2.value = '0'; receive(id); }); return; }
+  if (q > t.qty) { confirmDrawer('보낸 수량보다 많이 받기', `<p style="margin:0">보낸 수량은 <b>${fmt(t.qty)}개</b>인데 <b>${fmt(q)}개</b>로 받습니다. 차이만 경고로 남기고 이대로 받을 수 있습니다.</p>`, `${fmt(q)}개 받기`, async () => { const over = q - t.qty; const m = { id: 'r' + Date.now().toString(36), date: today(), store: t.to, type: '매장 이동(받음)', pid: t.pid, qty: q, memo: `← ${storeName(t.from)} · 보낸 ${fmt(t.qty)}개보다 ${fmt(over)}개 많음`, by: S.user.name, at: new Date().toISOString(), tid: t.id, sentQty: t.qty }; stampList([m]); await DB.saveMoves(stampMoves([m])); S.moves.push(m); applyStock(m); t.status = 'received'; t.recvDate = m.date; t.recvQty = q; persistDemoState(); toast(`${fmt(q)}개 받기 확인 · 보낸 수량보다 ${fmt(over)}개 많음`); render(); }); return; }
   const short = t.qty - q;
   const go = async () => {
     const m = { id: 'r' + Date.now().toString(36), date: today(), store: t.to, type: '매장 이동(받음)', pid: t.pid, qty: q, memo: `← ${storeName(t.from)}${short ? ` · 보낸 ${fmt(t.qty)}개 중 ${fmt(short)}개 모자람` : ''}`, by: S.user.name, at: new Date().toISOString(), tid: t.id, sentQty: t.qty };
@@ -4488,7 +4749,7 @@ async function commitPopIn(el) {
     next = popNumOrEmpty(el.value);
     if (next === undefined) { toast('숫자만 입력해 주세요'); el.focus(); return; }
   } else next = String(el.value || '').trim();
-  if (field === 'name' && !next) { toast('상품명을 넣어 주세요'); el.focus(); return; }
+  if (field === 'name' && !next) { next = '이름 없음'; toast('🔸 상품명이 비어 있어 이름 없음으로 저장합니다. 언제든 고칠 수 있습니다.'); }
   const optIdx = String(field || '').startsWith('opt:') ? +field.slice(4) : -1;
   const prev = optIdx >= 0 ? ((row.options || [])[optIdx] || {}).name : (field === 'opt' ? row.opt : row[field]);
   const same = (field === 'qty' || field === 'dp' || field === 'price')
@@ -4517,8 +4778,10 @@ function popupHub() {
   const list = popupDocs();
   const admin = popAdmin();
   return `${head('팝업 상품리스트', '팝업 시작 전에 상품·가격·구매제한·확정수량을 미리 봅니다')}
+  ${canRegQty() ? `<div class="card"><h2>수량 등록</h2><p class="src">입고 예정과 실재고는 따로, 어떤 순서로든 등록할 수 있습니다. 둘 다 있으면 차이를 보여 줍니다.</p>${actPair('popPlanBtn','popStockBtn')}</div>` : ''}
+  ${upBatchCard(['팝업 상품리스트', '입고예정 등록', '실재고 입력'])}
   <div class="hubgrid">${list.map(p => { const s = popSums(p); return `<article class="hubcard"><div class="hub-kicker">${esc(p.stores || '')}</div><h2>${esc(p.name)}</h2><p class="hub-meta">${esc(p.start || '')} ~ ${esc(p.end || '')}</p><ul class="hub-sum"><li>판매 ${s.saleN}종 · ${popSumText(s.saleQ, s.sale, 'qty')} · DP ${popSumText(s.saleD, s.sale, 'dp')}</li>${s.tokN ? `<li>특전 ${s.tokN}종 · ${popSumText(s.tokQ, s.tok, 'qty')} · DP ${popSumText(s.tokD, s.tok, 'dp')}</li>` : ''}</ul><button type="button" class="btn pri" data-pop="${esc(p.id)}">상품 보기</button></article>`; }).join('') || '<p class="src">등록된 팝업이 없습니다.</p>'}</div>
-  ${admin ? `<div class="card"><h2>엑셀로 넣기</h2><p class="src">열 이름이 조금 달라도, 머리글이 아래에 있어도, 열 순서가 달라도 찾습니다. 물류 일정처럼 입고수량·IP가 있는 표도 그대로 올리면 됩니다. 같은 팝업·상품이면 그 줄을 고칩니다.</p><button type="button" class="btn pri" id="popFile">엑셀 올리기</button></div>` : ''}`;
+  ${admin ? `<div class="card"><h2>상품 목록 엑셀 올리기</h2><p class="src">열 이름이 조금 달라도, 머리글이 아래에 있어도, 열 순서가 달라도 찾습니다. 물류 일정처럼 입고수량·IP가 있는 표도 그대로 올리면 됩니다. 같은 팝업·상품이면 그 줄을 고칩니다.</p><button type="button" class="btn" id="popFile">엑셀 올리기</button></div>` : ''}`;
 }
 function popupDetail() {
   const p = popById(S.ui.popId);
@@ -4544,10 +4807,12 @@ function popupDetail() {
     const nameCell = admin ? cell('name', '상품명', esc(it.name)) : `<div class="pc-name">${esc(it.name)} ${kindBadge} ${badge}</div>`;
     const optCells = admin && nOpt ? `<div class="pc-meta">${opts.map((o, i) => cell('opt:' + i, '옵션명', esc(o.name))).join('')}</div>` : (it.opt && admin ? `<div class="pc-meta">${cell('opt', '옵션명', esc(it.opt))}</div>` : '');
     const del = admin ? `<button type="button" class="btn danger" data-popidel="${esc(p.id + '|' + it.id)}" style="margin-top:8px">상품 삭제</button>` : '';
-    return `<article class="pcard"><div class="pc-img">${shot}</div><div class="pc-body">${nameCell}${admin ? ` ${kindBadge} ${badge}` : ''}<div class="pc-price">${price} <span class="muted" style="font-weight:500;font-size:12px">VAT 포함</span></div>${optCells}<div class="pc-meta">${cell('limit', '구매제한', `${esc(it.limit || '미정')}${it.limitNote ? `<div class="pc-note">${esc(it.limitNote)}</div>` : ''}`)}${cell('qty', '확정수량', popQtyText(it.qty) || '입력')}${cell('dp', 'DP', popQtyText(it.dp) || '입력')}</div>${it.memo ? `<div class="pc-note">${esc(it.memo)}</div>` : ''}${del}</div></article>`;
+    return `<article class="pcard"><div class="pc-img">${shot}</div><div class="pc-body">${nameCell}${admin ? ` ${kindBadge} ${badge}` : ''}<div class="pc-price">${price} <span class="muted" style="font-weight:500;font-size:12px">VAT 포함</span></div>${optCells}<div class="pc-meta">${cell('limit', '구매제한', `${esc(it.limit || '미정')}${it.limitNote ? `<div class="pc-note">${esc(it.limitNote)}</div>` : ''}`)}${cell('qty', '확정수량', popQtyText(it.qty) || '입력')}${cell('dp', 'DP', popQtyText(it.dp) || '입력')}</div>${planVsOnhand(it.qty, onhandOfPopItem(it))}${it.memo ? `<div class="pc-note">${esc(it.memo)}</div>` : ''}${del}</div></article>`;
   };
-  return `${head(p.name, `${esc(p.start || '')} ~ ${esc(p.end || '')} · ${esc(p.stores || '')} · 실입고 전 확정 수량`, '<button type="button" class="btn" id="popBack">목록으로</button>')}
+  return `${head(p.name, `${esc(p.start || '')} ~ ${esc(p.end || '')} · ${esc(p.stores || '')} · 입고 예정과 실재고를 따로 등록합니다`, '<button type="button" class="btn" id="popBack">목록으로</button>')}
   <div class="note-strip"><b>${popDday(p.start)}</b> · ${esc(today())} 기준${p.note ? ' · ' + esc(p.note) : ''}</div>
+  ${canRegQty() ? `<div class="card"><p class="src">입고 예정이 없어도 실재고를 먼저 넣을 수 있습니다. 두 값이 다 있으면 차이를 보여 줍니다.</p>${actPair('popPlanBtn','popStockBtn')}</div>` : ''}
+  ${upBatchCard(['팝업 상품리스트', '입고예정 등록', '실재고 입력'])}
   <div class="sumgrid"><div class="card sumc"><div class="lb">판매 상품 ${s.saleN}종</div><div class="big">${popSumText(s.saleQ, s.sale, 'qty')}</div><div class="muted">DP ${popSumText(s.saleD, s.sale, 'dp')}</div></div><div class="card sumc"><div class="lb">특전 ${s.tokN}종</div><div class="big">${popSumText(s.tokQ, s.tok, 'qty')}</div><div class="muted">DP ${popSumText(s.tokD, s.tok, 'dp')}</div></div><div class="card sumc"><div class="lb">합계</div><div class="big">${popSumText(s.allQ, s.items, 'qty')}</div><div class="muted">DP ${popSumText(s.allD, s.items, 'dp')} · 실입고 전</div></div></div>
   <div class="card"><div class="fl">상품 구분</div><div class="fchips">${chips.map(([id, t]) => `<button type="button" class="fchip ${f === id ? 'on' : ''}" data-popf="${id}">${t}</button>`).join('')}</div><p class="src">보이는 상품 ${items.length}종</p></div>
   <div class="pgrid">${items.map(card).join('')}</div>
@@ -4800,6 +5065,8 @@ async function popApplyRows(rows, src, ambRows) {
   if (DB.savePopupProduct) for (const p of S.popLive) { try { await DB.savePopupProduct(p); } catch (e) { toast('서버에 저장하지 못했습니다'); break; } }
   const pics = rows.filter(r => r.embedded).length;
   const amb = ambRows && ambRows.length ? ` · 그림이 겹쳐 빼 둔 행 ${ambRows.join(', ')}` : '';
+  recordUpBatch({ menu: '팝업 상품리스트', kind: '입고예정 등록', file: src || '시트', rows: (rows || []).length, warns: ambRows && ambRows.length ? ['그림이 겹친 행을 빼 둠'] : [], effects: (rows || []).map((r, i) => ({ type: 'popup', key: 'poprow:' + i + ':' + (r.name || ''), label: r.name || ('행 ' + (i + 1)), after: r.qty, file: src })) });
+  persistDemoState();
   toast(`${n}줄을 반영했습니다${pics ? ` · 그림 ${pics}개` : ''}${amb}`);
   render();
 }
@@ -4822,7 +5089,7 @@ function posDrawer() {
     ${pv.deduct && pv.neg.length ? `<div class="note bad">🔺 <b>재고가 마이너스가 되는 상품 ${pv.neg.length}종</b> — 실제 재고보다 많이 팔린 것으로 나옵니다. 입고·이동 누락이 없는지 확인해 주세요.<ul style="margin:6px 0 0;padding-left:18px;font-size:12.5px">${pv.neg.slice(0, 10).map(x => `<li>${esc(S.P[x.pid].name)} · 지금 ${fmt(x.now)} → <b class="qty-neg">${fmt(x.after)}</b></li>`).join('')}${pv.neg.length > 10 ? `<li>외 ${pv.neg.length - 10}종</li>` : ''}</ul>
       <label class="ck" style="margin-top:8px"><input type="checkbox" id="posNegOk" ${pv.negOk ? 'checked' : ''}><span class="t">확인했습니다. 마이너스로 두고 저장합니다</span></label></div>` : ''}
     <label class="ck"><input type="checkbox" id="posDeduct" ${pv.deduct ? 'checked' : ''} ${pv.newDays && pv.newDays.length ? '' : 'disabled'}><span><span class="t">판매 수량을 재고에서 빼기${pv.newDays && pv.newDays.length ? ` — ${pv.newDays.length === 1 ? md(pv.newDays[0]) : md(pv.newDays[0]) + ' ~ ' + md(pv.newDays[pv.newDays.length - 1])} ${pv.newDays.length}일치만` : ''}</span><span class="s" style="display:block">${pv.lastPos ? `${md(pv.lastPos)}까지는 이미 재고에서 뺐습니다. ${pv.newDays.length ? '그 뒤 날짜만 빼서 두 번 빠지지 않습니다.' : '새로 뺄 날짜가 없습니다 (매출만 저장).'}` : "찾은 상품만 '판매'로 재고에서 뺍니다."}</span></span></label>
-    <div class="row" style="justify-content:flex-end;margin-top:10px"><button class="btn pri" id="posSave" ${pv.days.every(d => d.ok) && !(pv.deduct && pv.neg.length && !pv.negOk) ? '' : 'disabled'}>매출 저장</button></div></div>` : ''}`;
+    <div class="row" style="justify-content:flex-end;margin-top:10px"><button class="btn pri" id="posSave">매출 저장</button></div></div>` : ''}`;
 }
 // POS 상품명 → 재고 상품 찾기 (+ 화면에서 직접 이어 준 상품). 못 찾은 상품은 판매 수량·비슷한 상품 후보와 함께
 function posRecalc(pv) {
@@ -4880,7 +5147,7 @@ async function readPos(f, store) { await needX();
 }
 async function savePos() {
   const pv = S.ui.posPreview; const st = pv.store;
-  if (pv.deduct && pv.neg.length && !pv.negOk) { toast('마이너스 재고 확인란을 먼저 눌러 주세요'); return; }
+  if (pv.deduct && pv.neg.length && !pv.negOk) { confirmDrawer('마이너스 재고 경고', `<p style="margin:0">재고가 마이너스가 되는 상품이 ${pv.neg.length}종 있습니다. 막아 두지 않습니다. 이대로 저장할까요?</p>`, '이대로 저장', () => { pv.negOk = true; savePos(); }); return; }
   for (const d of pv.days) {
     const ip = {}, pr = {}; for (const x of d.L) { const a = ip[x.ip] ||= [0, 0]; a[0] += x.q; a[1] += x.s; const b = pr[x.name] ||= [0, 0, x.ip]; b[0] += x.q; b[1] += x.s; }
     const rec = { s: d.s, p: d.p, q: d.q, ip, pr, up: { at: new Date().toISOString(), by: S.user.name, co: userCo(S.user), uid: S.user.uid, file: pv.file || '' } };
@@ -5573,7 +5840,7 @@ function pendingView() {
     return `<div class="card"><h2>${esc(u.name)} <span class="pill p-warn">🔸 승인 대기</span><span class="r">${esc(fdt(u.createdAt))} 신청</span></h2>
     <dl class="kv" style="margin-bottom:12px"><dt>이메일</dt><dd>${esc(u.email)}</dd><dt>소속</dt><dd>${esc(u.company)}${u.companyOther ? ` · ${esc(u.companyOther)}` : ''}</dd><dt>직급</dt><dd>${esc(u.position)}</dd><dt>근무 매장</dt><dd>${esc((u.places || []).join(', '))}</dd>${u.memo ? `<dt>메모</dt><dd>${esc(u.memo)}</dd>` : ''}</dl>
     <div style="display:flex;flex-direction:column;gap:12px">${permEditor(u, p, u.uid)}</div>
-    <div class="row" style="justify-content:flex-end;margin-top:12px"><button class="btn" data-reject="${u.uid}">거절</button><button class="btn pri" data-approve="${u.uid}" ${p.stores.length ? '' : 'disabled'}>승인</button></div></div>`;
+    <div class="row" style="justify-content:flex-end;margin-top:12px"><button class="btn" data-reject="${u.uid}">거절</button><button class="btn pri" data-approve="${u.uid}">승인</button></div></div>`;
   }).join('');
 }
 function usersView() {
@@ -5750,10 +6017,10 @@ async function scan(cb) {
   qr.start({ facingMode: 'environment' }, { fps: 10, qrbox: { width: 260, height: 120 } }, txt => { S.ui.stopScan(); S.ui.drawer = null; cb(txt); }).catch(() => { S.ui.drawer = null; render(); alertBox('카메라를 열지 못했습니다. 브라우저에서 카메라 권한을 허용해 주세요.'); });
 }
 function onScanned(code) {
-  const c = findProduct(code);
-  if (!c.length) { alertBox(`🔺 ${code} — 등록된 상품이 아닙니다`); return; }
+  let c = findProduct(code);
+  if (!c.length) { const g = ensureProduct({ bc: code, name: '이름 없음', barcode: code }); alertBox(`🔸 ${code} — 없던 상품이라 새로 등록했습니다. 이름을 나중에 고칠 수 있습니다.`); c = [g.prod]; }
   if (c.length > 1) alertBox(`🔸 같은 바코드 상품이 ${c.length}개입니다. 첫 번째를 열었습니다.`);
-  if (S.view === 'inbound' && S.ui.ib && S.ui.ib !== 'new') { const ib = S.inbounds.find(x => x.id === S.ui.ib); const it = ib && ib.items.find(x => x.pid === c[0].id); if (it) { it.actual = (it.actual || 0) + 1; if (DB.saveInbound) DB.saveInbound(ib); toast(`${it.name} 실제 ${it.actual}개`); } else alertBox('🔸 이 입고 예정에 없는 상품입니다'); return; }
+  if (S.view === 'inbound' && S.ui.ib && S.ui.ib !== 'new') { const ib = S.inbounds.find(x => x.id === S.ui.ib); let it = ib && (ib.items || []).find(x => x.pid === c[0].id || x.bc === code || x.code === code); if (!it && ib) { it = { key: 'p:' + c[0].id, pid: c[0].id, name: c[0].name, code: c[0].barcode || code, bc: c[0].barcode || code, plan: 0, actual: 0, note: '입고 예정에 없어 추가함', warn: true }; ib.items.push(it); alertBox('🔸 이 입고 예정에 없던 상품이라 줄에 추가했습니다.'); } if (it) { it.actual = (it.actual || 0) + 1; if (DB.saveInbound) DB.saveInbound(ib); toast(`${it.name} 실제 ${it.actual}개`); } return; }
   if (S.view === 'entry') { addLine(c[0].id, 1); render(); }
   else if (S.view === 'count') { S.ui.countQ = code; render(); }
   else openProduct(c[0].id);
@@ -6046,6 +6313,13 @@ function bind() {
     }
     const t = ev.target.closest('button,[data-pid],[data-cmpk],[data-hdip],label,input'); if (!t) return;
     const d = t.dataset;
+    if (d.actgo === 'plan' || t.id === 'popPlanBtn' || t.id === 'ibPlanGo' || t.id === 'prPlanGo') { openPlanReg(S.view); return; }
+    if (d.actgo === 'stock' || t.id === 'popStockBtn' || t.id === 'ibStockGo' || t.id === 'prStockGo') { openOnhandReg(S.view); return; }
+    if (d.uprows) { openUpRows(d.uprows); return; }
+    if (d.upundo) { loadUpBatches(); const b = (S.upBatches || []).find(x => x.id === d.upundo); confirmDrawer('이 파일 등록 취소', `<p style="margin:0"><b>${esc((b && b.file) || '등록')}</b>으로 들어온 값을 되돌립니다.${b && b.rows ? ' ' + b.rows + '행' : ''}</p>`, '등록 취소', () => revertUpBatch(d.upundo), true); return; }
+    if (d.upundowarn) { S.ui.drawer = null; await revertUpBatch(d.upundowarn, 'warns'); return; }
+    if (d.updelrow) { const parts = String(d.updelrow).split('|'); const id = parts[0]; const key = parts.slice(1).join('|'); S.ui.drawer = null; await revertUpBatch(id, [key]); return; }
+    if (t.id === 'ohAdd' || t.id === 'ibManAdd') { addManualRow(t.id === 'ibManAdd' ? 'plan' : 'onhand'); return; }
     const pick = ev.target.closest('[data-cntpick]');
     if (pick && S.ui.cntPrev && !ev.target.closest('input.inp')) { const key = pick.dataset.cntpick; const x = (S.ui.cntPrev.fresh || []).find(f => f.key === key); if (x) { x.on = !x.on; S.ui.cntSkip = S.ui.cntSkip || {}; S.ui.cntSkip[key] = !x.on; S.ui.cntNoScroll = true; render(); } return; }
     if (d.role) { const u = previewUser(d.role); if (canPreview() && u && roleRank(u) >= roleRank(S.actor)) { setUser(u, { preview: true }); if (stockFloor()) S.view = 'home'; } render(); return; }
@@ -6145,7 +6419,7 @@ function bind() {
     if (d.em) { S.ui.entry.mode = d.em; render(); return; }
     if (d.ld != null) { S.ui.entry.lines.splice(+d.ld, 1); render(); return; }
     if (t.id === 'eClear') { S.ui.entry.lines = []; render(); return; }
-    if (t.id === 'eSave') { await saveEntry(); return; }
+    if (t.id === 'eSave') { const issues = lineIssues(S.ui.entry || {}); if (issues.length) { confirmDrawer('경고 확인 후 저장', `<div>${issues.map(x => warnNote(x.t)).join('')}<p class="src">막아 두지 않습니다. 이대로 저장할까요?</p></div>`, '이대로 저장', () => saveEntry()); return; } await saveEntry(); return; }
     if (t.id === 'fileBtn') { pickFile('.xlsx,.xls,.csv', f => readFile(f)); return; }
     if (t.id === 'naverFileBtn') { pickFile('.xlsx,.xls,.csv', f => readNaver(f).catch(e => { S.ui.naver = { err: e.message || String(e) }; render(); })); return; }
     if (t.id === 'blogSave') { const m = (document.getElementById('blogMonth') || {}).value, a = +String((document.getElementById('blogAmt') || {}).value || '').replace(/[^\d-]/g, ''), memo = ((document.getElementById('blogMemo') || {}).value || '').trim(); if (!m || !a) { toast('월과 금액을 넣어 주세요'); return; } (S.biz.blog ||= {})[m + '-01'] = { s: a, p: 0, memo }; saveBiz(); toast('블로그 운영 금액을 저장했습니다'); render(); return; }
@@ -6229,7 +6503,7 @@ function bind() {
       if (t.id === 'mapSave') { await saveImportMap(im.det.sig, { map: m, sample: im.det.H.filter(Boolean).slice(0, 8), by: S.user.name, at: new Date().toISOString() }); }
       importRows(im.raw, im.src, { a: im.det.a, r: im.det.r, map: m }); if (t.id === 'mapSave') S.ui.imp.det.how = 'saved'; render(); if (t.id === 'mapSave') toast('이 양식을 기억했습니다 — 같은 제목 줄 파일은 다음부터 자동'); return; }
     if (d.cbst) { S.ui.cb = { store: d.cbst }; render(); return; }
-    if (t.id === 'impUse') { S.ui.entry.file = S.ui.imp.src; for (const r of S.ui.imp.rows) if (r.pid && r.qty > 0 && !(r.dup && S.ui.imp.dupMode === 'first')) addLine(r.pid, r.qty, r.dup ? `파일 ${r.dup}줄과 같은 상품 — 수량 합침` : null); S.ui.imp = null; S.ui.entry.mode = 'hand'; render(); return; }
+    if (t.id === 'impUse') { S.ui.entry.file = S.ui.imp.src; for (const r of S.ui.imp.rows) { if (r.dup && S.ui.imp.dupMode === 'first') continue; if (!r.pid) { const g = ensureProduct(r); r.pid = g.prod.id; } addLine(r.pid, r.qty || 0, r.dup ? `파일 ${r.dup}줄과 같은 상품 — 수량 합침` : (r.pid && !S.P[r.pid] ? null : null)); } S.ui.imp = null; S.ui.entry.mode = 'hand'; render(); return; }
     if (t.id === 'cSave') { const st = S.stores[0], c = S.ui.counts[st] || {}; const df = Object.keys(c).filter(pid => c[pid] !== stockOf(st, pid)).map(pid => ({ pid, b: stockOf(st, pid), v: c[pid] })).sort((a, b) => Math.abs(b.v - b.b) - Math.abs(a.v - a.b));
       const plus = df.filter(x => x.v > x.b).reduce((a, x) => a + x.v - x.b, 0), minus = df.filter(x => x.v < x.b).reduce((a, x) => a + x.b - x.v, 0), amt = df.reduce((a, x) => a + (x.v - x.b) * ((S.P[x.pid] || {}).price || 0), 0);
       confirmDrawer('실사 결과를 재고에 반영', `<p style="margin:0 0 8px">${esc(storeName(st))} · ${fd(today())} — 장부 수량을 세어 본 수량으로 바꿉니다. 반영한 뒤에는 '재고 조정' 기록으로 남습니다.</p>
@@ -6243,7 +6517,7 @@ function bind() {
     if (d.cntqty != null && d.cntqty !== '') { countRepick('qty', +d.cntqty); return; }
     if (d.cntip != null || d.cntcat != null) return;
     if (t.id === 'cntIpApply') { const v = (document.getElementById('cntIpAll') || {}).value || ''; (S.ui.cntPrev.fresh || []).forEach(f => { f.ip = v; S.ui.cntEdit = S.ui.cntEdit || {}; S.ui.cntEdit[f.key] = { ...(S.ui.cntEdit[f.key] || {}), ip: v, cat: f.cat }; }); S.ui.cntNoScroll = true; render(); return; }
-    if (t.id === 'cntGuardOk') { if ((document.getElementById('cntGuard') || {}).value.trim() !== '실사') return; S.ui.drawer = null; await countRegister(); return; }
+    if (t.id === 'cntGuardOk') { S.ui.drawer = null; await countRegister(); return; }
     if (t.id === 'cntOnly') { S.ui.cntOnly = !S.ui.cntOnly; render(); return; }
     if (t.id === 'cntCols') { S.ui.cntCols = !S.ui.cntCols; render(); return; }
     if (t.id === 'ibOnly') { S.ui.ibOnly = !S.ui.ibOnly; render(); return; }
@@ -6556,7 +6830,7 @@ addEventListener('resize', fitSide); addEventListener('scroll', () => requestAni
 // 글자를 칠 때마다 저장 버튼을 바로 켜고 끔 (화면 전체를 다시 그리지 않아 한 번에 눌림)
 document.addEventListener('input', ev => {
   const t = ev.target;
-  if (t.id === 'eMemo' && S.ui.entry) { S.ui.entry.memo = t.value; const b = $('#eSave'); if (b) b.disabled = lineIssues(S.ui.entry).some(x => x.block); return; }
+  if (t.id === 'eMemo' && S.ui.entry) { S.ui.entry.memo = t.value; return; }
   if (['plName', 'plStart'].includes(t.id) && S.ui.placeForm) { S.ui.placeForm[t.id === 'plName' ? 'name' : 'start'] = t.value; const b = $('#plSave'); if (b) b.disabled = !(S.ui.placeForm.name.trim() && S.ui.placeForm.start); return; }
 });
 document.addEventListener('input', ev => {
@@ -6780,8 +7054,9 @@ async function start() {
   try {
     try { S.popSeed = (await (await fetch('data/popup-products.json')).json()).popups || []; } catch (e) { S.popSeed = []; }
     try { S.popLive = JSON.parse(localStorage.getItem('smg-popup-live-v137') || '[]'); } catch (e) { S.popLive = []; }
-    if (FB) { S.mode = 'live'; DB = FB.backend; await FB.start(); }
-    else { await DB.load(); indexProducts(); setUser(S.users[0]); }
+    loadUpBatches();
+    if (FB && !wantDemo()) { S.mode = 'live'; DB = FB.backend; await FB.start(); }
+    else { await DB.load(); if (wantDemo() || S.mode === 'demo') restoreDemoState(); indexProducts(); setUser(S.users[0]); }
     S.ready = true; render();
     setTimeout(() => needX().catch(() => { }), 4000);   // 첫 화면이 뜬 뒤에 엑셀 도구 미리 받아두기
   } catch (err) {
@@ -6800,7 +7075,7 @@ function salesPeriodRollover() {
 }
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') salesPeriodRollover(); });
 setInterval(salesPeriodRollover, 30000);
-window.SMGApp = { S, render, indexProducts, setUser, salesPresetRange, resolveSalesPeriod, salesPeriodRollover, parseSchedText, parseSchedJson, schedDocs, countFromPaste, countParseRows, parsePasteTable, ibApplyCountRows, moveFromRows, ibActLoaded, chooseSheet, sheetScore, readLineText, stampList, applyStock, shelfOf, roomOf, stockOf, applyPagePaste, logUp, exactHit, collabKeyOf, staffAdd, staffRevoke, staffAllow, actorRevoked, lockNow, floorPerms, canPreview, previewRoles, roleRank, popImagesByRow, popRowsFromTable, popPickSheet, popReadFile, popupDocs };
+window.SMGApp = { S, render, indexProducts, setUser, salesPresetRange, resolveSalesPeriod, salesPeriodRollover, parseSchedText, parseSchedJson, schedDocs, countFromPaste, countParseRows, parsePasteTable, ibApplyCountRows, moveFromRows, ibActLoaded, chooseSheet, sheetScore, readLineText, stampList, applyStock, shelfOf, roomOf, stockOf, applyPagePaste, logUp, exactHit, collabKeyOf, staffAdd, staffRevoke, staffAllow, actorRevoked, lockNow, floorPerms, canPreview, previewRoles, roleRank, popImagesByRow, popRowsFromTable, popPickSheet, popReadFile, popupDocs, wantDemo, actPair, recordUpBatch, revertUpBatch, ensureProduct, openPlanReg, openOnhandReg, loadUpBatches };
 addEventListener('storage', e => {
   if (e.key !== 'smg-staff-reg' || !S.ready) return;
   try { S.staff = JSON.parse(e.newValue || '[]'); } catch (err) { return; }
