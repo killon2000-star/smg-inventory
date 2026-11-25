@@ -50,7 +50,7 @@ const PERM_DEF = [
 ];
 
 const DEFAULT_ORDER = STORES.map(s => s.id);
-const APP_VERSION = '2026-11-25 20:30';   // 앱 화면을 마지막으로 고친 시각 (한국 시간)
+const APP_VERSION = '2026-11-25 23:30';   // 앱 화면을 마지막으로 고친 시각 (한국 시간)
 /* ───────── 작은 도구 ───────── */
 const $ = (s, el = document) => el.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -2597,13 +2597,22 @@ async function fileRows(f) {
   const best = bestSheet(wb);
   return { rows: best ? best.rows : [], src: f.name + (best && wb.SheetNames.length > 1 ? ' › ' + best.n : '') };
 }
-async function readBestSheet(buf, mode) {
+async function readWorkbookBuf(buf, fileName) {
   await needX();
-  const head = XLSX.read(buf, { type: 'array', sheetRows: 80 });
+  if (fileName && /\.csv$/i.test(fileName)) {
+    let t = new TextDecoder('utf-8').decode(buf);
+    if (t.includes('\uFFFD')) t = new TextDecoder('euc-kr').decode(buf);
+    return XLSX.read(String(t).replace(/^\uFEFF/, ''), { type: 'string' });
+  }
+  return XLSX.read(buf, { type: 'array' });
+}
+async function readBestSheet(buf, mode, fileName) {
+  await needX();
+  const head = await readWorkbookBuf(buf, fileName);
   const pick = chooseSheet(head.SheetNames.map(name => ({ name, rows: sheetRowsOf(head.Sheets[name]) })));
   if (!pick) return null;
-  const full = XLSX.read(buf, { type: 'array', sheets: [pick.name] });
-  const rows = sheetRowsOf(full.Sheets[pick.name]);
+  const full = (fileName && /\.csv$/i.test(fileName)) ? head : await readWorkbookBuf(buf, fileName);
+  const rows = sheetRowsOf(full.Sheets[pick.name] || head.Sheets[pick.name]);
   const parsed = countParseRows(rows, { mode: mode || 'plan' });
   return { rows, name: pick.name, parsed, readLine: readLineText(pick.name, parsed.planLabel, parsed.qtyLabel), warns: [...(pick.warns || []), ...(parsed.warns || [])] };
 }
@@ -3085,7 +3094,7 @@ function ibApplyCountRows(rows, src, extra) {
 }
 function ibPlanLoaded(x) { const f = S.ui.ibForm; if (countParseRows(x.rows, { mode: 'plan' }).items) { ibApplyCountRows(x.rows, x.src, x); return; } f.img = x.img || ''; const t = readTable(x.rows, QTY_PLAN); f.err = t.err || ''; f.parsed = t.rows || null; f.src = x.src; if (!f.title) f.title = x.src.replace(/\.(xlsx|xls|csv|png|jpe?g|heic|heif|webp)( › .*)?$/i, ''); render(); }
 async function stockReadFile(f, mode) {
-  const got = await readBestSheet(await f.arrayBuffer(), mode || 'plan');
+  const got = await readBestSheet(await f.arrayBuffer(), mode || 'plan', f && f.name);
   if (!got) throw new Error('상품과 수량 칸이 있는 탭을 찾지 못했습니다.');
   return { rows: got.rows, src: f.name + ' › ' + got.name, readLine: got.readLine, warns: got.warns, name: got.name };
 }
@@ -3347,8 +3356,8 @@ function importBox() {
 const HDR = {
   sku: ['sku', '품번', '상품코드', '코드', '품목코드', '상품번호'],
   barcode: ['바코드', 'barcode', 'ean', 'jan', '바코드번호'],
-  name: ['상품명', '품명', '제품명', '상품', 'name', '품목명'],
-  qty: ['수량', '입고수량', '출고수량', '실제수량', '실제 수량', '예정수량', '예정 수량', 'qty', '입고', '수 량', '개수'],
+  name: ['상품명', '품명', '제품명', '상품', 'name', '품목명', '이름'],
+  qty: ['수량', '입고수량', '출고수량', '실제수량', '실제 수량', '예정수량', '예정 수량', 'qty', '입고', '수 량', '개수', '갯수', 'ea', 'EA'],
   memo: ['메모', '비고', 'memo', '사유'],
   price: ['판매가', '소비자가', '단가', '가격', '상품가격', '정가', 'price'],
   ip: ['ip', '카테고리', '작품', '브랜드'],
@@ -3489,7 +3498,7 @@ function headerish(row) {
   const cells = (row || []).map(c => String(c ?? '').trim()).filter(Boolean);
   if (cells.length < 2 || cells.some(c => isBarcodeCell(c) || isDateCell(c))) return false;
   let hits = 0;
-  for (const c of cells) { const n = normHead(c); if (countWord(c) || /바코드|상품명|품명|품번|입고|거래처|상품종류|비고|예정일|수령|수량|재고|코드/.test(n) || n === 'no') hits++; }
+  for (const c of cells) { const n = normHead(c); if (countWord(c) || /바코드|상품명|품명|품번|입고|거래처|상품종류|비고|예정일|수령|수량|재고|코드|갯수|^ea$|^qty$|^name$|^이름$/.test(n) || n === 'no') hits++; }
   return hits >= 2;
 }
 function mapLabels(labels) {
@@ -3500,7 +3509,7 @@ function mapLabels(labels) {
     if (/바코드|barcode|ean|jan|upc|gtin/.test(n) && !/상품명|품명/.test(n)) { bc = bc < 0 ? i : bc; return; }
     if (n === '코드' && bc < 0) { bc = i; return; }
     if (/한글/.test(n) && /상품명|품명/.test(n)) nameKo = i;
-    else if (/상품명|품명|제품명|품목명/.test(n) || n === '품목') { if (name < 0) name = i; }
+    else if (/상품명|품명|제품명|품목명/.test(n) || n === '품목' || n === '이름' || n === 'name') { if (name < 0) name = i; }
     else if (/품번|^sku$/.test(n)) sku = sku < 0 ? i : sku;
   });
   if (nameKo >= 0) name = nameKo;
@@ -3537,7 +3546,7 @@ function genericRank(h) {
   if (!n || planRank(h) || actualRank(h) || /실입고|dp수량|판매가|구매제한/.test(n)) return 0;
   if (/판매수량/.test(n) && !/1차납품|납품/.test(n)) return 0;
   if (n === '확정수량' || n === '수원수량') return 45;
-  if (n === '수량' || n === '개수' || n === 'qty' || n === '입고') return 40;
+  if (n === '수량' || n === '개수' || n === '갯수' || n === 'qty' || n === 'ea' || n === '입고') return 40;
   if (n === '재고' || n === '현재고' || n === '재고수량') return 25;
   return 0;
 }
@@ -3551,8 +3560,16 @@ function catalogHead(labels) {
 function isLabelCell(s) {
   const n = normHead(s);
   if (!n || n.length >= 30) return false;
+  if (countNum(s) != null) return false;
   if (countWord(s)) return true;
-  return /^(no|번호|순번|구분)$/.test(n) || /바코드|상품명|품명|품번|옵션|입고|거래처|상품종류|비고|예정일|수량|재고|코드|품목|상품/.test(n);
+  if (/^(no|번호|순번|구분)$/.test(n)) return true;
+  const keys = ['바코드','상품명','품명','품번','옵션','입고','거래처','상품종류','비고','예정일','수량','재고','코드','품목','상품','갯수','개수','이름','qty','ea','name','barcode'];
+  const hit = keys.filter(k => n.includes(normHead(k)));
+  if (!hit.length) return false;
+  // 'QR코드 키링'처럼 제목 단어가 이름 안에만 있으면 데이터 줄로 본다.
+  const rest = hit.reduce((s, k) => s.split(normHead(k)).join(''), n);
+  if (rest.length >= 4 && /[가-힣a-z]/i.test(rest)) return false;
+  return true;
 }
 function rowHeaderScore(row) {
   const cells = (row || []).map(c => String(c ?? '').trim()).filter(Boolean);
@@ -3598,7 +3615,12 @@ function refineQtyMap(labels, rows, start, map, mode) {
 function sheetScore(name, rows) {
   const peek = (rows || []).slice(0, 80);
   const header = findHeader(peek);
-  if (!header) return { score: 0 };
+  if (!header) {
+    const body = peek.filter(r => !rowBlank(r) && !headerish(r));
+    const g = typeof guessHeaderless === 'function' ? guessHeaderless(body) : null;
+    if (g && (g.bc >= 0 || g.name >= 0) && g.qty >= 0) return { score: 20 + Math.min(body.length, 20), planLabel: '', qtyLabel: '추정 수량' };
+    return { score: 0 };
+  }
   const map = refineQtyMap(header.labels, peek, header.end + 1, header.map, 'plan');
   const actN = map.actCol >= 0 ? bodyNums(peek, header.end + 1, map.actCol) : 0;
   const planN = map.planCol >= 0 ? bodyNums(peek, header.end + 1, map.planCol) : 0;
@@ -3766,8 +3788,8 @@ function countParseRows(rows, pick) {
     const numeric = vs.length && vs.filter(isPlainNum).length / vs.length >= .6;
     let role = '';
     if (n && /바코드|barcode|ean|jan|upc|gtin/.test(n) && !/상품명|품명/.test(n)) role = 'prod';
-    else if (n && /상품명|품명|제품명|품목명|품번|상품코드|품목코드/.test(n)) role = 'prod';
-    else if (n && !/^(no|번호|순번)$/.test(n) && (countWord(label) || /수량|재고|현재고|개수|qty/.test(n)) && (numeric || !!countWord(label))) role = 'qty';
+    else if (n && (/상품명|품명|제품명|품목명|품번|상품코드|품목코드/.test(n) || n === '이름' || n === 'name')) role = 'prod';
+    else if (n && !/^(no|번호|순번)$/.test(n) && (countWord(label) || /수량|재고|현재고|개수|갯수|qty|^ea$/.test(n)) && (numeric || !!countWord(label) || /수량|재고|현재고|개수|갯수|qty|^ea$/.test(n))) role = 'qty';
     else if (!n && !header && numeric && vs.every(v => !isPhoneCell(v) && !isDateCell(v) && !isTimeCell(v))) role = 'qty';
     else if (!n && !header && vs.filter(isBarcodeCell).length >= 1) role = 'prod';
     else if (!n && !header && vs.filter(v => /[가-힣A-Za-z]{2,}/.test(v) && !isMemoCell(v) && !isTimeCell(v) && !isDateCell(v)).length >= 1 && !numeric) role = 'prod';
@@ -3981,7 +4003,7 @@ async function countReadFile(f) {
     await needX();
     cntBuf = await f.arrayBuffer();
     await cntTick();
-    const got = await readBestSheet(cntBuf, 'count');
+    const got = await readBestSheet(cntBuf, 'count', f && f.name);
     S.ui.cntFile = f.name; S.ui.cntCands = null; S.ui.cntSheet = got ? got.name : '';
     if (!got) { S.ui.cntMsg = { warn: true, html: '🔸 상품(바코드·상품명)과 수량 칸을 자동으로 찾지 못했습니다. 직접 입력하거나 다른 파일을 올려 주세요. 파일 기록은 남깁니다.' }; recordUpBatch({ menu: isOnhand() ? '실재고 입력' : '실사', kind: isOnhand() ? '실재고 입력' : '실사', file: f.name, rows: 0, warns: ['탭을 자동으로 찾지 못함'], effects: [] }); render(); countScroll(); return; }
     cntRows = got.rows;
